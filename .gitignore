@@ -24,3 +24,5 @@ Thumbs.db
 
 # pytest
 .pytest_cache/
+.venv_test/
+.venv_test/
