@@ -52,10 +52,12 @@ Knowledge management MCP server for AI projects.
 **Completed:**
 - Free/Pro tier gating logic: tiers.py + TierEnforcer + vault_tier_status + vault_set_tier tools (35 tests passing, commit TBD, 2026-03-22)
 
+**Completed:**
+- Cowork plugin packaging (ron_skills/projectvault-plugin/, ron_skills/projectvault-v0.1.0.plugin, commit TBD, 2026-03-22) -- AWAITING DEBBIE REVIEW
+
 **Priority TODOs:**
-1. Cowork plugin packaging (.plugin format)
-2. Expand test suite beyond storage layer to MCP tool layer
-3. Marketplace listing for public distribution
+1. Expand test suite beyond storage layer to MCP tool layer
+2. Marketplace listing for public distribution
 
 ### SQL Query Optimizer (v0.1.0) - IN PROGRESS
 SQL optimization tool with analysis and recommendations.
