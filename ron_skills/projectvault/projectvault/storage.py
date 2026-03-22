@@ -29,6 +29,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .tiers import TierEnforcer, TierLimitError  # noqa: F401 (re-exported for callers)
+
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -242,6 +244,9 @@ class VaultStorage:
         _init_db(self.db_path)
         _migrate_db(self.db_path)
 
+        # Tier enforcer (reads config.json from root)
+        self.enforcer = TierEnforcer(self.root)
+
     @contextmanager
     def _db(self):
         """Context manager for database connections."""
@@ -265,10 +270,29 @@ class VaultStorage:
     # Vault operations
     # -------------------------------------------------------------------
 
+    def get_total_storage_bytes(self) -> int:
+        """Return total bytes used across all non-deleted documents."""
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(file_size_bytes), 0) as total FROM documents WHERE deleted = 0"
+            ).fetchone()
+            return int(row["total"])
+
     def create_vault(self, name: str, description: str = "",
                      tags: Optional[List[str]] = None,
                      linked_projects: Optional[List[str]] = None) -> Dict[str, Any]:
-        """Create a new vault. Returns vault metadata dict."""
+        """Create a new vault. Returns vault metadata dict.
+
+        Raises TierLimitError if the Free tier vault limit would be exceeded.
+        """
+        # Tier check: count active (non-archived) vaults
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) as cnt FROM vaults WHERE archived = 0"
+            ).fetchone()
+            current_count = int(row["cnt"])
+        self.enforcer.check_vault_count(current_count)
+
         vault_id = str(uuid.uuid4())[:12]
         now = self._now()
         tags = tags or []
@@ -449,6 +473,10 @@ class VaultStorage:
         if not vault:
             return None
 
+        # Tier checks before writing anything
+        self.enforcer.check_doc_count(vault["doc_count"], vault_name=vault["name"])
+        self.enforcer.check_storage(self.get_total_storage_bytes(), len(content))
+
         doc_id = str(uuid.uuid4())[:12]
         now = self._now()
         tags = tags or []
@@ -556,6 +584,8 @@ class VaultStorage:
             # If content is changing, version the current file first
             if content is not None:
                 if current_file.exists():
+                    # Tier check: verify we haven't hit the version limit
+                    self.enforcer.check_version_count(version_count, doc_name=row["name"])
                     history_file = doc_dir / "history" / f"v{version_count}{ext}"
                     shutil.copy2(current_file, history_file)
                     version_count += 1

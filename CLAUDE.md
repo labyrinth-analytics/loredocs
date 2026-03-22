@@ -49,11 +49,13 @@ Knowledge management MCP server for AI projects.
 **Completed:**
 - Phase 2 tools: vault_link_doc, vault_unlink_doc, vault_find_related, vault_suggest, vault_export_manifest (commit ddf7f91, 2026-03-22) -- 7 tests passing
 
+**Completed:**
+- Free/Pro tier gating logic: tiers.py + TierEnforcer + vault_tier_status + vault_set_tier tools (35 tests passing, commit TBD, 2026-03-22)
+
 **Priority TODOs:**
-1. Free/Pro tier gating logic (everything unlimited currently)
-3. Cowork plugin packaging (.plugin format)
-4. Expand test suite beyond storage layer to MCP tool layer
-5. Marketplace listing for public distribution
+1. Cowork plugin packaging (.plugin format)
+2. Expand test suite beyond storage layer to MCP tool layer
+3. Marketplace listing for public distribution
 
 ### SQL Query Optimizer (v0.1.0) - IN PROGRESS
 SQL optimization tool with analysis and recommendations.

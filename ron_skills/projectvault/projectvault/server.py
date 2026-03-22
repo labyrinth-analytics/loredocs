@@ -21,6 +21,7 @@ from mcp.server.fastmcp import FastMCP, Context
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .storage import VaultStorage
+from .tiers import TierLimitError, get_tier, set_tier, TIER_LIMITS
 
 
 # ---------------------------------------------------------------------------
@@ -1280,6 +1281,132 @@ async def vault_export_manifest(params: ExportManifestInput, ctx: Context) -> st
             lines.append(f"  ID: {doc['id']}  updated: {doc['updated_at'][:10]}")
 
     return "\n".join(lines)
+
+
+# ===================================================================
+# TIER MANAGEMENT TOOLS
+# ===================================================================
+
+class VaultTierStatusInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    response_format: ResponseFormat = Field(
+        default=ResponseFormat.MARKDOWN,
+        description="Output format: 'markdown' (default) or 'json'"
+    )
+
+
+@mcp.tool(
+    name="vault_tier_status",
+    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
+)
+async def vault_tier_status(params: VaultTierStatusInput, ctx: Context) -> str:
+    """Show current tier (Free or Pro) and usage vs. limits.
+
+    Displays how many vaults and how much storage are in use, with percentages
+    against Free tier limits. Useful before hitting a limit to know how close
+    you are, or to confirm Pro tier is active after upgrading.
+    """
+    storage = _get_storage(ctx)
+
+    vault_count = len(storage.list_vaults(include_archived=False))
+    total_bytes = storage.get_total_storage_bytes()
+    status = storage.enforcer.status_dict(vault_count, total_bytes)
+
+    if params.response_format == ResponseFormat.JSON:
+        return json.dumps(status, indent=2)
+
+    tier_label = "Pro (unlimited)" if status["is_pro"] else "Free"
+    lines = [
+        "# ProjectVault Tier Status",
+        "",
+        f"**Tier:** {tier_label}",
+        "",
+        "## Usage",
+        "",
+    ]
+
+    # Vaults
+    vault_limit_str = str(status["vault_limit"]) if status["vault_limit"] is not None else "unlimited"
+    pct_str = f" ({status['vault_usage_pct']}%)" if status["vault_usage_pct"] is not None else ""
+    lines.append(f"- **Vaults:** {status['vault_count']} / {vault_limit_str}{pct_str}")
+
+    # Storage
+    storage_limit_str = (
+        f"{status['storage_limit_mb']} MB" if status["storage_limit_mb"] is not None else "unlimited"
+    )
+    storage_pct_str = (
+        f" ({status['storage_usage_pct']}%)" if status["storage_usage_pct"] is not None else ""
+    )
+    lines.append(
+        f"- **Storage:** {status['storage_used_mb']} MB / {storage_limit_str}{storage_pct_str}"
+    )
+
+    # Per-vault and per-doc limits
+    doc_limit = status["docs_per_vault_limit"]
+    ver_limit = status["versions_per_doc_limit"]
+    lines.append(
+        f"- **Docs per vault:** "
+        f"{doc_limit if doc_limit is not None else 'unlimited'}"
+    )
+    lines.append(
+        f"- **Versions per doc:** "
+        f"{ver_limit if ver_limit is not None else 'unlimited'}"
+    )
+
+    if not status["is_pro"]:
+        lines += [
+            "",
+            "## Upgrade to Pro",
+            "",
+            "Pro tier removes all limits. Use `vault_set_tier` with `tier='pro'` "
+            "to activate your license after purchase.",
+        ]
+
+    return "\n".join(lines)
+
+
+class VaultSetTierInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    tier: str = Field(
+        ...,
+        description="Tier to activate: 'free' or 'pro'",
+        pattern="^(free|pro)$"
+    )
+
+
+@mcp.tool(
+    name="vault_set_tier",
+    annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
+)
+async def vault_set_tier(params: VaultSetTierInput, ctx: Context) -> str:
+    """Activate a tier (free or pro) for ProjectVault.
+
+    Pro tier removes all vault, document, storage, and version limits.
+    After purchasing a Pro license, call this tool with tier='pro' to unlock
+    unlimited usage. Reverting to tier='free' re-enables limits (but does not
+    delete any existing data that exceeds the limits -- it only blocks new writes).
+
+    Note: In a future release this will verify a license key. For now it trusts
+    the caller (suitable for single-user local installs).
+    """
+    storage = _get_storage(ctx)
+    try:
+        set_tier(storage.root, params.tier)
+    except ValueError as exc:
+        return f"Error: {exc}"
+
+    limits = TIER_LIMITS[params.tier]
+    if limits.is_unlimited():
+        summary = "All limits removed. Enjoy unlimited vaults, documents, and storage."
+    else:
+        summary = (
+            f"Free tier active. Limits: {limits.max_vaults} vaults, "
+            f"{limits.max_docs_per_vault} docs/vault, "
+            f"{(limits.max_storage_bytes or 0) // (1024 * 1024)} MB storage, "
+            f"{limits.max_versions_per_doc} versions/doc."
+        )
+
+    return f"[OK] Tier set to '{params.tier}'. {summary}"
 
 
 # ---------------------------------------------------------------------------
