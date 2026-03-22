@@ -26,3 +26,4 @@ Thumbs.db
 .pytest_cache/
 .venv_test/
 .venv_test/
+.claude/
