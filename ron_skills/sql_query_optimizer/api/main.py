@@ -181,3 +181,48 @@ async def check_credits(api_key: str = Depends(verify_api_key)):
         credits_remaining=credit_manager.get_credits(api_key),
         plan=credit_manager.get_plan(api_key),
     )
+
+
+# ---------------------------------------------------------------------------
+# Admin Endpoints (protected by ADMIN_SECRET)
+# ---------------------------------------------------------------------------
+class GenerateKeyRequest(BaseModel):
+    plan: str = Field("starter", description="Plan: starter, pro, or unlimited")
+    credits: int = Field(50, description="Initial credits (ignored for unlimited)")
+    email: Optional[str] = Field(None, description="Optional email for the key owner")
+
+class GenerateKeyResponse(BaseModel):
+    api_key: str
+    plan: str
+    credits: int
+    message: str
+
+
+async def verify_admin(authorization: str = Header(...)) -> str:
+    """Verify the admin secret from the Authorization header."""
+    admin_secret = os.getenv("ADMIN_SECRET")
+    if not admin_secret:
+        raise HTTPException(status_code=503, detail="Admin endpoint not configured")
+
+    token = authorization.replace("Bearer ", "").strip()
+    if token != admin_secret:
+        raise HTTPException(status_code=403, detail="Invalid admin credentials")
+
+    return token
+
+
+@app.post("/admin/generate-key", response_model=GenerateKeyResponse)
+async def generate_api_key(request: GenerateKeyRequest, _: str = Depends(verify_admin)):
+    """Generate a new API key. Requires ADMIN_SECRET."""
+    credits = request.credits if request.plan != "unlimited" else 0
+    api_key = credit_manager.generate_key(
+        plan=request.plan,
+        credits=credits,
+        email=request.email,
+    )
+    return GenerateKeyResponse(
+        api_key=api_key,
+        plan=request.plan,
+        credits=credit_manager.get_credits(api_key),
+        message="Save this key -- it cannot be retrieved later.",
+    )
