@@ -71,7 +71,7 @@ Knowledge management MCP server for AI projects.
 1. Research and document how to submit ProjectVault plugin to Claude marketplace (knowledge-work-plugins) -- document in docs/PUBLISHING.md
 2. Integration tests for tier enforcement with real MCP client calls
 
-### SQL Query Optimizer (v0.1.0) - IN PROGRESS
+## SQL Query Optimizer (v0.1.0) - IN PROGRESS
 SQL optimization tool with analysis and recommendations.
 - Location: `ron_skills/sql_query_optimizer/`
 - Stack: FastMCP, sqlparse, Python
