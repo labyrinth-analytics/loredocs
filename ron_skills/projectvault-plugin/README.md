@@ -1,167 +1,163 @@
-# ProjectVault Plugin
+# ProjectVault
 
-A searchable, organized, version-tracked knowledge base for your AI projects. Store documents, tag them, search across them, and inject context into any Claude conversation.
+> A searchable, organized knowledge base for your AI projects. Store documents, tag them, search across them, and inject context into any Claude conversation.
 
-## Supported Platforms
+**By [Labyrinth Analytics Consulting](https://labyrinthanalyticsconsulting.com)**
 
-| Platform | Support | Notes |
-|---|---|---|
-| **Cowork** | Full | Plugin installs natively; skills work end-to-end |
-| **Claude Code** | Full | Install as an MCP server; all 32 tools available |
-| **Chat (web)** | Partial | No plugin support, but you can paste `vault_inject` output directly into Chat |
+---
 
-ProjectVault runs as a local MCP server on your machine. Any Claude surface that supports MCP (Claude Code, Cowork) gets the full experience. Chat users can still benefit by copying vault content from a Code or Cowork session.
+## Quick Install
 
-## What It Does
-
-ProjectVault gives Claude persistent knowledge about your projects. Instead of re-pasting the same reference documents every session, you store them in named vaults and load them on demand.
-
-- **Organize** -- Group documents into vaults by project, client, or topic
-- **Search** -- Full-text search across all your vaults instantly
-- **Tag & Categorize** -- Label documents with tags and categories for fast retrieval
-- **Version History** -- Every update auto-saves the previous version
-- **Context Injection** -- Load vault contents into any Claude conversation
-- **Free/Pro Tiers** -- Free: 3 vaults, 25 docs each. Pro: unlimited.
-
-## Companion Product: ConvoVault
-
-ProjectVault stores your *project documents*. **ConvoVault** stores your *conversation history*.
-
-If you want Claude to remember both what your project contains AND what you discussed in past sessions, use them together:
-
-- **ProjectVault** -- "What does my spec say about the authentication flow?"
-- **ConvoVault** -- "What did we decide last week about the auth approach?"
-
-Both products are local-first, SQLite-backed, and work across Claude Code and Cowork.
-
-## Prerequisites
-
-You need **Python 3.10 or higher** and the `projectvault` package installed.
-
-Install from the `side_hustle` monorepo:
+**Requires [uv](https://docs.astral.sh/uv/getting-started/installation/) -- a fast Python package manager.**
 
 ```bash
-git clone https://github.com/labyrinth-analytics/side_hustle.git
-cd side_hustle/ron_skills/projectvault
-pip install -e .
+# Install uv (one time, if you don't have it)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install via the Labyrinth Analytics marketplace
+/plugin install projectvault@labyrinth-analytics-claude-plugins
 ```
 
-## Installation
-
-### In Cowork
-
-1. Install the `projectvault` Python package (see Prerequisites above)
-2. Install this plugin in Cowork
-3. Restart Cowork
-
-The plugin automatically connects to your local ProjectVault server.
-
-### In Claude Code
-
-Add ProjectVault as an MCP server in your Claude Code config:
+Or add directly as an MCP server in Claude Code's `.claude/settings.json`:
 
 ```json
 {
   "mcpServers": {
     "projectvault": {
-      "command": "/path/to/python",
-      "args": ["-m", "projectvault.server"]
+      "command": "uvx",
+      "args": ["projectvault"]
     }
   }
 }
 ```
 
-Replace `/path/to/python` with the Python interpreter where you installed `projectvault`.
+---
 
-### In Chat
+## The Problem
 
-No install needed. Use `vault_inject` or `vault_inject_summary` in a Code or Cowork session to get the content you need, then paste it into Chat.
+AI projects accumulate knowledge fast -- architecture decisions, API specs, configuration guides, meeting notes, runbooks. That knowledge lives in scattered files, chat histories, and people's heads. When you start a new Claude session, you're starting from scratch.
 
-## Skills
+ProjectVault gives your AI projects a persistent, searchable brain.
 
-| Skill | Description |
-|-------|-------------|
-| `manage` | Create vaults, add and update documents, tag, categorize, search, and organize knowledge |
-| `context` | Load vault knowledge into the active conversation for Claude to reference |
+---
 
-## Example Workflows
+## How It Works
 
-### Store Project Reference Docs
+```mermaid
+graph TD
+    A[Your Documents\nspecs, configs, guides\nnotes, runbooks] -->|vault_add_doc| B[(ProjectVault DB\n~/.projectvault/\nprojectvault.db)]
 
-```
-You: Create a vault called "Tax Reference 2025" and add this depreciation schedule: [paste content]
-Claude: [Creates vault, adds document, confirms]
+    B -->|vault_search| C[Search Results\nwith relevance ranking]
+    B -->|vault_inject_summary| D[Claude Context\ninjects relevant docs\nat session start]
+    B -->|vault_export_manifest| E[Manifest Export\nshare or version\nyour vault]
 
-You: Tag it with "schedule-e" and mark it as authoritative
-Claude: [Tags and prioritizes the document]
+    F[Claude Code / Cowork] -->|MCP tools| B
 ```
 
-### Search Across Your Knowledge Base
+**Add once, use everywhere.** Store a document in the vault and it's searchable from any Claude session -- Code, Cowork, or Chat (via export).
 
-```
-You: Search my vaults for "passive activity loss"
-Claude: [Returns matching documents from all vaults with excerpts]
-```
+**Inject on demand.** Ask Claude to inject the vault summary at the start of a session and it automatically loads the most relevant context for the conversation you're about to have.
 
-### Load Context for a Session
+**Organize by project.** Group documents into named vaults (one per project), tag them, link related docs, and version-track changes over time.
 
-```
-You: Load my Tax Reference 2025 vault for this session
-Claude: [Injects all documents] Loaded 12 documents from Tax Reference 2025.
+---
 
-You: What does my saved material say about bonus depreciation?
-Claude: [Answers using loaded vault content]
-```
+## What You Can Store
 
-### Import Files from Disk
+ProjectVault handles text extraction from all common document types:
 
-```
-You: Import all files from ~/Documents/project-docs into my Project X vault
-Claude: [Imports text, PDF, Word, Excel, and PowerPoint files]
-```
+- Markdown and plain text (`.md`, `.txt`)
+- Word documents (`.docx`)
+- PDFs
+- Excel spreadsheets (`.xlsx`)
+- PowerPoint presentations (`.pptx`)
+- Code files and configs
 
-## Where Files Are Stored
+---
 
-All data lives locally on your computer at `~/.projectvault/`. Your documents are plain files on disk -- easy to back up, git-friendly, and portable.
+## MCP Tools Reference
 
-## Available MCP Tools (32 total)
+**Vault management**
 
-| Tool | What It Does |
-|------|-------------|
-| `vault_create` | Create a new knowledge vault |
-| `vault_list` | List all your vaults |
-| `vault_info` | Get details about a vault |
-| `vault_archive` | Archive a vault (soft delete) |
-| `vault_delete` | Permanently delete a vault |
-| `vault_add_doc` | Add a document to a vault |
-| `vault_update_doc` | Update a document (auto-saves history) |
-| `vault_remove_doc` | Remove a document |
-| `vault_get_doc` | Read a document |
-| `vault_list_docs` | List documents with sort/filter |
-| `vault_search` | Full-text search across all vaults |
-| `vault_search_by_tag` | Find documents by tag |
-| `vault_tag_doc` | Add/remove tags on a document |
-| `vault_bulk_tag` | Tag multiple documents at once |
-| `vault_categorize` | Set a document's category |
-| `vault_set_priority` | Mark as authoritative/normal/draft/outdated |
-| `vault_add_note` | Attach a note to a document |
-| `vault_doc_history` | View version history |
-| `vault_doc_restore` | Restore a previous version |
-| `vault_copy_doc` | Copy a document to another vault |
-| `vault_move_doc` | Move a document to another vault |
-| `vault_inject` | Load documents into conversation |
-| `vault_inject_by_tag` | Load all documents with a tag |
-| `vault_inject_summary` | Get a vault overview |
-| `vault_import_dir` | Bulk import files from a folder |
-| `vault_export` | Export vault files to a folder |
-| `vault_link_doc` | Link a related document |
-| `vault_unlink_doc` | Remove a document link |
-| `vault_find_related` | Find related documents |
-| `vault_suggest` | Get context-aware document suggestions |
-| `vault_tier_status` | Check your Free/Pro tier status |
-| `vault_set_tier` | Upgrade to Pro tier |
+| Tool | What it does |
+|---|---|
+| `vault_create` | Create a new named vault for a project |
+| `vault_list` | List all vaults |
+| `vault_get` | Get vault details |
+| `vault_delete` | Delete a vault and its documents |
+| `vault_tier_status` | Check your current tier and limits |
 
-## License
+**Document operations**
 
-MIT -- Labyrinth Analytics Consulting
-Contact: info@labyrinthanalyticsconsulting.com
+| Tool | What it does |
+|---|---|
+| `vault_add_doc` | Add a document to a vault (extracts text automatically) |
+| `vault_get_doc` | Retrieve a specific document |
+| `vault_list_docs` | List documents in a vault |
+| `vault_update_doc` | Update document content or metadata |
+| `vault_delete_doc` | Remove a document from the vault |
+| `vault_link_doc` | Link two related documents |
+| `vault_unlink_doc` | Remove a link between documents |
+| `vault_find_related` | Find documents related to a given doc |
+
+**Search and inject**
+
+| Tool | What it does |
+|---|---|
+| `vault_search` | Full-text search across all vaults or a specific one |
+| `vault_inject_summary` | Generate a context summary for Claude to load at session start |
+| `vault_export_manifest` | Export a vault manifest for sharing or versioning |
+| `vault_suggest` | Proactive suggestions on what context might be relevant |
+
+**Tagging and organization**
+
+| Tool | What it does |
+|---|---|
+| `vault_add_tag` | Tag a document |
+| `vault_remove_tag` | Remove a tag |
+| `vault_search_by_tag` | Find all documents with a given tag |
+| `vault_get_doc_history` | See version history for a document |
+| `vault_restore_doc_version` | Restore a previous version of a document |
+
+---
+
+## Supported Platforms
+
+| Platform | Support | Notes |
+|---|---|---|
+| **Claude Code** | Full | All 32 MCP tools available |
+| **Cowork** | Full | Use vault_inject_summary at session start for automatic context |
+| **Chat (web)** | Partial | Use vault_export_manifest and paste output into Chat |
+
+---
+
+## Free vs Pro
+
+| Feature | Free | Pro ($8/mo) |
+|---|---|---|
+| Vaults | 3 | Unlimited |
+| Documents per vault | 50 | Unlimited |
+| Document size | 1 MB | 10 MB |
+| Version history | 5 versions | Unlimited |
+| Search results | Top 10 | All results |
+| Export formats | Markdown | Markdown + JSON |
+
+Pro upgrade: [labyrinthanalyticsconsulting.com](https://labyrinthanalyticsconsulting.com)
+
+---
+
+## Companion Product
+
+**[ConvoVault](https://github.com/labyrinth-analytics/convovault)** -- Cross-surface persistent memory for Claude sessions. Where ProjectVault stores *documents*, ConvoVault remembers *conversations* -- decisions made, artifacts created, questions left open. They complement each other well.
+
+---
+
+## Data and Privacy
+
+ProjectVault is **local-first**. All data lives in `~/.projectvault/` on your machine. Nothing is sent to any external server. You own your data.
+
+---
+
+## Issues and Feedback
+
+[github.com/labyrinth-analytics/projectvault/issues](https://github.com/labyrinth-analytics/projectvault/issues)

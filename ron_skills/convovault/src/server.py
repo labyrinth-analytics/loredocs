@@ -328,5 +328,10 @@ def vault_suggest(
     return db.get_suggestions(project, persona, days_back, limit)
 
 
-if __name__ == "__main__":
+def main():
+    """Entry point for uvx / console script execution."""
     mcp.run(transport="stdio")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "projectvault": {
-      "command": "python3",
-      "args": ["-m", "projectvault.server"],
+      "command": "uvx",
+      "args": ["projectvault"],
       "env": {}
     }
   }

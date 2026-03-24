@@ -1,133 +1,135 @@
-# ConvoVault Plugin
+# ConvoVault
 
-Cross-surface persistent memory for Claude sessions. Vault conversations from Code, Cowork, and Chat -- recall decisions, artifacts, and context in any future session. Never re-explain yourself again.
+> Cross-surface persistent memory for Claude sessions. Vault your conversations from Code, Cowork, and Chat -- recall decisions, artifacts, and context in any future session. Never re-explain yourself again.
 
-## Supported Platforms
+**By [Labyrinth Analytics Consulting](https://labyrinthanalyticsconsulting.com)**
 
-| Platform | Support | Notes |
-|---|---|---|
-| **Cowork** | Full | Plugin installs natively; skills work end-to-end |
-| **Claude Code** | Full | Install as an MCP server; all 12 tools available |
-| **Chat (web)** | Partial | No plugin support, but use `export-to-chat.sh` to bridge context |
+---
 
-ConvoVault runs as a local MCP server on your machine. Any Claude surface that supports MCP (Claude Code, Cowork) gets the full experience. Chat users can bridge context using the export script.
+## Quick Install
 
-## What It Does
-
-ConvoVault gives Claude persistent memory across sessions. Instead of re-explaining context every time you start a new conversation, ConvoVault captures what happened and makes it available later.
-
-- **Save Sessions** -- Structured capture of decisions, artifacts, open questions, and tags
-- **Search & Recall** -- Full-text search across all saved sessions
-- **Project Organization** -- Group sessions by project with expected skill sets
-- **Skill Tracking** -- Record which skills were used for smart filtering
-- **Persona Tagging** -- Hierarchical personas for agent-specific memory (e.g., `ron-bot:sql`)
-- **Session Linking** -- Connect related sessions with continues/related/supersedes relationships
-- **Cross-Surface** -- Sessions saved in Code appear instantly in Cowork and vice versa
-
-## How It Works Across Surfaces
-
-The persistence chain:
-
-1. **Claude Code**: SessionEnd hook auto-saves to ConvoVault DB. SessionStart hook auto-loads recent context.
-2. **Cowork**: MCP tools read/write the same SQLite database. Mount `~/.convovault` to share data with Code.
-3. **Chat**: Run `export-to-chat.sh` to copy session context to clipboard, then paste into Chat.
-
-All three surfaces share a single SQLite database at `~/.convovault/sessions.db`.
-
-## Companion Product: ProjectVault
-
-ConvoVault stores your *conversation history*. **ProjectVault** stores your *project documents*.
-
-Use them together for complete AI memory:
-
-- **ConvoVault** -- "What did we decide last week about the auth approach?"
-- **ProjectVault** -- "What does my spec say about the authentication flow?"
-
-Both products are local-first, SQLite-backed, and work across Claude Code and Cowork.
-
-## Prerequisites
-
-You need **Python 3.10 or higher** and the ConvoVault source installed.
-
-Install from the `side_hustle` monorepo:
+**Requires [uv](https://docs.astral.sh/uv/getting-started/installation/) -- a fast Python package manager.**
 
 ```bash
-git clone https://github.com/labyrinth-analytics/side_hustle.git
-cd side_hustle/ron_skills/convovault
-bash install.sh
+# Install uv (one time, if you don't have it)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install via the Labyrinth Analytics marketplace
+/plugin install convovault@labyrinth-analytics-claude-plugins
 ```
 
-This creates a virtual environment, installs dependencies, and verifies everything works.
-
-## Installation
-
-### In Cowork
-
-1. Install ConvoVault (see Prerequisites above)
-2. Install this plugin in Cowork
-3. Mount your `~/.convovault` folder so Cowork can access the shared database
-4. Restart Cowork
-
-### In Claude Code
-
-Add ConvoVault as an MCP server in your Claude Code config:
+Or add directly as an MCP server in Claude Code's `.claude/settings.json`:
 
 ```json
 {
   "mcpServers": {
     "convovault": {
-      "command": "/path/to/side_hustle/ron_skills/convovault/.venv/bin/python3",
-      "args": ["/path/to/side_hustle/ron_skills/convovault/src/server.py"],
-      "env": {
-        "PYTHONPATH": "/path/to/side_hustle/ron_skills/convovault/src"
-      }
+      "command": "uvx",
+      "args": ["convovault"]
     }
   }
 }
 ```
 
-Replace `/path/to/side_hustle` with wherever you cloned the repo.
+---
 
-### In Chat
+## The Problem
 
-No install needed. Run this in your terminal:
+Claude users who work across Code, Cowork, and Chat lose all context every time they switch tools or start a new session. You end up re-explaining your project architecture, re-describing your tech stack, re-litigating decisions you made two weeks ago.
 
-```bash
-cd /path/to/side_hustle/ron_skills/convovault
-bash export-to-chat.sh
+ConvoVault fixes this.
+
+---
+
+## How It Works Across Surfaces
+
+```mermaid
+graph LR
+    A[Claude Code\nSession Ends] -->|SessionEnd hook\nauto-saves| B[(ConvoVault DB\n~/.convovault/\nsessions.db)]
+    B -->|SessionStart hook\nauto-loads context| C[Claude Code\nNext Session]
+
+    D[Cowork Session] -->|vault_save\nvault_recall| B
+    B -->|get_recent_sessions\nsearch_sessions| D
+
+    E[Claude Chat] -->|Paste output of\nexport-to-chat.sh| F[New Chat Session]
+    B -->|export-to-chat.sh| E
 ```
 
-This exports your last session and copies it to your clipboard (macOS). Paste into Chat to prime the conversation.
+**Claude Code (fully automatic):** A SessionEnd hook saves your session when you close it. A SessionStart hook loads relevant context when you open a new one. Zero clicks required.
 
-## Skills
+**Cowork:** Use MCP tools directly -- ask Claude to recall what you discussed last time, search for a past decision, or save the current session to the vault.
 
-| Skill | Description |
-|-------|-------------|
-| `recall` | Search and retrieve context from past sessions |
-| `save` | Capture current session context for future recall |
+**Chat (web):** No plugin support, but the included `export-to-chat.sh` script exports a session summary you can paste into a new Chat conversation to bridge context.
 
-## Available MCP Tools (12 total)
+---
 
-| Tool | What It Does |
-|------|-------------|
-| `save_session` | Save a session with decisions, artifacts, and tags |
-| `get_recent_sessions` | List recent sessions, optionally filtered by surface |
-| `get_session` | Retrieve a specific session by ID |
-| `search_sessions` | Full-text search across all saved sessions |
-| `get_context_for` | Pull relevant context for a topic |
-| `tag_session` | Add a persona tag to a session |
-| `link_sessions` | Connect related sessions with a relationship type |
-| `create_project` | Create a named project with expected skills |
-| `get_project` | Get project details and associated sessions |
-| `list_projects` | List all projects |
-| `get_skill_history` | See which sessions used a specific skill |
-| `vault_suggest` | Get context-aware session suggestions |
+## What Gets Saved
 
-## Where Data Is Stored
+Each session record captures:
 
-Sessions are stored locally in SQLite at `~/.convovault/sessions.db`. Override with the `CONVOVAULT_DB` environment variable. All data stays on your machine -- no cloud dependency, zero API costs.
+- **Decisions** -- Key choices made during the session
+- **Artifacts** -- Files created or modified
+- **Open questions** -- Things left unresolved for next time
+- **Narrative summary** -- A 2-3 paragraph overview of what happened
+- **Tags and persona** -- For filtering and agent-specific memory
 
-## License
+---
 
-MIT -- Labyrinth Analytics Consulting
-Contact: info@labyrinthanalyticsconsulting.com
+## MCP Tools Reference
+
+| Tool | What it does |
+|---|---|
+| `save_session` | Save the current session with decisions, artifacts, and questions |
+| `get_recent_sessions` | List sessions from the last N days |
+| `get_session` | Get full detail for a specific session |
+| `search_sessions` | Full-text search across all session summaries |
+| `get_context_for` | Return relevant fragments for a given topic |
+| `get_sessions_by_tag` | Filter sessions by tag |
+| `get_sessions_by_persona` | Filter by persona (for AI agent use cases) |
+| `update_session` | Update an existing session record |
+| `delete_session` | Remove a session |
+| `list_personas` | List all personas in the vault |
+| `get_stats` | Summary statistics about your vault |
+| `vault_suggest` | Proactive suggestions -- what to revisit based on open questions |
+
+---
+
+## Supported Platforms
+
+| Platform | Support | Notes |
+|---|---|---|
+| **Claude Code** | Full | SessionEnd/SessionStart hooks run automatically |
+| **Cowork** | Full | MCP tools available; vault_save and vault_recall work end-to-end |
+| **Chat (web)** | Partial | No plugin support; use `export-to-chat.sh` to bridge context |
+
+---
+
+## Free vs Pro
+
+| Feature | Free | Pro ($8/mo) |
+|---|---|---|
+| Sessions stored | Last 50 | Unlimited |
+| Search history | 7 days | All time |
+| Personas | 1 | Unlimited |
+| Projects | 3 | Unlimited |
+| Export formats | Markdown | Markdown + JSON |
+
+Pro upgrade: [labyrinthanalyticsconsulting.com](https://labyrinthanalyticsconsulting.com)
+
+---
+
+## Companion Product
+
+**[ProjectVault](https://github.com/labyrinth-analytics/projectvault)** -- Searchable, structured knowledge base for your AI projects. Where ConvoVault remembers *conversations*, ProjectVault stores *documents* -- specs, configs, guides, and reference material. They work well together.
+
+---
+
+## Data and Privacy
+
+ConvoVault is **local-first**. All data lives in `~/.convovault/sessions.db` on your machine. Nothing is sent to any external server. You own your data.
+
+---
+
+## Issues and Feedback
+
+[github.com/labyrinth-analytics/convovault/issues](https://github.com/labyrinth-analytics/convovault/issues)
