@@ -76,8 +76,12 @@ Knowledge management MCP server for AI projects.
 **Completed (continued):**
 - Marketplace publishing research + docs/PUBLISHING.md (2026-03-24) -- same KEY FINDING applies; see ConvoVault above
 
+**Completed (continued):**
+- Integration tests for tier enforcement with real MCP client calls: test_tier_integration.py, 29 tests covering free tier defaults, vault limit, doc limit, pro upgrade, downgrade, usage tracking, markdown format (2026-03-25)
+- Added PROJECTVAULT_ROOT env var support to server.py for test isolation (2026-03-25)
+
 **Priority TODOs:**
-1. Integration tests for tier enforcement with real MCP client calls
+(none -- all ProjectVault TODOs complete. Next: integration tests for other flows, or marketplace publishing)
 
 ### SQL Query Optimizer (v0.1.0) - IN PROGRESS
 SQL optimization tool with analysis and recommendations.

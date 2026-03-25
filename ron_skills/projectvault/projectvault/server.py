@@ -11,6 +11,7 @@ Usage:
 """
 
 import json
+import os
 import sys
 from contextlib import asynccontextmanager
 from enum import Enum
@@ -31,7 +32,9 @@ from .tiers import TierLimitError, get_tier, set_tier, TIER_LIMITS
 @asynccontextmanager
 async def app_lifespan(app):
     """Initialize the VaultStorage instance for the server lifetime."""
-    storage = VaultStorage()
+    root_override = os.environ.get("PROJECTVAULT_ROOT")
+    root = Path(root_override) if root_override else None
+    storage = VaultStorage(root=root)
     yield {"storage": storage}
 
 
