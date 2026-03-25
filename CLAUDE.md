@@ -44,7 +44,7 @@ Cross-surface persistent memory for Claude sessions.
 - Updated README.md with "How it works across surfaces" section -- persistence chain diagram + explanation for all 3 surfaces (2026-03-24)
 
 **Priority TODOs:**
-1. Clean up duplicate/test sessions in sessions.db (leftover "What is ProjectVault?" entries from debugging) -- must run on Debbie's Mac, not Cowork VM
+(none -- all ConvoVault TODOs complete. Next: marketplace publishing once GitHub repo is public)
 
 ## Approvals / Review
 
