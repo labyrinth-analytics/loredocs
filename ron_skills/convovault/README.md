@@ -169,4 +169,3 @@ Ask Claude to "mount my ~/.convovault folder" so Cowork can access the shared da
 ## License
 
 MIT - Labyrinth Analytics Consulting
-
