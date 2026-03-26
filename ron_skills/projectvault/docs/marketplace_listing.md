@@ -78,7 +78,7 @@ All data lives on your machine in a SQLite database and plain files. Nothing is 
 
 ---
 
-## MCP Tools (32 total)
+## MCP Tools (34 total)
 
 ### Vault Management (5 tools)
 
@@ -304,4 +304,4 @@ ConvoVault is a companion product for persistent conversation memory. It's indep
 
 | Version | Date | Notes |
 |---|---|---|
-| 0.1.0 | 2026-03-22 | Initial release: 32 MCP tools, SQLite+FTS5, tier gating, Cowork plugin packaging |
+| 0.1.0 | 2026-03-22 | Initial release: 34 MCP tools, SQLite+FTS5, tier gating, Cowork plugin packaging |

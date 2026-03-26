@@ -196,49 +196,71 @@ rm -rf ~/.projectvault
 
 ---
 
-## MCP Tools Reference (32 total)
+## MCP Tools Reference (34 total)
 
-**Vault management**
+**Vault management (6)**
 
 | Tool | What it does |
 |---|---|
 | `vault_create` | Create a new named vault for a project |
-| `vault_list` | List all vaults |
-| `vault_get` | Get vault details |
-| `vault_delete` | Delete a vault and its documents |
-| `vault_tier_status` | Check your current tier and limits |
+| `vault_list` | List all vaults (optionally include archived) |
+| `vault_info` | Get vault details and stats |
+| `vault_archive` | Archive a vault (soft delete, reversible) |
+| `vault_delete` | Permanently delete a vault and its documents |
+| `vault_link_project` | Link a vault to a Claude Project name |
 
-**Document operations**
+**Document operations (10)**
 
 | Tool | What it does |
 |---|---|
 | `vault_add_doc` | Add a document to a vault (extracts text automatically) |
-| `vault_get_doc` | Retrieve a specific document |
-| `vault_list_docs` | List documents in a vault |
-| `vault_update_doc` | Update document content or metadata |
-| `vault_delete_doc` | Remove a document from the vault |
-| `vault_link_doc` | Link two related documents |
+| `vault_get_doc` | Retrieve a specific document with content |
+| `vault_list_docs` | List documents in a vault (sort, filter, paginate) |
+| `vault_update_doc` | Update document content or metadata (auto-versions) |
+| `vault_remove_doc` | Remove a document from the vault |
+| `vault_copy_doc` | Copy a document to another vault |
+| `vault_move_doc` | Move a document to another vault |
+| `vault_link_doc` | Link two related documents with a label |
 | `vault_unlink_doc` | Remove a link between documents |
 | `vault_find_related` | Find documents related to a given doc |
 
-**Search and inject**
+**Search and context injection (6)**
 
 | Tool | What it does |
 |---|---|
 | `vault_search` | Full-text search across all vaults or a specific one |
+| `vault_search_by_tag` | Find all documents with a given tag |
+| `vault_inject` | Inject specific documents into the conversation by ID |
+| `vault_inject_by_tag` | Inject all documents matching a tag |
 | `vault_inject_summary` | Generate a context summary for Claude to load at session start |
-| `vault_export_manifest` | Export a vault manifest for sharing or versioning |
 | `vault_suggest` | Proactive suggestions on what context might be relevant |
 
-**Tagging and organization**
+**Tagging and organization (6)**
 
 | Tool | What it does |
 |---|---|
-| `vault_add_tag` | Tag a document |
-| `vault_remove_tag` | Remove a tag |
-| `vault_search_by_tag` | Find all documents with a given tag |
-| `vault_get_doc_history` | See version history for a document |
-| `vault_restore_doc_version` | Restore a previous version of a document |
+| `vault_tag_doc` | Add or remove tags on a document |
+| `vault_bulk_tag` | Add or remove tags on multiple documents at once |
+| `vault_categorize` | Set a document's category |
+| `vault_set_priority` | Set a document's priority/status |
+| `vault_add_note` | Attach a note to a document |
+| `vault_doc_history` | See version history for a document |
+
+**Versioning and bulk operations (4)**
+
+| Tool | What it does |
+|---|---|
+| `vault_doc_restore` | Restore a previous version of a document |
+| `vault_import_dir` | Import all files from a directory into a vault |
+| `vault_export` | Export a vault's documents to a directory |
+| `vault_export_manifest` | Export a vault manifest for sharing or versioning |
+
+**Tier management (2)**
+
+| Tool | What it does |
+|---|---|
+| `vault_tier_status` | Check your current tier and usage limits |
+| `vault_set_tier` | Upgrade or change your tier (free/pro) |
 
 ---
 
@@ -246,7 +268,7 @@ rm -rf ~/.projectvault
 
 | Platform | Support | Notes |
 |---|---|---|
-| **Claude Code** | Full | All 32 MCP tools available |
+| **Claude Code** | Full | All 34 MCP tools available |
 | **Cowork** | Full | Use vault_inject_summary at session start for automatic context |
 | **Chat (web)** | Partial | Use vault_export_manifest and paste output into Chat |
 

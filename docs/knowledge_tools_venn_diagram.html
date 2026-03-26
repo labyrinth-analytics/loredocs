@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Knowledge Tools: Obsidian vs ConvoVault vs ProjectVault</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0f0f1a;
+    color: #e0e0e0;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .header {
+    text-align: center;
+    padding: 32px 20px 12px;
+  }
+  .header h1 {
+    font-size: 1.8rem;
+    color: #f0f0f0;
+    margin-bottom: 6px;
+    letter-spacing: -0.5px;
+  }
+  .header p {
+    font-size: 0.95rem;
+    color: #888;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  .main-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 20px 40px;
+    gap: 24px;
+  }
+
+  /* Venn diagram */
+  .venn-wrapper {
+    position: relative;
+    width: 700px;
+    height: 520px;
+    flex-shrink: 0;
+  }
+
+  .venn-circle {
+    position: absolute;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.3s ease, box-shadow 0.3s ease, opacity 0.3s ease;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 42px;
+    text-align: center;
+  }
+  .venn-circle:hover {
+    transform: scale(1.03);
+    z-index: 10;
+  }
+  .venn-circle.active {
+    transform: scale(1.05);
+    z-index: 10;
+  }
+  .venn-circle.dimmed {
+    opacity: 0.25;
+  }
+
+  .circle-label {
+    font-weight: 700;
+    font-size: 1.1rem;
+    pointer-events: none;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.7);
+    line-height: 1.3;
+  }
+  .circle-sublabel {
+    font-size: 0.75rem;
+    font-weight: 400;
+    opacity: 0.8;
+    display: block;
+    margin-top: 2px;
+  }
+
+  /* Obsidian - purple */
+  .obsidian {
+    width: 320px; height: 320px;
+    left: 60px; top: 20px;
+    background: radial-gradient(circle at 40% 40%, rgba(139, 92, 246, 0.35), rgba(139, 92, 246, 0.12));
+    border: 2px solid rgba(139, 92, 246, 0.6);
+    box-shadow: 0 0 30px rgba(139, 92, 246, 0.15);
+  }
+  .obsidian:hover, .obsidian.active {
+    box-shadow: 0 0 50px rgba(139, 92, 246, 0.35);
+    border-color: rgba(139, 92, 246, 0.9);
+  }
+
+  /* ConvoVault - teal */
+  .convovault {
+    width: 320px; height: 320px;
+    right: 60px; top: 20px;
+    background: radial-gradient(circle at 60% 40%, rgba(45, 212, 191, 0.35), rgba(45, 212, 191, 0.12));
+    border: 2px solid rgba(45, 212, 191, 0.6);
+    box-shadow: 0 0 30px rgba(45, 212, 191, 0.15);
+  }
+  .convovault:hover, .convovault.active {
+    box-shadow: 0 0 50px rgba(45, 212, 191, 0.35);
+    border-color: rgba(45, 212, 191, 0.9);
+  }
+
+  /* ProjectVault - amber */
+  .projectvault {
+    width: 320px; height: 320px;
+    left: 190px; top: 180px;
+    background: radial-gradient(circle at 50% 60%, rgba(251, 191, 36, 0.35), rgba(251, 191, 36, 0.12));
+    border: 2px solid rgba(251, 191, 36, 0.6);
+    box-shadow: 0 0 30px rgba(251, 191, 36, 0.15);
+  }
+  .projectvault:hover, .projectvault.active {
+    box-shadow: 0 0 50px rgba(251, 191, 36, 0.35);
+    border-color: rgba(251, 191, 36, 0.9);
+  }
+
+  /* Overlap zone click targets */
+  .overlap-zone {
+    position: absolute;
+    cursor: pointer;
+    z-index: 5;
+    border-radius: 50%;
+    transition: background 0.3s ease;
+  }
+  .overlap-zone:hover {
+    background: rgba(255,255,255,0.05);
+  }
+  .overlap-obs-cv {
+    width: 100px; height: 160px;
+    left: 300px; top: 80px;
+    border-radius: 40%;
+  }
+  .overlap-obs-pv {
+    width: 130px; height: 100px;
+    left: 195px; top: 250px;
+    border-radius: 40%;
+  }
+  .overlap-cv-pv {
+    width: 130px; height: 100px;
+    left: 375px; top: 250px;
+    border-radius: 40%;
+  }
+  .overlap-all {
+    width: 80px; height: 80px;
+    left: 310px; top: 220px;
+    border-radius: 50%;
+  }
+
+  /* Detail panel */
+  .detail-panel {
+    width: 700px;
+    min-height: 160px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 24px 28px;
+    transition: all 0.3s ease;
+  }
+  .detail-panel.highlight-obsidian { border-color: rgba(139, 92, 246, 0.5); }
+  .detail-panel.highlight-convovault { border-color: rgba(45, 212, 191, 0.5); }
+  .detail-panel.highlight-projectvault { border-color: rgba(251, 191, 36, 0.5); }
+  .detail-panel.highlight-obs-cv { border-color: rgba(92, 152, 218, 0.5); }
+  .detail-panel.highlight-obs-pv { border-color: rgba(195, 142, 141, 0.5); }
+  .detail-panel.highlight-cv-pv { border-color: rgba(148, 202, 114, 0.5); }
+  .detail-panel.highlight-all { border-color: rgba(200, 200, 200, 0.5); }
+
+  .detail-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .detail-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .detail-items {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 20px;
+  }
+  .detail-item {
+    font-size: 0.88rem;
+    color: #bbb;
+    padding-left: 16px;
+    position: relative;
+    line-height: 1.5;
+  }
+  .detail-item::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 8px;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.5;
+  }
+
+  .detail-note {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    font-size: 0.85rem;
+    color: #888;
+    font-style: italic;
+    line-height: 1.5;
+  }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: #999;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: background 0.2s;
+  }
+  .legend-item:hover { background: rgba(255,255,255,0.05); }
+  .legend-dot {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* Instruction hint */
+  .hint {
+    text-align: center;
+    font-size: 0.8rem;
+    color: #666;
+    margin-top: -8px;
+  }
+
+  /* Bottom insight */
+  .insight-box {
+    width: 700px;
+    background: linear-gradient(135deg, rgba(139,92,246,0.08), rgba(45,212,191,0.08), rgba(251,191,36,0.08));
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 20px 24px;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: #bbb;
+  }
+  .insight-box strong { color: #e0e0e0; }
+
+  /* Token savings section */
+  .token-section {
+    width: 700px;
+    margin-top: 8px;
+  }
+  .token-title {
+    font-size: 1.4rem;
+    color: #f0f0f0;
+    text-align: center;
+    margin-bottom: 6px;
+  }
+  .token-subtitle {
+    text-align: center;
+    color: #888;
+    font-size: 0.9rem;
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+
+  .token-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .token-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .token-card-header {
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .token-icon {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.85rem;
+    flex-shrink: 0;
+  }
+  .token-icon.bad { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+  .token-icon.good { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+
+  .token-card-body { padding: 12px 16px; }
+  .token-row {
+    display: flex;
+    gap: 10px;
+    padding: 6px 0;
+    font-size: 0.82rem;
+    line-height: 1.4;
+  }
+  .token-row + .token-row { border-top: 1px solid rgba(255,255,255,0.03); }
+  .token-label {
+    flex-shrink: 0;
+    width: 90px;
+    color: #999;
+    font-weight: 500;
+  }
+  .token-val { color: #bbb; }
+  .bad-text { color: #f87171; }
+  .good-text { color: #4ade80; }
+  .highlight-row { margin-top: 6px; padding-top: 10px !important; border-top: 1px solid rgba(255,255,255,0.08) !important; }
+  .bad-row .token-label, .bad-row .token-val { font-weight: 600; }
+  .good-row .token-label, .good-row .token-val { font-weight: 600; }
+
+  /* Math section */
+  .token-math {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+  }
+  .math-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .math-card {
+    text-align: center;
+    padding: 10px 16px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 8px;
+    min-width: 80px;
+  }
+  .math-card.result {
+    background: rgba(34, 197, 94, 0.12);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+  }
+  .math-number {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #f0f0f0;
+  }
+  .math-card.result .math-number { color: #4ade80; }
+  .math-label {
+    font-size: 0.7rem;
+    color: #888;
+    margin-top: 2px;
+  }
+  .math-op {
+    font-size: 1.2rem;
+    color: #666;
+    font-weight: 300;
+  }
+  .math-note {
+    font-size: 0.82rem;
+    color: #888;
+    line-height: 1.6;
+    font-style: italic;
+  }
+
+  /* Scenarios */
+  .token-scenarios {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 20px 24px;
+  }
+  .scenario-title {
+    font-size: 1rem;
+    color: #e0e0e0;
+    margin-bottom: 14px;
+  }
+  .scenario-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .scenario {
+    padding: 12px 14px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.05);
+  }
+  .scenario-name {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #e0e0e0;
+    margin-bottom: 6px;
+  }
+  .scenario-desc {
+    font-size: 0.8rem;
+    color: #999;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Knowledge Tools Compared</h1>
+  <p>Click any circle or overlap region to explore what each tool does best, and where they intersect.</p>
+</div>
+
+<div class="main-container">
+  <p class="hint">Click a zone to explore</p>
+
+  <div class="venn-wrapper">
+    <div class="venn-circle obsidian" data-zone="obsidian" onclick="showZone('obsidian')">
+      <div class="circle-label">Obsidian<span class="circle-sublabel">Human Knowledge Base</span></div>
+    </div>
+    <div class="venn-circle convovault" data-zone="convovault" onclick="showZone('convovault')">
+      <div class="circle-label">ConvoVault<span class="circle-sublabel">AI Session Memory</span></div>
+    </div>
+    <div class="venn-circle projectvault" data-zone="projectvault" onclick="showZone('projectvault')">
+      <div class="circle-label">ProjectVault<span class="circle-sublabel">AI Project Knowledge</span></div>
+    </div>
+
+    <div class="overlap-zone overlap-obs-cv" onclick="showZone('obs-cv')"></div>
+    <div class="overlap-zone overlap-obs-pv" onclick="showZone('obs-pv')"></div>
+    <div class="overlap-zone overlap-cv-pv" onclick="showZone('cv-pv')"></div>
+    <div class="overlap-zone overlap-all" onclick="showZone('all')"></div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item" onclick="showZone('obsidian')">
+      <div class="legend-dot" style="background: #8b5cf6;"></div> Obsidian Only
+    </div>
+    <div class="legend-item" onclick="showZone('convovault')">
+      <div class="legend-dot" style="background: #2dd4bf;"></div> ConvoVault Only
+    </div>
+    <div class="legend-item" onclick="showZone('projectvault')">
+      <div class="legend-dot" style="background: #fbbf24;"></div> ProjectVault Only
+    </div>
+    <div class="legend-item" onclick="showZone('obs-cv')">
+      <div class="legend-dot" style="background: linear-gradient(135deg, #8b5cf6, #2dd4bf);"></div> Obsidian + ConvoVault
+    </div>
+    <div class="legend-item" onclick="showZone('obs-pv')">
+      <div class="legend-dot" style="background: linear-gradient(135deg, #8b5cf6, #fbbf24);"></div> Obsidian + ProjectVault
+    </div>
+    <div class="legend-item" onclick="showZone('cv-pv')">
+      <div class="legend-dot" style="background: linear-gradient(135deg, #2dd4bf, #fbbf24);"></div> ConvoVault + ProjectVault
+    </div>
+    <div class="legend-item" onclick="showZone('all')">
+      <div class="legend-dot" style="background: linear-gradient(135deg, #8b5cf6, #2dd4bf, #fbbf24);"></div> All Three
+    </div>
+  </div>
+
+  <div class="detail-panel" id="detailPanel">
+    <div class="detail-title" id="detailTitle">
+      <span class="detail-dot" id="detailDot" style="background: #666;"></span>
+      <span id="detailTitleText">Select a zone to compare</span>
+    </div>
+    <div class="detail-items" id="detailItems">
+      <div class="detail-item">Click any circle to see what makes it unique</div>
+      <div class="detail-item">Click overlap areas to see shared capabilities</div>
+      <div class="detail-item">Click the center to see what all three share</div>
+    </div>
+    <div class="detail-note" id="detailNote"></div>
+  </div>
+
+  <div class="insight-box">
+    <strong>The short version:</strong> Obsidian is where <em>you</em> think and write. ConvoVault remembers what <em>Claude</em> did across sessions. ProjectVault organizes what Claude <em>knows</em> about your projects. They complement each other -- Obsidian for your brain, the Vaults for your AI agents' brains. A future integration could let Ron read your Obsidian notes for richer context, or write session summaries back as Obsidian pages you can browse.
+  </div>
+
+  <div class="token-section">
+    <h2 class="token-title">How ConvoVault + ProjectVault Save Tokens</h2>
+    <p class="token-subtitle">Every Claude session starts from zero. Without persistent memory, you (or your agent) burn tokens re-explaining context. Here is how the Vaults fix that.</p>
+
+    <div class="token-grid">
+      <div class="token-card">
+        <div class="token-card-header">
+          <div class="token-icon bad">!</div>
+          <span>Without the Vaults</span>
+        </div>
+        <div class="token-card-body">
+          <div class="token-row"><span class="token-label">Session start</span><span class="token-val bad-text">You paste 500-2,000 words of context from notes, prior chats, or memory</span></div>
+          <div class="token-row"><span class="token-label">Mid-session</span><span class="token-val bad-text">Claude asks clarifying questions it already answered last time</span></div>
+          <div class="token-row"><span class="token-label">Repeated work</span><span class="token-val bad-text">Redo discovery: "What did we decide about X?" burns full back-and-forth</span></div>
+          <div class="token-row"><span class="token-label">Context window</span><span class="token-val bad-text">Fills up faster with duplicate background, less room for real work</span></div>
+          <div class="token-row highlight-row bad-row"><span class="token-label">Estimated overhead</span><span class="token-val bad-text">~3,000-8,000 tokens/session in re-contexting</span></div>
+        </div>
+      </div>
+
+      <div class="token-card">
+        <div class="token-card-header">
+          <div class="token-icon good">+</div>
+          <span>With ConvoVault + ProjectVault</span>
+        </div>
+        <div class="token-card-body">
+          <div class="token-row"><span class="token-label">Session start</span><span class="token-val good-text">ConvoVault auto-loads top-scored recent sessions (~800 tokens, pre-filtered)</span></div>
+          <div class="token-row"><span class="token-label">Project context</span><span class="token-val good-text">ProjectVault injects a compact summary of project knowledge (~500 tokens)</span></div>
+          <div class="token-row"><span class="token-label">No repetition</span><span class="token-val good-text">Prior decisions, open questions, artifacts already in context -- zero re-asking</span></div>
+          <div class="token-row"><span class="token-label">Context window</span><span class="token-val good-text">Lean context leaves room for longer, more productive work sessions</span></div>
+          <div class="token-row highlight-row good-row"><span class="token-label">Estimated savings</span><span class="token-val good-text">~2,000-6,000 tokens/session, compounding across daily use</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="token-math">
+      <div class="math-row">
+        <div class="math-card">
+          <div class="math-number">~4,000</div>
+          <div class="math-label">tokens saved per session (average)</div>
+        </div>
+        <div class="math-op">x</div>
+        <div class="math-card">
+          <div class="math-number">5</div>
+          <div class="math-label">sessions per day (power user)</div>
+        </div>
+        <div class="math-op">x</div>
+        <div class="math-card">
+          <div class="math-number">22</div>
+          <div class="math-label">working days per month</div>
+        </div>
+        <div class="math-op">=</div>
+        <div class="math-card result">
+          <div class="math-number">440K</div>
+          <div class="math-label">tokens saved per month</div>
+        </div>
+      </div>
+      <p class="math-note">At API pricing (~$3/M input tokens for Sonnet), that is roughly $1.30/month in direct token savings for a single power user. More importantly, it means fewer wasted turns, faster ramp-up, and more room in the context window for the actual work -- which saves far more in human time and session count.</p>
+    </div>
+
+    <div class="token-scenarios">
+      <h3 class="scenario-title">Real Scenarios from This Project</h3>
+      <div class="scenario-grid">
+        <div class="scenario">
+          <div class="scenario-name">Ron's daily session</div>
+          <div class="scenario-desc">Without ConvoVault, Ron would need the full CLAUDE.md re-read + a manual summary of yesterday's work pasted in. With it, auto_load.py scores and injects the most relevant sessions, filtered to ~4,000 chars, in zero human effort.</div>
+        </div>
+        <div class="scenario">
+          <div class="scenario-name">LiteLLM audit today</div>
+          <div class="scenario-desc">Three separate sessions across two projects needed to know the audit result. ConvoVault lets each session find "litellm audit clean" via search instead of you re-explaining the outcome in each one.</div>
+        </div>
+        <div class="scenario">
+          <div class="scenario-name">Tax pipeline context</div>
+          <div class="scenario-desc">ProjectVault stores SAM's architecture docs, pipeline state, and form mappings. Instead of Claude re-discovering which nodes exist every session, vault_inject_summary provides the full map in ~500 tokens.</div>
+        </div>
+        <div class="scenario">
+          <div class="scenario-name">Multi-surface continuity</div>
+          <div class="scenario-desc">Start work in Claude Code on your Mac, continue in Cowork on a different machine. ConvoVault persists across all three surfaces (Code, Cowork, Chat) so nothing gets lost in the transition.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const zones = {
+  obsidian: {
+    title: 'Obsidian Only',
+    color: '#8b5cf6',
+    highlight: 'highlight-obsidian',
+    items: [
+      'Rich markdown editor with live preview',
+      'Graph view showing linked notes visually',
+      'Community plugins (800+): Kanban, calendars, etc.',
+      'Human-first UI with themes and custom CSS',
+      'Wikilinks ([[note]]) for associative thinking',
+      'Daily notes and journaling workflows',
+      'Canvas: visual boards for spatial thinking',
+      'Templates and Templater for structured note creation',
+      'Publish to web (Obsidian Publish)',
+      'Sync across devices (Obsidian Sync or iCloud)',
+    ],
+    note: 'Obsidian excels as a thinking tool for humans. It is designed around how people naturally connect ideas, with a GUI and plugin ecosystem built for human interaction. None of this is relevant to AI agents, which is why ConvoVault and ProjectVault exist.'
+  },
+  convovault: {
+    title: 'ConvoVault Only',
+    color: '#2dd4bf',
+    highlight: 'highlight-convovault',
+    items: [
+      'Auto-saves sessions via Claude Code hooks',
+      'Auto-loads relevant context on session start',
+      'Structured session metadata: decisions, artifacts, open questions',
+      'Session scoring by signal (questions +3, decisions +2)',
+      'Cross-surface persistence (Code, Cowork, Chat)',
+      'MCP tool interface (12 tools) for AI consumption',
+      'CLI interface (6 commands) for human debugging',
+      'Session linking (continues/references relationships)',
+      'Built for ephemeral conversation memory',
+      'Free/Pro tier gating for monetization',
+    ],
+    note: 'ConvoVault is purpose-built for the problem Obsidian cannot solve: giving AI agents memory across sessions. When Ron starts a new Cowork session, ConvoVault auto-loads the most relevant recent context so he picks up where he left off. No human has to curate or organize anything.'
+  },
+  projectvault: {
+    title: 'ProjectVault Only',
+    color: '#fbbf24',
+    highlight: 'highlight-projectvault',
+    items: [
+      'Multi-vault architecture (one vault per project)',
+      'Document versioning with history tracking',
+      'Tag-based organization with inheritance',
+      'Context injection: vault_inject_summary for AI priming',
+      'Document linking and relationship mapping',
+      'vault_find_related for discovery across projects',
+      'vault_export_manifest for portability',
+      'Tier enforcement (Free: 3 vaults, Pro: unlimited)',
+      'Designed for long-lived project knowledge (not sessions)',
+      'MCP-native: 34 tools, all callable by AI agents',
+    ],
+    note: 'ProjectVault is the "institutional memory" for AI projects. While ConvoVault remembers conversations, ProjectVault stores the durable knowledge: architecture decisions, API contracts, domain rules, style guides. It is the AI equivalent of a team wiki.'
+  },
+  'obs-cv': {
+    title: 'Obsidian + ConvoVault',
+    color: 'linear-gradient(135deg, #8b5cf6, #2dd4bf)',
+    highlight: 'highlight-obs-cv',
+    items: [
+      'Both store timestamped, searchable entries',
+      'Both support tagging for categorization',
+      'Both are local-first (data on your machine)',
+      'Both can capture meeting notes and session logs',
+      'Full-text search across all content',
+      'Both serve as "what happened" journals',
+    ],
+    note: 'The overlap here is the "daily log" use case. Obsidian daily notes and ConvoVault session records both capture "what happened today." The difference is audience: Obsidian for you to read, ConvoVault for Claude to read. A bridge could auto-create Obsidian notes from ConvoVault sessions.'
+  },
+  'obs-pv': {
+    title: 'Obsidian + ProjectVault',
+    color: 'linear-gradient(135deg, #8b5cf6, #fbbf24)',
+    highlight: 'highlight-obs-pv',
+    items: [
+      'Both organize knowledge by project/topic',
+      'Both support linking related documents',
+      'Both use plain-text-friendly storage (markdown)',
+      'Both serve as a "second brain" for reference material',
+      'Both can store architecture docs and design decisions',
+      'Both support hierarchical organization',
+    ],
+    note: 'This is the biggest overlap zone. Both are "project wikis" at heart. Obsidian organizes knowledge for humans to browse, ProjectVault organizes knowledge for AI to query. An MCP server that reads your Obsidian vault would let Claude tap into all your existing notes.'
+  },
+  'cv-pv': {
+    title: 'ConvoVault + ProjectVault',
+    color: 'linear-gradient(135deg, #2dd4bf, #fbbf24)',
+    highlight: 'highlight-cv-pv',
+    items: [
+      'Both use SQLite + FTS5 for storage and search',
+      'Both expose MCP tools for AI agent access',
+      'Both are part of the Project Ron product line',
+      'Both have Free/Pro tier gating (Stripe-ready)',
+      'Both run as stdio MCP servers (Code + Cowork)',
+      'Both use the same local-first, no-cloud architecture',
+    ],
+    note: 'These two were designed as companions. ConvoVault handles the "what did we discuss" (session memory), while ProjectVault handles "what do we know" (project knowledge). Together, they give an AI agent both working memory and long-term reference -- the two things Obsidian gives a human.'
+  },
+  all: {
+    title: 'All Three Share',
+    color: 'linear-gradient(135deg, #8b5cf6, #2dd4bf, #fbbf24)',
+    highlight: 'highlight-all',
+    items: [
+      'Local-first: all data stored on your machine, no cloud required',
+      'Full-text search across stored content',
+      'Knowledge persistence beyond a single session',
+      'Tagging and categorization of information',
+      'The core goal: remembering so you (or your AI) do not have to',
+    ],
+    note: 'At the center of the Venn diagram is the universal need: not losing important knowledge. All three tools solve this, just for different audiences (human vs. AI) and different time horizons (sessions vs. projects vs. everything).'
+  }
+};
+
+let currentZone = null;
+
+function showZone(zone) {
+  const data = zones[zone];
+  const panel = document.getElementById('detailPanel');
+  const titleEl = document.getElementById('detailTitleText');
+  const dotEl = document.getElementById('detailDot');
+  const itemsEl = document.getElementById('detailItems');
+  const noteEl = document.getElementById('detailNote');
+
+  // Remove old highlight
+  panel.className = 'detail-panel';
+  panel.classList.add(data.highlight);
+
+  titleEl.textContent = data.title;
+  dotEl.style.background = data.color;
+
+  itemsEl.innerHTML = data.items.map(item =>
+    '<div class="detail-item">' + item + '</div>'
+  ).join('');
+
+  noteEl.textContent = data.note;
+
+  // Dim/activate circles
+  document.querySelectorAll('.venn-circle').forEach(el => {
+    el.classList.remove('active', 'dimmed');
+  });
+
+  const related = {
+    'obsidian': ['obsidian'],
+    'convovault': ['convovault'],
+    'projectvault': ['projectvault'],
+    'obs-cv': ['obsidian', 'convovault'],
+    'obs-pv': ['obsidian', 'projectvault'],
+    'cv-pv': ['convovault', 'projectvault'],
+    'all': ['obsidian', 'convovault', 'projectvault'],
+  };
+
+  const activeCircles = related[zone] || [];
+  document.querySelectorAll('.venn-circle').forEach(el => {
+    const circleName = el.dataset.zone;
+    if (activeCircles.includes(circleName)) {
+      el.classList.add('active');
+    } else {
+      el.classList.add('dimmed');
+    }
+  });
+
+  currentZone = zone;
+}
+</script>
+</body>
+</html>

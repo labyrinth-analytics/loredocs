@@ -13,11 +13,20 @@ Build and ship products that generate $8K/month passive income through Claude pl
 - ALWAYS commit your work to git with clear commit messages before ending a session.
 - ALWAYS push to origin after committing: `git push origin master`
 - ALWAYS update this CLAUDE.md when you complete a TODO (move it to Completed, add date/commit).
-- When changing installation methods, configuration, commands, or tool interfaces, ALWAYS update ALL user-facing docs to stay consistent. Check: INSTALL.md, README.md, plugin README, .mcp.json, and docs/ for each affected product.
+- When changing installation methods, configuration, commands, or tool interfaces, ALWAYS update ALL user-facing docs to stay consistent. Check: INSTALL.md, README.md, plugin README, .mcp.json, SKILL.md, marketplace listing (docs/), and this CLAUDE.md for each affected product.
+- **Doc-sync checklist (run after ANY feature work):**
+  1. Count actual `@mcp.tool()` decorators in server.py -- this is the source of truth for tool counts.
+  2. Verify the tool count matches in: README.md, INSTALL.md, plugin README, SKILL.md, marketplace listing, and CLAUDE.md.
+  3. Verify every tool name in the docs matches the actual function name in server.py (no aliases or old names).
+  4. Verify version numbers match across: SKILL.md metadata, README.md, CLAUDE.md, and marketplace listing.
+  5. Verify pricing/tier info matches across: INSTALL.md, marketplace listing, and CLAUDE.md.
+  6. If any doc references a marketplace install command, confirm whether that marketplace is actually live. If not, mark the command as "coming soon" or remove it.
 - ALWAYS follow the priority order in the TODOs list. Work on #1 first unless it's blocked, then #2, etc. Do NOT skip ahead to lower-priority or different-product work.
 - Use Python 3.10+ and SQLite for all products. No external database dependencies.
 - Use FastMCP for MCP servers, Pydantic v2 for validation.
 - Dataclasses require direct attribute access (asset.description), not .get() dict access.
+- ALWAYS pin dependency versions in requirements.txt (e.g., `fastmcp==0.x.x`). Never use unpinned `pip install`.
+- Run `pip-audit` after installing any new package. Flag any vulnerabilities before committing.
 
 ## Your Products
 
@@ -60,7 +69,7 @@ Cross-surface persistent memory for Claude sessions.
 Knowledge management MCP server for AI projects.
 - Location: `ron_skills/projectvault/`
 - Stack: FastMCP, SQLite+FTS5, filesystem storage
-- Status: 32/32 tools implemented, permanently installed
+- Status: 34 tools implemented, permanently installed
 - Data: `~/.projectvault/projectvault.db` + `~/.projectvault/vaults/`
 - Revenue target: $1,635 MRR by month 12
 
@@ -95,6 +104,46 @@ SQL optimization tool with analysis and recommendations.
 2. Paid API backend (deployment, auth, billing)
 3. Integration tests with real SQL Server queries
 
+## Rebrand TODOs -- Lore Product Family (decided 2026-03-25)
+ConvoVault -> **LoreConvo** | ProjectVault -> **LoreDocs** | Brand umbrella: **Lore**
+Both names are TESS-clean and Google-clean. Trademark registration recommended ($350/class each).
+
+### Code & Directory Renames
+1. [ ] Rename `ron_skills/convovault/` -> `ron_skills/loreconvo/`
+2. [ ] Rename `ron_skills/projectvault/` -> `ron_skills/loredocs/`
+3. [ ] Rename `ron_skills/convovault-plugin/` -> `ron_skills/loreconvo-plugin/`
+4. [ ] Rename `ron_skills/projectvault-plugin/` -> `ron_skills/loredocs-plugin/`
+5. [ ] Update all Python imports, module names, and package references
+6. [ ] Update CLI command names (if any reference convovault/projectvault)
+7. [ ] Update database paths: `~/.convovault/` -> `~/.loreconvo/`, `~/.projectvault/` -> `~/.loredocs/`
+8. [ ] Add migration script for existing users (move DB files to new paths)
+9. [ ] Update .mcp.json server entries with new names
+
+### Documentation Updates
+10. [ ] Update this CLAUDE.md (product names, paths, references throughout)
+11. [ ] Update README.md for both products
+12. [ ] Update INSTALL.md for both products
+13. [ ] Update SKILL.md for both products
+14. [ ] Update plugin README files
+15. [ ] Update marketplace listings (docs/marketplace_listing.md) for both
+16. [ ] Update docs/PUBLISHING.md references
+17. [ ] Update revenue projection Excel (rename ConvoVault references)
+18. [ ] Update product_comparison_brief.md (in docs/)
+19. [ ] Update Venn diagram HTML (knowledge_tools_venn_diagram.html)
+20. [ ] Update IP_Protection_Strategy_Labyrinth.docx with new names
+
+### Brand & Legal
+21. [ ] File USPTO trademark for LoreConvo (Class 009, $350)
+22. [ ] File USPTO trademark for LoreDocs (Class 009, $350)
+23. [ ] Update BSL 1.1 license files with new product names
+24. [ ] Register copyright with new names
+
+### Infrastructure
+25. [ ] Rename GitHub repos (from Mac) once public
+26. [ ] Update ~/.claude/settings.json MCP server paths
+27. [ ] Update hook scripts (auto_load.py, auto_save.py) if they reference old names
+28. [ ] Rebuild .plugin files with new names (loreconvo-v0.3.0.plugin, loredocs-v0.1.0.plugin)
+
 ## Billing Integration (Future)
 - Stripe sandbox account created (2026-03-22)
 - ProjectVault tiers.py has Free/Pro/Team limits and TierEnforcer ready
@@ -124,6 +173,12 @@ When ending a session:
 - stdio transport for both Code and Cowork compatibility
 - Monorepo structure: all products in ron_skills/ under one repo, distributable as separate .plugin files
 
+## Infrastructure TODOs (ordered)
+1. [ ] Fix side_hustle venv isolation (may be running under conda base instead of project .venv)
+2. [ ] Pin all dependencies: `pip freeze > requirements-lock.txt` for each product
+3. [ ] Run `pip-audit` across all product venvs and resolve any findings
+4. [ ] Push ConvoVault and ProjectVault repos to GitHub (from Mac -- Cowork VM can't push)
+
 ## Known Issues / Gotchas
 - MCP SDK v1.26.0 renamed `lifespan_state` to `lifespan_context` (already fixed in ProjectVault)
 - ConvoVault uses relative imports from src/ -- must set PYTHONPATH or use full path to server.py
@@ -134,10 +189,11 @@ When ending a session:
 - Conda cannot resolve the `mcp` package -- always use standard Python venv
 - git push will fail from Cowork VM (no GitHub credentials) -- Debbie pushes from her Mac
 - Cowork sessions leave .git/*.lock files -- clean with: find .git -name "*.lock" -delete
+- LiteLLM supply chain attack (2026-03-24): versions 1.82.7/1.82.8 on PyPI were compromised. Neither project uses LiteLLM. Audited clean. Pin deps to prevent future exposure.
 
 ## Revenue Strategy
 - Free tier gets users in the door (limited vaults/sessions)
-- Pro tier ($8-9/mo) unlocks unlimited usage via Stripe billing
+- Pro tier unlocks unlimited usage via Stripe billing (LoreConvo $8/mo, LoreDocs $9/mo)
 - Team/Business tier ($19-20/mo) adds cloud sync and collaboration
 - Distribution: Self-hosted GitHub marketplace (labyrinth-analytics/claude-plugins) first, then official submission to claude-plugins-official
 - All three products cross-sell each other

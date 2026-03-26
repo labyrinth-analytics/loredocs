@@ -34,7 +34,7 @@ Replace `/path/to/convovault` with wherever you saved the source folder (e.g., `
 
 After making code changes, use `/reload-plugins` to refresh without restarting.
 
-Once loaded, Claude has access to all 11 ConvoVault MCP tools automatically. Ask Claude to "save this session" or "recall what we discussed about X" and it will use the tools on its own.
+Once loaded, Claude has access to all 12 ConvoVault MCP tools automatically. Ask Claude to "save this session" or "recall what we discussed about X" and it will use the tools on its own.
 
 ### Cowork (Desktop App)
 
@@ -129,7 +129,7 @@ The result: when you switch surfaces mid-project, you never have to re-explain w
 
 ## MCP Tools
 
-ConvoVault provides 11 MCP tools that Claude calls automatically during sessions:
+ConvoVault provides 12 MCP tools that Claude calls automatically during sessions:
 
 | Tool | What it does |
 |------|-------------|
@@ -144,6 +144,7 @@ ConvoVault provides 11 MCP tools that Claude calls automatically during sessions
 | `get_project` | Get project details and associated sessions |
 | `list_projects` | List all projects |
 | `get_skill_history` | See which sessions used a specific skill |
+| `vault_suggest` | Proactive suggestions for relevant context to load |
 
 ## Requirements
 

@@ -217,4 +217,4 @@ ProjectVault is a companion product for storing project documents and reference 
 |---|---|---|
 | 0.3.0 | 2026-03-22 | Added vault_suggest (proactive context recommendations) |
 | 0.2.0 | 2026-03-22 | Added SessionStart/SessionEnd hooks, auto-save, auto-load |
-| 0.1.0 | 2026-03-21 | Initial release: 11 MCP tools, SQLite+FTS5, CLI, Chat bridge |
+| 0.1.0 | 2026-03-21 | Initial release: 11 MCP tools, SQLite+FTS5, CLI, Chat bridge (now 12 with vault_suggest) |
