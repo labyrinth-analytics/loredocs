@@ -8,8 +8,8 @@ Build and ship products that generate $8K/month passive income through Claude pl
 ## Critical Rules
 - NEVER publish, deploy, or make anything public without Debbie's explicit approval.
 - ALWAYS use ASCII-only characters in Python source files (no Unicode checkmarks, box-drawing, smart quotes).
-- ALWAYS check ConvoVault for recent sessions before starting work: call `get_recent_sessions` to see what was done last.
-- ALWAYS check ProjectVault for current docs: call `vault_list` then `vault_inject_summary` for relevant vaults.
+- ALWAYS check LoreConvo for recent sessions before starting work: call `get_recent_sessions` to see what was done last.
+- ALWAYS check LoreDocs for current docs: call `vault_list` then `vault_inject_summary` for relevant vaults.
 - ALWAYS commit your work to git with clear commit messages before ending a session.
 - ALWAYS push to origin after committing: `git push origin master`
 - ALWAYS update this CLAUDE.md when you complete a TODO (move it to Completed, add date/commit).
@@ -30,22 +30,22 @@ Build and ship products that generate $8K/month passive income through Claude pl
 
 ## Your Products
 
-### ConvoVault (v0.3.0) - PRODUCTION
+### LoreConvo (v0.3.0) - PRODUCTION
 Cross-surface persistent memory for Claude sessions.
-- Location: `ron_skills/convovault/`
+- Location: `ron_skills/loreconvo/`
 - Stack: FastMCP, SQLite+FTS5, Click CLI
 - Status: MVP complete, permanently installed, auto-save + auto-load hooks working
 - MCP tools: 12 | CLI commands: 6
 - Hooks: SessionEnd (auto-save) + SessionStart (auto-load context)
-- Data: `~/.convovault/sessions.db`
+- Data: `~/.loreconvo/sessions.db`
 - Revenue target: $3,268 MRR by month 12
 
 **Completed:**
 - vault_suggest tool (commit 636dcf5, 2026-03-22)
 - Marketplace listing draft (docs/marketplace_listing.md, 2026-03-22) -- **APPROVED**
-- Marketplace listing revised per Debbie feedback (email, platforms, ProjectVault mention, install path) (2026-03-22)
-- Public-facing revenue projection Excel (docs/ConvoVault_Revenue_Projection.xlsx, 2026-03-22) -- **APPROVED**
-- Cowork plugin packaging (ron_skills/convovault-plugin/, ron_skills/convovault-v0.3.0.plugin, 2026-03-23) -- awaiting review
+- Marketplace listing revised per Debbie feedback (email, platforms, LoreDocs mention, install path) (2026-03-22)
+- Public-facing revenue projection Excel (docs/LoreConvo_Revenue_Projection.xlsx, 2026-03-22) -- **APPROVED**
+- Cowork plugin packaging (ron_skills/loreconvo-plugin/, ron_skills/loreconvo-v0.3.0.plugin, 2026-03-23) -- awaiting review
 - Marketplace publishing research + docs/PUBLISHING.md (2026-03-24) -- KEY FINDING: "knowledge-work-plugins" is RESERVED by Anthropic; must use self-hosted GitHub marketplace or official submission form
 
 **Completed (continued):**
@@ -53,44 +53,44 @@ Cross-surface persistent memory for Claude sessions.
 - Updated README.md with "How it works across surfaces" section -- persistence chain diagram + explanation for all 3 surfaces (2026-03-24)
 
 **Priority TODOs:**
-(none -- all ConvoVault TODOs complete. Next: marketplace publishing once GitHub repo is public)
+(none -- all LoreConvo TODOs complete. Next: marketplace publishing once GitHub repo is public)
 
 ## Approvals / Review
 
-## ConvoVault
+## LoreConvo
 * Marketplace listing -- **APPROVED**
 * Revenue projection Excel -- **APPROVED**
 
-## ProjectVault
+## LoreDocs
 * Cowork plugin packaging -- **APPROVED**
 * Marketplace listing -- **APPROVED**
 
-### ProjectVault (v0.1.0) - ALPHA
+### LoreDocs (v0.1.0) - ALPHA
 Knowledge management MCP server for AI projects.
-- Location: `ron_skills/projectvault/`
+- Location: `ron_skills/loredocs/`
 - Stack: FastMCP, SQLite+FTS5, filesystem storage
 - Status: 34 tools implemented, permanently installed
-- Data: `~/.projectvault/projectvault.db` + `~/.projectvault/vaults/`
+- Data: `~/.loredocs/loredocs.db` + `~/.loredocs/vaults/`
 - Revenue target: $1,635 MRR by month 12
 
 **Completed:**
 - Phase 2 tools: vault_link_doc, vault_unlink_doc, vault_find_related, vault_suggest, vault_export_manifest (commit ddf7f91, 2026-03-22) -- 7 tests passing
 - Free/Pro tier gating logic: tiers.py + TierEnforcer + vault_tier_status + vault_set_tier tools (35 tests passing, commit TBD, 2026-03-22)
-- Cowork plugin packaging (ron_skills/projectvault-plugin/, ron_skills/projectvault-v0.1.0.plugin, commit TBD, 2026-03-22) -- **APPROVED**
+- Cowork plugin packaging (ron_skills/loredocs-plugin/, ron_skills/loredocs-v0.1.0.plugin, commit TBD, 2026-03-22) -- **APPROVED**
 - Plugin README updated with platform table (Cowork/Code/Chat) and companion product note (2026-03-22)
 - MCP tool-layer test suite: test_mcp_tools.py, 43 tests covering vault lifecycle, doc management, search, inject, tiers (2026-03-22)
 - Bug fix: vault_create and vault_add_doc now return error strings for TierLimitError instead of raising exceptions (2026-03-22)
 - Marketplace listing draft (docs/marketplace_listing.md, 2026-03-22) -- **APPROVED**
 
 **Completed (continued):**
-- Marketplace publishing research + docs/PUBLISHING.md (2026-03-24) -- same KEY FINDING applies; see ConvoVault above
+- Marketplace publishing research + docs/PUBLISHING.md (2026-03-24) -- same KEY FINDING applies; see LoreConvo above
 
 **Completed (continued):**
 - Integration tests for tier enforcement with real MCP client calls: test_tier_integration.py, 29 tests covering free tier defaults, vault limit, doc limit, pro upgrade, downgrade, usage tracking, markdown format (2026-03-25)
-- Added PROJECTVAULT_ROOT env var support to server.py for test isolation (2026-03-25)
+- Added LOREDOCS_ROOT env var support to server.py for test isolation (2026-03-25)
 
 **Priority TODOs:**
-(none -- all ProjectVault TODOs complete. Next: integration tests for other flows, or marketplace publishing)
+(none -- all LoreDocs TODOs complete. Next: integration tests for other flows, or marketplace publishing)
 
 ### SQL Query Optimizer (v0.1.0) - IN PROGRESS
 SQL optimization tool with analysis and recommendations.
@@ -109,28 +109,28 @@ ConvoVault -> **LoreConvo** | ProjectVault -> **LoreDocs** | Brand umbrella: **L
 Both names are TESS-clean and Google-clean. Trademark registration recommended ($350/class each).
 
 ### Code & Directory Renames
-1. [ ] Rename `ron_skills/convovault/` -> `ron_skills/loreconvo/`
-2. [ ] Rename `ron_skills/projectvault/` -> `ron_skills/loredocs/`
-3. [ ] Rename `ron_skills/convovault-plugin/` -> `ron_skills/loreconvo-plugin/`
-4. [ ] Rename `ron_skills/projectvault-plugin/` -> `ron_skills/loredocs-plugin/`
-5. [ ] Update all Python imports, module names, and package references
-6. [ ] Update CLI command names (if any reference convovault/projectvault)
-7. [ ] Update database paths: `~/.convovault/` -> `~/.loreconvo/`, `~/.projectvault/` -> `~/.loredocs/`
+1. [x] Rename `ron_skills/convovault/` -> `ron_skills/loreconvo/` (done 2026-03-26)
+2. [x] Rename `ron_skills/projectvault/` -> `ron_skills/loredocs/` (done 2026-03-26)
+3. [x] Rename `ron_skills/convovault-plugin/` -> `ron_skills/loreconvo-plugin/` (done 2026-03-26)
+4. [x] Rename `ron_skills/projectvault-plugin/` -> `ron_skills/loredocs-plugin/` (done 2026-03-26)
+5. [x] Update all Python imports, module names, and package references (done 2026-03-26)
+6. [x] Update CLI command names (done 2026-03-26 -- bulk sed across all tracked files)
+7. [x] Update database paths: `~/.convovault/` -> `~/.loreconvo/`, `~/.projectvault/` -> `~/.loredocs/` (done 2026-03-26)
 8. [ ] Add migration script for existing users (move DB files to new paths)
-9. [ ] Update .mcp.json server entries with new names
+9. [x] Update .mcp.json server entries with new names (done 2026-03-26)
 
 ### Documentation Updates
-10. [ ] Update this CLAUDE.md (product names, paths, references throughout)
-11. [ ] Update README.md for both products
-12. [ ] Update INSTALL.md for both products
-13. [ ] Update SKILL.md for both products
-14. [ ] Update plugin README files
-15. [ ] Update marketplace listings (docs/marketplace_listing.md) for both
-16. [ ] Update docs/PUBLISHING.md references
-17. [ ] Update revenue projection Excel (rename ConvoVault references)
-18. [ ] Update product_comparison_brief.md (in docs/)
-19. [ ] Update Venn diagram HTML (knowledge_tools_venn_diagram.html)
-20. [ ] Update IP_Protection_Strategy_Labyrinth.docx with new names
+10. [x] Update this CLAUDE.md (product names, paths, references throughout) (done 2026-03-26)
+11. [x] Update README.md for both products (done 2026-03-26)
+12. [x] Update INSTALL.md for both products (done 2026-03-26)
+13. [x] Update SKILL.md for both products (done 2026-03-26)
+14. [x] Update plugin README files (done 2026-03-26)
+15. [x] Update marketplace listings (docs/marketplace_listing.md) for both (done 2026-03-26)
+16. [x] Update docs/PUBLISHING.md references (done 2026-03-26)
+17. [ ] Update revenue projection Excel (rename references -- requires openpyxl rebuild)
+18. [x] Update product_comparison_brief.md (in docs/) (done 2026-03-26)
+19. [x] Update Venn diagram HTML (knowledge_tools_venn_diagram.html) (done 2026-03-26)
+20. [ ] Update IP_Protection_Strategy_Labyrinth.docx with new names (binary file -- needs manual edit)
 
 ### Brand & Legal
 21. [ ] File USPTO trademark for LoreConvo (Class 009, $350)
@@ -140,13 +140,13 @@ Both names are TESS-clean and Google-clean. Trademark registration recommended (
 
 ### Infrastructure
 25. [x] Rename GitHub repos (done 2026-03-25 -- convovault->loreconvo, projectvault->loredocs, remotes reconfigured)
-26. [ ] Update ~/.claude/settings.json MCP server paths
-27. [ ] Update hook scripts (auto_load.py, auto_save.py) if they reference old names
+26. [ ] Update ~/.claude/settings.json MCP server paths (Debbie must do on her Mac)
+27. [x] Update hook scripts (auto_load.py, auto_save.py) references (done 2026-03-26 -- bulk sed)
 28. [ ] Rebuild .plugin files with new names (loreconvo-v0.3.0.plugin, loredocs-v0.1.0.plugin)
 
 ## Billing Integration (Future)
 - Stripe sandbox account created (2026-03-22)
-- ProjectVault tiers.py has Free/Pro/Team limits and TierEnforcer ready
+- LoreDocs tiers.py has Free/Pro/Team limits and TierEnforcer ready
 - Next step: wire vault_set_tier to Stripe subscription webhooks
 - Blocked on: marketplace publishing (need to know how billing integrates with the plugin marketplace)
 - Key unknown: whether Claude marketplace and ClawHub have different billing integration requirements (same Stripe setup for both, or separate handling per platform?)
@@ -154,16 +154,16 @@ Both names are TESS-clean and Google-clean. Trademark registration recommended (
 ## Session Workflow
 
 When starting a session:
-1. ConvoVault auto-loads recent context via SessionStart hook (no manual step needed)
-2. Check ProjectVault: `vault_list()` then `vault_inject_summary()` for active vaults
+1. LoreConvo auto-loads recent context via SessionStart hook (no manual step needed)
+2. Check LoreDocs: `vault_list()` then `vault_inject_summary()` for active vaults
 3. Read this file and the TODOs above
 4. Pick the highest-priority TODO that isn't blocked
 5. Work on it, commit when done
 
 When ending a session:
 1. Commit all changes with descriptive messages
-2. The SessionEnd hook auto-saves to ConvoVault (no manual step needed)
-3. If you created/updated significant docs, add them to ProjectVault too
+2. The SessionEnd hook auto-saves to LoreConvo (no manual step needed)
+3. If you created/updated significant docs, add them to LoreDocs too
 
 ## Architecture Principles
 - Local-first: all data on user's machine, no cloud dependency for core features
@@ -180,9 +180,9 @@ When ending a session:
 4. [x] Push LoreConvo and LoreDocs repos to GitHub (done 2026-03-25 -- repos renamed, remotes configured: origin=side_hustle, loreconvo, loredocs)
 
 ## Known Issues / Gotchas
-- MCP SDK v1.26.0 renamed `lifespan_state` to `lifespan_context` (already fixed in ProjectVault)
-- ConvoVault uses relative imports from src/ -- must set PYTHONPATH or use full path to server.py
-- ProjectVault uses `python -m projectvault.server` -- standard module pattern works fine
+- MCP SDK v1.26.0 renamed `lifespan_state` to `lifespan_context` (already fixed in LoreDocs)
+- LoreConvo uses relative imports from src/ -- must set PYTHONPATH or use full path to server.py
+- LoreDocs uses `python -m loredocs.server` -- standard module pattern works fine
 - $HOME does NOT expand in ~/.claude/settings.json -- always use absolute paths
 - Real Claude Code transcripts wrap messages: `{"type":"user","message":{"role":"user",...}}`
 - Never use `2>/dev/null` in hook scripts -- redirect to a log file instead

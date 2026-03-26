@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "projectvault": {
-      "command": "uvx",
-      "args": ["projectvault"],
-      "env": {}
-    }
-  }
-}
