@@ -32,6 +32,13 @@ Both names TESS-clean and Google-clean. 24 of 28 items completed.
 - [x] Push LoreConvo and LoreDocs repos to GitHub (2026-03-25)
 - [x] GitHub repos made public (2026-03-26, Debbie)
 
+## Lore Rebrand Finishing (2026-03-27)
+
+- [x] Migration script for existing users (scripts/migrate_lore.py, commit 19fa791, 2026-03-27)
+- [x] Rebuild loreconvo-v0.3.0.plugin with Lore names (plugin.json name: loreconvo, mcp server: loreconvo, 2026-03-27)
+- [x] Rebuild loredocs-v0.1.0.plugin with Lore names (plugin.json name: loredocs, mcp server: loredocs, 2026-03-27)
+- [x] Revenue projection Excel renamed: ConvoVault_Revenue_Projection.xlsx -> LoreConvo_Revenue_Projection.xlsx, old file removed from git (2026-03-27)
+
 ## LoreConvo Milestones
 
 - [x] vault_suggest tool (commit 636dcf5, 2026-03-22)

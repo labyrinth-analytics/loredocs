@@ -19,9 +19,9 @@ Build and ship products that generate $8K/month passive income through Claude pl
 
 ### Rebrand Finishing (Lore Product Family)
 1. [x] Add migration script for existing users (move DB files from old paths to new) -- done 2026-03-27, scripts/migrate_lore.py
-2. [ ] Update revenue projection Excel with new names (requires openpyxl rebuild)
-3. [ ] Update BSL 1.1 license files with new product names
-4. [ ] Rebuild .plugin files (loreconvo-v0.3.0.plugin, loredocs-v0.1.0.plugin)
+2. [x] Update revenue projection Excel with new names -- done 2026-03-27, docs/LoreConvo_Revenue_Projection.xlsx
+3. [ ] Update BSL 1.1 license files with new product names (NOTE: no BSL files found in repo -- both products use MIT in pyproject.toml. Debbie to decide if BSL is still the plan)
+4. [x] Rebuild .plugin files (loreconvo-v0.3.0.plugin, loredocs-v0.1.0.plugin) -- done 2026-03-27, both now use Lore names internally
 
 ### Infrastructure
 5. [ ] Fix side_hustle venv isolation (may be running under conda base instead of project .venv)

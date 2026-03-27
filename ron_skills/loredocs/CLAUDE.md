@@ -18,7 +18,7 @@ Formerly "ProjectVault" -- renamed 2026-03-25.
 - `INSTALL.md` -- installation guide
 - `docs/marketplace_listing.md` -- marketplace listing (APPROVED)
 - `docs/PUBLISHING.md` -- marketplace publishing research
-- `docs/ProjectVault_Product_Spec.md` -- product spec (needs rename)
+- `docs/LoreDocs_Product_Spec.md` -- product spec (renamed from ProjectVault_Product_Spec.md 2026-03-26)
 - `test_mcp_tools.py` -- 43 MCP tool-layer tests
 - `test_tier_integration.py` -- 29 integration tests for tier enforcement
 - `test_phase2.py`, `test_storage.py`, `test_tiers.py` -- unit tests
@@ -36,7 +36,7 @@ Formerly "ProjectVault" -- renamed 2026-03-25.
 ## Known Issues
 - MCP SDK v1.26.0 renamed `lifespan_state` to `lifespan_context` (already fixed)
 - Old artifact: `projectvault-v0.1.0.tar.gz` and `projectvault.egg-info` still in directory (delete these)
-- `docs/ProjectVault_Product_Spec.md` needs rename to `docs/LoreDocs_Product_Spec.md`
+- Old `docs/ProjectVault_Product_Spec.md` still present alongside `docs/LoreDocs_Product_Spec.md` -- Debbie to delete the old one from Mac (permission issue in Cowork VM prevents deletion)
 
 ## Product TODOs
 (none -- all LoreDocs feature work complete. Blocked on marketplace publishing.)
