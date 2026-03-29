@@ -473,6 +473,18 @@ class VaultStorage:
         if not vault:
             return None
 
+        # OPP-006: Validate filename -- reject path traversal, absolute paths, null bytes
+        if not filename or '..' in filename or '\x00' in filename or os.path.isabs(filename):
+            raise ValueError('Invalid filename: must be a plain name with no path components')
+        if os.path.basename(filename) != filename:
+            raise ValueError('Invalid filename: must not contain directory separators')
+
+        # OPP-009: Enforce per-file size limit before writing anything to disk
+        if len(content) > MAX_FILE_SIZE:
+            raise ValueError(
+                f'Document exceeds maximum file size ({MAX_FILE_SIZE // (1024 * 1024)} MB)'
+            )
+
         # Tier checks before writing anything
         self.enforcer.check_doc_count(vault["doc_count"], vault_name=vault["name"])
         self.enforcer.check_storage(self.get_total_storage_bytes(), len(content))
@@ -782,6 +794,14 @@ class VaultStorage:
     # Search
     # -------------------------------------------------------------------
 
+    @staticmethod
+    def _sanitize_fts_query(query: str) -> str:
+        """OPP-010: Wrap user query in double quotes to force FTS5 phrase matching.
+        Prevents FTS5 operators (AND, OR, NOT, NEAR, column:) from being interpreted
+        as syntax, while still allowing meaningful full-text search."""
+        safe = query.strip().replace('"', ' ')
+        return f'"{safe}"'
+
     def search(self, query: str, vault_id: Optional[str] = None,
                limit: int = 20, offset: int = 0) -> Dict[str, Any]:
         """Full-text search across document contents using FTS5.
@@ -789,6 +809,8 @@ class VaultStorage:
         If vault_id is provided, searches only that vault.
         Otherwise searches all vaults (cross-vault search).
         """
+        # OPP-010: Sanitize FTS5 MATCH input to prevent operator injection
+        safe_query = self._sanitize_fts_query(query)
         with self._db() as conn:
             if vault_id:
                 rows = conn.execute(
@@ -799,7 +821,7 @@ class VaultStorage:
                        WHERE doc_fts MATCH ? AND vault_id = ?
                        ORDER BY rank
                        LIMIT ? OFFSET ?""",
-                    (query, vault_id, limit, offset)
+                    (safe_query, vault_id, limit, offset)
                 ).fetchall()
             else:
                 rows = conn.execute(
@@ -810,7 +832,7 @@ class VaultStorage:
                        WHERE doc_fts MATCH ?
                        ORDER BY rank
                        LIMIT ? OFFSET ?""",
-                    (query, limit, offset)
+                    (safe_query, limit, offset)
                 ).fetchall()
 
             results = []
@@ -1042,14 +1064,24 @@ class VaultStorage:
                 (vault_id,)
             ).fetchall()
 
+            real_output_dir = os.path.realpath(str(output_dir))
             for row in rows:
                 raw_path = self.vaults_dir / vault_id / "docs" / row["id"] / f"current{row['file_extension']}"
                 if raw_path.exists():
-                    dest = output_dir / row["original_filename"]
+                    # OPP-006: Sanitize original_filename to a plain basename before
+                    # constructing the destination path, then confirm it stays inside
+                    # output_dir (guards against stored traversal sequences).
+                    safe_export_name = os.path.basename(row["original_filename"])
+                    if not safe_export_name:
+                        safe_export_name = f"{row['id']}{row['file_extension']}"
+                    dest = output_dir / safe_export_name
+                    real_dest = os.path.realpath(str(dest))
+                    if not real_dest.startswith(real_output_dir + os.sep):
+                        continue  # skip malicious path -- log ID only, not content
                     # Avoid filename collisions
                     counter = 1
                     while dest.exists():
-                        stem = Path(row["original_filename"]).stem
+                        stem = Path(safe_export_name).stem
                         dest = output_dir / f"{stem}_{counter}{row['file_extension']}"
                         counter += 1
                     shutil.copy2(raw_path, dest)
