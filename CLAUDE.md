@@ -128,6 +128,7 @@ Build and ship products that generate $8K/month passive income through Claude pl
 - ALWAYS check LoreDocs for current docs: call `vault_list` then `vault_inject_summary` for relevant vaults.
 - ALWAYS commit your work to git with clear commit messages before ending a session.
 - ALWAYS push to origin after committing: `git push origin master`
+- ALWAYS use the `save_session` MCP tool to save sessions to LoreConvo -- NEVER use raw SQL INSERT. The MCP tool auto-generates UUIDs; raw SQL does not and will insert NULL ids.
 - ALWAYS update this CLAUDE.md when you complete a TODO (move it to docs/COMPLETED.md with date/commit).
 - ALWAYS check `docs/qa/` and `docs/security/` for recent Meg/Brock reports at session start. Fix CRITICAL/HIGH findings before regular TODOs.
 - ALWAYS follow the priority order in the Ron TODOs list. Work on #1 first unless it's blocked, then #2, etc.

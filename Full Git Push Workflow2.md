@@ -21,7 +21,11 @@ git remote set-url origin https://github.com/debbie-shapiro/side_hustle.git
 rm .git/HEAD.lock  # if still there
 
 rm /Users/debbieshapiro/projects/side_hustle/.git/HEAD.lock
+
 rm .git/index.lock
+
+rm .git/index.lock .git/objects/maintenance.lock
+
 
 #If issues with out of sync public product repos
 ##Fetch
