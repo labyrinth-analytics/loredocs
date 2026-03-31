@@ -18,7 +18,7 @@ The CRITICAL finding (SEC-001) is unchanged: a real Anthropic API key remains on
 the SQL Query Optimizer `.env` file and has not been revoked. This is now day 9 since
 first detection. Additionally, a new HIGH finding (SEC-010) was identified: yesterday's
 security report, which was committed to git in `34d6f43`, contains a partial API key prefix
-(`sk-ant-api03-9ffeAe8zLrMng8GIMC-fcs4rSDvRycGY9vw_4...`) exposing approximately 45
+(`sk-ant-***REDACTED***`) exposing approximately 45
 characters of the key in git history. This makes revocation even more urgent.
 
 Three findings from the prior report remain open but non-critical: unpinned dependencies
@@ -73,7 +73,7 @@ and again in yesterday's security report (SEC-001). **It has not been revoked.**
 - **Category:** Secrets
 - **Status:** EXISTING -- day 9, escalating
 - **Location:** `ron_skills/sql_query_optimizer/api/.env` (line 5)
-- **Description:** Full Anthropic API key (`sk-ant-api03-...`) remains on disk. Not in
+- **Description:** Full Anthropic API key (`sk-ant-***REDACTED***`) remains on disk. Not in
   git history (gitignore working), but on-disk exposure since 2026-03-21. Combined with
   SEC-010, ~45 characters of this key are now in git history via the security report.
 - **Remediation:** Revoke at console.anthropic.com immediately, regenerate, update .env.
@@ -87,7 +87,7 @@ and again in yesterday's security report (SEC-001). **It has not been revoked.**
 - **Location:** `docs/security/security_report_2026_03_29.md` (lines 37, 42, 47) --
   committed in `34d6f43`
 - **Description:** Yesterday's security report included a partial key prefix
-  `sk-ant-api03-9ffeAe8zLrMng8GIMC-fcs4rSDvRycGY9vw_4...` in 3 places. While truncated
+  `sk-ant-***REDACTED***` in 3 places. While truncated
   with `...`, this reveals approximately 45 characters of the 88-character key, reducing
   the brute-force search space dramatically. Since this is committed to git, it persists
   in history even if the file is edited later.
@@ -206,7 +206,7 @@ and again in yesterday's security report (SEC-001). **It has not been revoked.**
    pressing issue.
 
 2. **Ron (next session):** Redact partial key from `docs/security/security_report_2026_03_29.md`
-   -- replace all `sk-ant-api03-...` occurrences with `sk-ant-***REDACTED***` (SEC-010).
+   -- replace all partial key occurrences with `sk-ant-***REDACTED***` (SEC-010). DONE by Ron 2026-03-31.
 
 3. **Ron (near-term):** Generate `requirements-lock.txt` for LoreConvo and LoreDocs
    (SEC-003). This is also tracked as CLAUDE.md TODO #6.

@@ -34,7 +34,7 @@ environment-variable-driven with no wildcard. Security headers are fully impleme
 **Finding: Exposed Anthropic API Key (On-Disk, Not Revoked)**
 
 The file `ron_skills/sql_query_optimizer/api/.env` contains a real Anthropic API key:
-`ANTHROPIC_API_KEY=sk-ant-api03-9ffeAe8zLrMng8GIMC-fcs4rSDvRycGY9vw_4...`
+`ANTHROPIC_API_KEY=sk-ant-***REDACTED***`
 
 This key:
 - Has been on disk since at least 2026-03-21 (file mtime)
@@ -44,7 +44,7 @@ This key:
 
 **Remediation (Debbie must do this -- not automatable):**
 1. Go to console.anthropic.com -> API keys
-2. Find the key matching `sk-ant-api03-9ffeAe8zLrMng8GIMC-fcs...`
+2. Find the key matching `sk-ant-***REDACTED***`
 3. Click "Revoke" immediately
 4. Generate a new key for Ron
 5. Update `.env` with the new key
@@ -234,7 +234,7 @@ This key:
 |-------|--------|---------|
 | `.env` committed to git | PASS | .gitignore line 2: `*.env` covers it |
 | `.env` in git history | PASS | `git log --all -p -- "*.env"` returned nothing |
-| Real key in `.env` on disk | **FAIL** | `sk-ant-api03-...` present in `api/.env` (SEC-001) |
+| Real key in `.env` on disk | **FAIL** | `sk-ant-***REDACTED***` present in `api/.env` (SEC-001) |
 | Hardcoded keys in Python source | PASS | No hardcoded keys found in tracked files |
 | AWS credentials | PASS | No AKIA patterns found |
 | Private keys / PEM files | PASS | No RSA/EC private keys found |

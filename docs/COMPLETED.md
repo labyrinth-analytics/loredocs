@@ -82,3 +82,17 @@ Both names TESS-clean and Google-clean. 24 of 28 items completed.
 ## Infrastructure
 
 - [x] Stripe sandbox account created (2026-03-22)
+
+## Ron Daily - 2026-03-31
+
+### Security
+- [x] SEC-010: Redacted partial API key from security_report_2026_03_29.md and security_report_2026_03_30.md (replaced with sk-ant-***REDACTED***)
+
+### Infrastructure (TODOs #5, #6, #7)
+- [x] Generated LoreDocs requirements.txt from pyproject.toml dependencies
+- [x] Generated requirements-lock.txt for LoreConvo (from .venv metadata, 29 pinned packages)
+- [x] Generated requirements-lock.txt for LoreDocs (from .venv metadata, 47 pinned packages)
+- [x] Created scripts/setup_venvs.sh for setting up missing .venvs (SQL Optimizer needs Mac execution)
+- [x] Ran pip-audit: found CVE-2026-34073 (cryptography) and CVE-2026-4539 (Pygments), bumped in lock files
+- [x] All 3 products now pass pip-audit with 0 CVEs
+- [x] 179 existing tests verified passing

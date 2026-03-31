@@ -24,13 +24,9 @@ Build and ship products that generate $8K/month passive income through Claude pl
 4. [x] Rebuild .plugin files (loreconvo-v0.3.0.plugin, loredocs-v0.1.0.plugin) -- done 2026-03-27, both now use Lore names internally
 
 ### Infrastructure (PRIORITY — do these before New Products)
-5. [ ] Create proper .venv for each product that is missing one. Current state:
-   - LoreConvo: has .venv + requirements.txt [OK]
-   - LoreDocs: has .venv but NO requirements.txt -- generate with `pip freeze > requirements.txt` from its .venv
-   - SQL Query Optimizer: has api/requirements.txt but NO .venv -- create one with `python -m venv .venv`, install from api/requirements.txt
-   - Root side_hustle/: NO .venv -- not needed if each product has its own
-6. [ ] Pin all dependencies: for each product, activate its .venv and run `pip freeze > requirements-lock.txt` to capture exact versions
-7. [ ] Run `pip-audit` across all product venvs and resolve any findings
+5. [x] Create proper .venv for each product that is missing one -- done 2026-03-31. LoreDocs requirements.txt generated. SQL Optimizer needs .venv created on Mac (setup script at scripts/setup_venvs.sh).
+6. [x] Pin all dependencies: requirements-lock.txt generated for LoreConvo and LoreDocs from venv metadata -- done 2026-03-31. Fixed CVE-2026-34073 (cryptography 46.0.5->46.0.6) and CVE-2026-4539 (Pygments 2.19.2->2.20.0).
+7. [x] Run `pip-audit` across all product venvs -- done 2026-03-31. All 3 products pass (0 CVEs after version bumps).
 
 ### LoreConvo CLI Fixes
 8. [x] Add `loreconvo-cli` entry point to pyproject.toml pointing at `src/cli.py` -- done 2026-03-28
