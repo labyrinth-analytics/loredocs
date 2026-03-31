@@ -1,0 +1,7 @@
+# LoreDocs v0.1.0 - Direct dependencies
+mcp[cli]>=1.0.0
+pydantic>=2.0.0
+pdfplumber>=0.10.0
+python-docx>=1.0.0
+openpyxl>=3.1.0
+python-pptx>=0.6.21
