@@ -46,14 +46,17 @@ Build and ship products that generate $8K/month passive income through Claude pl
 18. [x] MEDIUM: Add `max_length` to SQL query input field in `OptimizeRequest` model -- done 2026-03-29 (max_length=50000).
 19. [x] MEDIUM: Add security headers middleware -- done 2026-03-29 (HSTS, X-Frame-Options, X-Content-Type-Options, CSP, Referrer-Policy, Cache-Control).
 
+### Rebrand Cleanup
+20. [x] Rename LoreDocs `docs/marketing/convovault_projectvault_diagram.html` and `convovault_projectvault_sketch.html` to use Lore branding (loreconvo_loredocs_*) -- done 2026-04-01
+
 ### Documentation
-20. [ ] Add README.md for LoreDocs (modeled after LoreConvo README: tagline, quick start, usage for Code/Cowork, tool list, license)
+21. [x] Add README.md for LoreDocs (modeled after LoreConvo README: tagline, quick start, usage for Code/Cowork, tool list, license) -- done 2026-04-01
 
 ### New Products
-21. [ ] SQL Query Optimizer: ClawHub skill packaging
-22. [ ] SQL Query Optimizer: integration tests with real SQL Server queries
-23. [ ] Build Financial Report Generator skill + FastMCP backend
-24. [ ] Build CSV/Excel Data Transformer skill + FastMCP backend
+22. [ ] SQL Query Optimizer: ClawHub skill packaging
+23. [ ] SQL Query Optimizer: integration tests with real SQL Server queries
+24. [ ] Build Financial Report Generator skill + FastMCP backend
+25. [ ] Build CSV/Excel Data Transformer skill + FastMCP backend
 
 ## Product Research Scout (Scheduled Task)
 - **Task:** `weekly-product-scout` — runs every Monday at 3 AM

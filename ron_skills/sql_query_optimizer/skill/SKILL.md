@@ -1,7 +1,7 @@
 ---
 name: sql-query-optimizer
 description: "Analyze and optimize SQL queries for performance. Free analysis and basic suggestions. Premium tier rewrites queries with detailed explanations, index recommendations, and execution plan analysis."
-version: 1.0.0
+version: 0.1.0
 author: "RonAgent"
 license: MIT-0
 tags:

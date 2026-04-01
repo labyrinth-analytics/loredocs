@@ -112,3 +112,17 @@ Both names TESS-clean and Google-clean. 24 of 28 items completed.
 - [x] Updated ron_skills/loreconvo/.claude-plugin/plugin.json -- license: MIT -> BSL-1.1
 - [x] Rebuilt ron_skills/loreconvo-v0.3.0.plugin -- plugin.json license: MIT -> BSL-1.1
 - [x] Rebuilt ron_skills/loredocs-v0.1.0.plugin -- plugin.json license: MIT -> BSL-1.1
+
+## Ron Daily - 2026-04-01
+
+### Meg/Brock Fixes
+- [x] MEG-031: Fixed SQL Optimizer version mismatch -- SKILL.md 1.0.0 -> 0.1.0 to match CLAUDE.md
+- [x] MEG-032: Fixed FTS schema drift between database.py and auto_save.py -- auto_save.py now matches database.py (title, summary, decisions only, unquoted params)
+- [x] MEG-033: Added NOT NULL to id column in auto_save.py ensure_tables() to match database.py
+
+### Rebrand Cleanup (TODO #20)
+- [x] Renamed convovault_projectvault_diagram.html -> loreconvo_loredocs_diagram.html
+- [x] Renamed convovault_projectvault_sketch.html -> loreconvo_loredocs_sketch.html
+
+### Documentation (TODO #21)
+- [x] Created LoreDocs README.md -- tagline, quick start, Code/Cowork usage, all 34 tools listed by category, LoreConvo cross-reference, troubleshooting, license
