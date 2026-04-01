@@ -145,9 +145,9 @@ The LoreConvo and LoreDocs repos are PUBLIC on GitHub. Internal business documen
 - Any document containing: pricing numbers, MRR/ARR targets, competitive intelligence, Stripe keys, or customer data
 
 **WHERE internal docs go instead:**
-- Revenue projections, PRDs, publishing plans: keep in the product's local `docs/` directory but ensure they are listed in the product's `.gitignore`
-- Product CLAUDE.md files: must be in each product's `.gitignore` (they are local agent instructions, not user docs)
-- If you need to create a new internal doc, add it to the product's `.gitignore` BEFORE committing
+- Revenue projections, PRDs, publishing plans: `docs/internal/loreconvo/` or `docs/internal/loredocs/` (private monorepo, never subtree-pushed)
+- Product CLAUDE.md files: stay in product directories but are in each product's `.gitignore` (local agent instructions, not user docs)
+- If you need to create a new internal doc, put it in `docs/internal/<product>/` — NEVER in the product directory itself
 
 **What IS safe for public repos:**
 - README.md, INSTALL.md, LICENSE (user-facing documentation)
