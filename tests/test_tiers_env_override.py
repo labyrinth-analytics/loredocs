@@ -29,23 +29,33 @@ class TestLoredocsProEnvOverride(unittest.TestCase):
         config_path.write_text(json.dumps({"tier": "free"}))
 
     def test_env_not_set_returns_config_tier(self):
-        """Without LOREDOCS_PRO env, get_tier reads from config.json."""
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("LOREDOCS_PRO", None)
+        """Without LOREDOCS_PRO or LAB_DEV_MODE, get_tier reads from config.json."""
+        env = {k: v for k, v in os.environ.items() if k not in ("LOREDOCS_PRO", "LAB_DEV_MODE")}
+        with patch.dict(os.environ, env, clear=True):
             tier = get_tier(self.tmpdir)
             self.assertEqual(tier, TIER_FREE)
 
-    def test_env_set_to_1_returns_pro(self):
-        """LOREDOCS_PRO=1 overrides config.json to return pro."""
-        with patch.dict(os.environ, {"LOREDOCS_PRO": "1"}):
+    def test_env_set_to_1_alone_does_not_return_pro(self):
+        """LOREDOCS_PRO=1 alone no longer returns pro -- requires a license key."""
+        env = {k: v for k, v in os.environ.items() if k not in ("LOREDOCS_PRO", "LAB_DEV_MODE")}
+        env["LOREDOCS_PRO"] = "1"
+        with patch.dict(os.environ, env, clear=True):
+            tier = get_tier(self.tmpdir)
+            self.assertEqual(tier, TIER_FREE)
+
+    def test_env_dev_bypass_returns_pro(self):
+        """LOREDOCS_PRO=1 + LAB_DEV_MODE=1 returns pro (internal agent dev bypass)."""
+        with patch.dict(os.environ, {"LOREDOCS_PRO": "1", "LAB_DEV_MODE": "1"}):
             tier = get_tier(self.tmpdir)
             self.assertEqual(tier, TIER_PRO)
 
-    def test_env_set_to_any_value_returns_pro(self):
-        """Any non-empty LOREDOCS_PRO value returns pro."""
-        with patch.dict(os.environ, {"LOREDOCS_PRO": "yes"}):
+    def test_env_set_to_invalid_value_returns_free(self):
+        """A non-key arbitrary value for LOREDOCS_PRO returns free."""
+        env = {k: v for k, v in os.environ.items() if k not in ("LOREDOCS_PRO", "LAB_DEV_MODE")}
+        env["LOREDOCS_PRO"] = "yes"
+        with patch.dict(os.environ, env, clear=True):
             tier = get_tier(self.tmpdir)
-            self.assertEqual(tier, TIER_PRO)
+            self.assertEqual(tier, TIER_FREE)
 
     def test_env_empty_string_returns_free(self):
         """Empty string LOREDOCS_PRO does NOT activate pro."""
@@ -59,20 +69,20 @@ class TestLoredocsProEnvOverride(unittest.TestCase):
             tier = get_tier(self.tmpdir)
             self.assertEqual(tier, TIER_FREE)
 
-    def test_env_overrides_even_when_config_says_pro(self):
-        """When config says pro AND env says pro, still returns pro (no conflict)."""
+    def test_env_dev_bypass_with_config_pro(self):
+        """Dev bypass + config pro both return pro (no conflict)."""
         config_path = self.tmpdir / "config.json"
         config_path.write_text(json.dumps({"tier": "pro"}))
-        with patch.dict(os.environ, {"LOREDOCS_PRO": "1"}):
+        with patch.dict(os.environ, {"LOREDOCS_PRO": "1", "LAB_DEV_MODE": "1"}):
             tier = get_tier(self.tmpdir)
             self.assertEqual(tier, TIER_PRO)
 
     def test_config_set_to_pro_without_env_returns_pro(self):
-        """Config-based pro tier still works when env is not set."""
+        """Config-based pro tier still works when neither env var is set."""
         config_path = self.tmpdir / "config.json"
         config_path.write_text(json.dumps({"tier": "pro"}))
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("LOREDOCS_PRO", None)
+        env = {k: v for k, v in os.environ.items() if k not in ("LOREDOCS_PRO", "LAB_DEV_MODE")}
+        with patch.dict(os.environ, env, clear=True):
             tier = get_tier(self.tmpdir)
             self.assertEqual(tier, TIER_PRO)
 
@@ -80,8 +90,8 @@ class TestLoredocsProEnvOverride(unittest.TestCase):
 class TestMcpJsonProConfig(unittest.TestCase):
     """Verify .mcp.json files set the correct PRO env vars."""
 
-    def test_loreconvo_plugin_mcp_has_pro_env(self):
-        """LoreConvo plugin .mcp.json sets LORECONVO_PRO=1."""
+    def test_loreconvo_plugin_mcp_has_free_tier_default(self):
+        """LoreConvo PUBLIC plugin .mcp.json must default to free tier (LORECONVO_PRO='')."""
         mcp_path = os.path.join(
             os.path.dirname(__file__), "..", "..", "loreconvo-plugin", ".mcp.json"
         )
@@ -90,10 +100,10 @@ class TestMcpJsonProConfig(unittest.TestCase):
         with open(mcp_path) as f:
             data = json.load(f)
         env = data["mcpServers"]["loreconvo"]["env"]
-        self.assertEqual(env.get("LORECONVO_PRO"), "1")
+        self.assertEqual(env.get("LORECONVO_PRO"), "")
 
-    def test_loredocs_plugin_mcp_has_pro_env(self):
-        """LoreDocs plugin .mcp.json sets LOREDOCS_PRO=1."""
+    def test_loredocs_plugin_mcp_has_free_tier_default(self):
+        """LoreDocs PUBLIC plugin .mcp.json must default to free tier (LOREDOCS_PRO='')."""
         mcp_path = os.path.join(
             os.path.dirname(__file__), "..", "..", "loredocs-plugin", ".mcp.json"
         )
@@ -102,7 +112,7 @@ class TestMcpJsonProConfig(unittest.TestCase):
         with open(mcp_path) as f:
             data = json.load(f)
         env = data["mcpServers"]["loredocs"]["env"]
-        self.assertEqual(env.get("LOREDOCS_PRO"), "1")
+        self.assertEqual(env.get("LOREDOCS_PRO"), "")
 
     def test_loreconvo_dev_mcp_has_pro_env(self):
         """LoreConvo dev .mcp.json sets LORECONVO_PRO=1."""

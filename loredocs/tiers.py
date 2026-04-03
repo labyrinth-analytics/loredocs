@@ -99,12 +99,22 @@ def _save_config(root: Path, config: dict) -> None:
 def get_tier(root: Path) -> str:
     """Return the current tier ('free' or 'pro').
 
-    Pro mode can be enabled by setting the LOREDOCS_PRO environment variable
-    to any non-empty value (overrides config.json).  This mirrors the
-    LORECONVO_PRO pattern and makes it easy to grant Pro access to all
-    internal agents via .mcp.json env blocks.
+    Pro mode requires a valid Labyrinth Analytics license key set in the
+    LOREDOCS_PRO environment variable (format: LAB-...).
+
+    For internal agents: set both LOREDOCS_PRO=1 and LAB_DEV_MODE=1 in the
+    internal .mcp.json to bypass key validation.  The public plugin .mcp.json
+    files must NOT include LAB_DEV_MODE.
+
+    Fallback: if LOREDOCS_PRO is not set, read tier from config.json
+    (allows the vault_set_tier tool to persist tier transitions).
     """
-    if bool(os.environ.get("LOREDOCS_PRO", "").strip()):
+    # Support both package import (relative) and direct module import (absolute).
+    try:
+        from .license import is_pro_licensed
+    except ImportError:
+        from license import is_pro_licensed  # noqa: F401 -- direct import fallback
+    if is_pro_licensed():
         return TIER_PRO
     config = _load_config(root)
     tier = config.get("tier", TIER_FREE)
