@@ -18,6 +18,8 @@ gh auth setup-git                      # if no credential helper is configured
 git remote set-url origin https://github.com/debbie-shapiro/side_hustle.git
 
 #If there’s a git lock
+find .git -name "*.lock" -delete
+
 rm .git/HEAD.lock  # if still there
 
 rm /Users/debbieshapiro/projects/side_hustle/.git/HEAD.lock
