@@ -197,6 +197,7 @@ Key responsibilities:
 ## Session Workflow
 
 When starting a session:
+0. **Clean up stale git locks (ALL agents, FIRST):** Run `find .git -name "*.lock" -mmin +30 -delete` before any git operations. This prevents a stuck agent from blocking all downstream agents.
 1. **Load recent LoreConvo context:** Try `get_recent_sessions` MCP tool first. If MCP tools are not available, use the fallback: `python scripts/save_to_loreconvo.py --read --limit 5` (or `--search "keyword"` for targeted lookups).
 2. Check LoreDocs: try `vault_list()` then `vault_inject_summary()` MCP tools. Fallback: `python scripts/query_loredocs.py --list` and `python scripts/query_loredocs.py --info "vault name"`
 3. Read this file -- check Debbie TODOs for new approvals/decisions, then Ron TODOs for next work item
