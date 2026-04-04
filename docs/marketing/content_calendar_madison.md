@@ -29,7 +29,7 @@ Maintained by: Madison (marketing agent)
 
 | Day | Type | Topic | File | Status |
 |-----|------|-------|------|--------|
-| Tue Apr 7 | Blog | Knowledge management for AI projects (moved forward to Apr 3) | blog_loredocs_vault_architecture_2026_04_03.md | draft |
+| Tue Apr 7 | Blog | LoreDocs + Obsidian + NotebookLM: complementary knowledge stack for AI practitioners | blog_knowledge_stack_venn_2026_04_07.md | pending |
 | Fri Apr 11 | Promo | Social snippets -- LoreDocs alpha launch teaser | social_loredocs_alpha_2026_04_11.md | pending |
 
 ### Week 3: April 14-18, 2026
@@ -78,6 +78,7 @@ Maintained by: Madison (marketing agent)
 
 ## Topic Backlog (future calendar slots)
 
+- **Apr 7 brief (Knowledge Stack Venn post):** Position LoreDocs as complementary with Obsidian and Google NotebookLM, not competitive. Angle: each tool owns a quadrant (Obsidian = human thinking, NotebookLM = research synthesis, LoreConvo = AI session memory, LoreDocs = AI project knowledge). Use the updated 4-circle Venn diagram at docs/knowledge_tools_venn_diagram.html as the visual centerpiece. Source material: docs/product_comparison_brief.md (existing Obsidian analysis), plus NotebookLM positioning (no API, no agent integration, great for consuming docs but manual). Key differentiator: LoreDocs is automation-native -- agents read/write programmatically. NotebookLM is human-native -- great UX but no programmatic access. They complement each other. Possible title angles: "Your AI's Knowledge Stack" or "Three Tools, Zero Overlap" or "Why I Use All Three."
 - Cross-surface persistence deep dive (Code + Cowork + Chat workflows)
 - SQL Server + AI: what data teams actually want from MCP tools
 - Why we chose SQLite+FTS5 over vector embeddings for session search

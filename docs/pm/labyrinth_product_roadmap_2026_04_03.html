@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Labyrinth Analytics Product Roadmap - 2026-04-03</title>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Raleway:wght@300;400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --card: #2d2d44;
+      --border: rgba(154,148,148,0.2);
+      --text: #e8e0d4;
+      --text-muted: #9a9494;
+      --accent: #7b2d8e;
+      --accent-hover: #b794c7;
+      --gold: #d4a843;
+      --green: #22c55e;
+      --yellow: #eab308;
+      --red: #ef4444;
+      --orange: #f97316;
+      --blue: #3b82f6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Raleway', system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    h1, h2, h3, h4, .section-title {
+      font-family: 'Cinzel', serif;
+    }
+    code, .mono {
+      font-family: 'Fira Code', monospace;
+    }
+
+    /* --- Layout --- */
+    .wrapper { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .card-full { grid-column: 1 / -1; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } .card-full { grid-column: 1; } }
+
+    /* --- Header --- */
+    .header {
+      text-align: center;
+      padding: 40px 24px 32px;
+      border-bottom: 1px solid var(--gold);
+      margin-bottom: 32px;
+      position: relative;
+    }
+    .header h1 {
+      font-size: 2.2rem;
+      color: var(--gold);
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+    .header .subtitle {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+    .header .rune-divider {
+      color: var(--accent);
+      font-size: 1.2rem;
+      margin: 12px 0;
+      letter-spacing: 0.3em;
+    }
+
+    /* --- KPI Cards --- */
+    .kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+    @media (max-width: 900px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 480px) { .kpi-row { grid-template-columns: 1fr; } }
+    .kpi-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      text-align: center;
+      border-top: 3px solid var(--accent);
+    }
+    .kpi-card .kpi-label { color: var(--text-muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+    .kpi-card .kpi-value { font-family: 'Cinzel', serif; font-size: 1.8rem; color: var(--gold); font-weight: 700; }
+    .kpi-card .kpi-sub { color: var(--text-muted); font-size: 0.75rem; margin-top: 4px; }
+    .kpi-card.kpi-green { border-top-color: var(--green); }
+    .kpi-card.kpi-green .kpi-value { color: var(--green); }
+    .kpi-card.kpi-blue { border-top-color: var(--blue); }
+    .kpi-card.kpi-blue .kpi-value { color: var(--blue); }
+    .kpi-card.kpi-orange { border-top-color: var(--orange); }
+    .kpi-card.kpi-orange .kpi-value { color: var(--orange); }
+
+    /* --- Cards --- */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+    }
+    .card-header:hover { background: rgba(123,45,142,0.08); }
+    .card-header h2 { font-size: 1rem; color: var(--gold); letter-spacing: 0.04em; }
+    .toggle-arrow { color: var(--text-muted); font-size: 0.85rem; transition: transform 0.2s; }
+    .toggle-arrow.open { transform: rotate(180deg); }
+    .collapsible { overflow: hidden; transition: max-height 0.3s ease; }
+    .card-body { padding: 20px; }
+
+    /* --- Badges --- */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .badge-production { background: rgba(34,197,94,0.15); color: var(--green); }
+    .badge-alpha { background: rgba(123,45,142,0.2); color: var(--accent-hover); }
+    .badge-dev { background: rgba(249,115,22,0.15); color: var(--orange); }
+    .badge-planned { background: rgba(136,136,160,0.15); color: var(--text-muted); }
+    .badge-hold { background: rgba(59,130,246,0.12); color: var(--blue); }
+    .badge-done { background: rgba(34,197,94,0.12); color: var(--green); }
+    .badge-open { background: rgba(239,68,68,0.12); color: var(--red); }
+    .badge-high { background: rgba(239,68,68,0.15); color: var(--red); }
+    .badge-medium { background: rgba(234,179,8,0.15); color: var(--yellow); }
+    .badge-low { background: rgba(34,197,94,0.12); color: var(--green); }
+    .badge-resolved { background: rgba(34,197,94,0.12); color: var(--green); }
+
+    /* --- Tables --- */
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th {
+      text-align: left;
+      padding: 8px 12px;
+      background: rgba(123,45,142,0.15);
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 9px 12px;
+      border-bottom: 1px solid rgba(154,148,148,0.1);
+      vertical-align: top;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+
+    /* --- Changelog --- */
+    .changelog-item {
+      display: flex;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(154,148,148,0.1);
+    }
+    .changelog-item:last-child { border-bottom: none; }
+    .changelog-date { color: var(--text-muted); font-family: 'Fira Code', monospace; font-size: 0.78rem; min-width: 90px; padding-top: 2px; }
+    .changelog-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-top: 6px; flex-shrink: 0; }
+    .changelog-text { flex: 1; }
+    .changelog-tag { display: inline-block; margin-right: 4px; padding: 1px 6px; border-radius: 3px; font-size: 0.7rem; font-weight: 600; background: rgba(123,45,142,0.2); color: var(--accent-hover); }
+
+    /* --- Phase Bar --- */
+    .phase-bar { margin: 8px 0 16px; }
+    .phase-track { display: flex; height: 32px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border); }
+    .phase-segment {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      font-family: 'Cinzel', serif;
+      color: rgba(255,255,255,0.9);
+      border-right: 1px solid rgba(255,255,255,0.1);
+    }
+    .phase-segment:last-child { border-right: none; }
+    .phase-1 { background: var(--accent); flex: 1.5; }
+    .phase-2 { background: #0f6b8a; flex: 1.5; }
+    .phase-3 { background: #1a7048; flex: 1.5; }
+    .phase-4 { background: #6b4f0f; flex: 1.5; }
+    .phase-active { position: relative; }
+    .phase-active::after {
+      content: "NOW";
+      position: absolute;
+      top: -18px;
+      right: 8px;
+      font-size: 0.6rem;
+      color: var(--gold);
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+    }
+    .phase-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+    .phase-legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--text-muted); }
+    .phase-legend-dot { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+    .phase-month-labels { display: flex; justify-content: space-between; color: var(--text-muted); font-size: 0.7rem; margin-top: 4px; padding: 0 2px; font-family: 'Fira Code', monospace; }
+    .phase-now-marker { color: var(--gold); font-size: 0.7rem; text-align: center; margin-top: 4px; }
+
+    /* --- Tabs --- */
+    .tab-nav { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+    .tab-btn {
+      padding: 8px 16px;
+      background: transparent;
+      border: 1px solid transparent;
+      border-bottom: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-family: 'Raleway', sans-serif;
+      font-size: 0.82rem;
+      font-weight: 600;
+      border-radius: 4px 4px 0 0;
+      transition: all 0.15s;
+    }
+    .tab-btn:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+    .tab-btn.active { color: var(--gold); border-color: var(--border); background: var(--card); border-bottom-color: var(--card); position: relative; top: 1px; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* --- Product Card --- */
+    .product-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+    .product-name { font-family: 'Cinzel', serif; font-size: 1.3rem; color: var(--gold); }
+    .product-version { font-family: 'Fira Code', monospace; font-size: 0.78rem; color: var(--text-muted); margin-left: 4px; }
+    .product-desc { color: var(--text-muted); font-size: 0.88rem; line-height: 1.6; margin-bottom: 20px; }
+
+    /* --- Pricing Tiers --- */
+    .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+    @media (max-width: 700px) { .pricing-grid { grid-template-columns: 1fr; } }
+    .pricing-tier {
+      background: rgba(0,0,0,0.15);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 14px;
+    }
+    .pricing-tier.tier-pro { border-color: rgba(123,45,142,0.4); }
+    .pricing-tier.tier-team { border-color: rgba(212,168,67,0.3); }
+    .tier-name { font-family: 'Cinzel', serif; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 4px; }
+    .tier-price { font-size: 1.2rem; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+    .tier-price .tier-period { font-size: 0.7rem; color: var(--text-muted); font-weight: 400; }
+    .tier-feature { font-size: 0.78rem; color: var(--text-muted); padding: 2px 0; display: flex; gap: 6px; align-items: flex-start; }
+    .tier-feature::before { content: "|--"; color: var(--accent); font-family: 'Fira Code', monospace; font-size: 0.7rem; flex-shrink: 0; }
+
+    /* --- Feature Grid --- */
+    .feature-section-title { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin: 16px 0 10px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+    .feature-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 16px; }
+    @media (max-width: 600px) { .feature-grid { grid-template-columns: 1fr; } }
+    .feature-item { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .dot-done { background: var(--green); }
+    .dot-wip { background: var(--orange); border: 2px solid var(--orange); }
+    .dot-planned { background: transparent; border: 2px solid var(--text-muted); }
+
+    /* --- Revenue Table --- */
+    .revenue-section-title { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin: 16px 0 10px; padding-bottom: 4px; border-bottom: 1px solid var(--border); }
+
+    /* --- Dev Timeline --- */
+    .dev-timeline { position: relative; padding-left: 24px; margin-top: 16px; }
+    .dev-timeline::before { content: ""; position: absolute; left: 7px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+    .tl-item { position: relative; padding: 6px 0 6px 16px; }
+    .tl-dot {
+      position: absolute;
+      left: -19px;
+      top: 10px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+    }
+    .tl-dot.active { background: var(--green); border: 2px solid var(--green); }
+    .tl-dot.current { background: var(--orange); border: 2px solid var(--orange); }
+    .tl-dot.future { background: transparent; border: 2px solid var(--text-muted); }
+    .tl-date { font-family: 'Fira Code', monospace; font-size: 0.72rem; color: var(--text-muted); }
+    .tl-label { font-size: 0.84rem; color: var(--text); }
+    .tl-desc { font-size: 0.76rem; color: var(--text-muted); }
+
+    /* --- Risk Cards --- */
+    .risk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 700px) { .risk-grid { grid-template-columns: 1fr; } }
+    .risk-card {
+      border-radius: 6px;
+      padding: 14px 16px;
+      border-left: 3px solid;
+    }
+    .risk-card.risk { border-left-color: var(--red); background: rgba(239,68,68,0.06); }
+    .risk-card.resolved { border-left-color: var(--green); background: rgba(34,197,94,0.05); }
+    .risk-card.callout { border-left-color: var(--blue); background: rgba(59,130,246,0.06); }
+    .risk-card.warning { border-left-color: var(--yellow); background: rgba(234,179,8,0.06); }
+    .risk-title { font-weight: 600; font-size: 0.88rem; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+    .risk-desc { font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; }
+    .risk-meta { font-size: 0.72rem; color: var(--text-muted); margin-top: 6px; font-family: 'Fira Code', monospace; }
+
+    /* --- Next 30 Days Timeline --- */
+    .next-timeline { position: relative; padding-left: 28px; }
+    .next-timeline::before { content: ""; position: absolute; left: 9px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+    .next-week { margin-bottom: 24px; position: relative; }
+    .next-week-dot { position: absolute; left: -23px; top: 4px; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); border: 2px solid var(--accent-hover); display: flex; align-items: center; justify-content: center; }
+    .next-week-label { font-family: 'Cinzel', serif; font-size: 0.85rem; color: var(--gold); margin-bottom: 8px; }
+    .next-task { display: flex; gap: 8px; padding: 5px 0; font-size: 0.82rem; color: var(--text-muted); border-bottom: 1px solid rgba(154,148,148,0.06); }
+    .next-task:last-child { border-bottom: none; }
+    .next-task-owner { color: var(--accent-hover); font-weight: 600; min-width: 60px; font-size: 0.78rem; }
+    .next-task.priority { color: var(--text); }
+    .next-task.priority .next-task-owner { color: var(--gold); }
+
+    /* --- Attention Items --- */
+    .attention-item {
+      padding: 10px 14px;
+      border-radius: 4px;
+      border-left: 3px solid;
+      margin-bottom: 8px;
+    }
+    .attention-item:last-child { margin-bottom: 0; }
+    .attention-high { border-left-color: var(--red); background: rgba(239,68,68,0.06); }
+    .attention-medium { border-left-color: var(--yellow); background: rgba(234,179,8,0.06); }
+    .attention-info { border-left-color: var(--blue); background: rgba(59,130,246,0.06); }
+    .attention-title { font-weight: 600; font-size: 0.85rem; margin-bottom: 2px; }
+    .attention-desc { font-size: 0.78rem; color: var(--text-muted); }
+
+    /* --- Portfolio summary --- */
+    .portfolio-stat { text-align: center; padding: 16px; }
+    .portfolio-stat .stat-val { font-family: 'Cinzel', serif; font-size: 1.5rem; color: var(--gold); }
+    .portfolio-stat .stat-label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; margin-top: 4px; }
+    .portfolio-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-top: 12px; }
+    .portfolio-grid .portfolio-stat { border-right: 1px solid var(--border); }
+    .portfolio-grid .portfolio-stat:last-child { border-right: none; }
+    @media (max-width: 600px) { .portfolio-grid { grid-template-columns: repeat(2, 1fr); } }
+
+    /* --- Debbie Action Items --- */
+    .action-priority-high { color: var(--red); font-weight: 700; }
+    .action-priority-medium { color: var(--yellow); }
+    .action-priority-low { color: var(--text-muted); }
+
+    /* --- Footer --- */
+    .footer {
+      text-align: center;
+      padding: 32px 16px;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      border-top: 1px solid var(--border);
+      margin-top: 40px;
+    }
+    .footer-divider { color: var(--accent); margin: 0 8px; }
+  </style>
+</head>
+<body>
+
+<div class="wrapper">
+
+  <!-- ===================== HEADER ===================== -->
+  <header class="header">
+    <h1>Labyrinth Analytics -- Product Roadmap</h1>
+    <div class="rune-divider">* * * * *</div>
+    <div class="subtitle">
+      Labyrinth Analytics Consulting | Lore Product Family | Target: $8,000/month passive income | Updated April 3, 2026
+    </div>
+  </header>
+
+  <!-- ===================== KPI SUMMARY ROW ===================== -->
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <div class="kpi-label">Active Products</div>
+      <div class="kpi-value">3</div>
+      <div class="kpi-sub">1 Production, 1 Alpha, 1 Dev</div>
+    </div>
+    <div class="kpi-card kpi-green">
+      <div class="kpi-label">Current MRR</div>
+      <div class="kpi-value">$0</div>
+      <div class="kpi-sub">Stripe not yet activated</div>
+    </div>
+    <div class="kpi-card kpi-blue">
+      <div class="kpi-label">Month 12 MRR Target</div>
+      <div class="kpi-value">$4,913</div>
+      <div class="kpi-sub">LoreConvo $3,278 + LoreDocs $1,635</div>
+    </div>
+    <div class="kpi-card kpi-orange">
+      <div class="kpi-label">Month 24 MRR Target</div>
+      <div class="kpi-value">$11,848</div>
+      <div class="kpi-sub">LoreConvo ~$3,268 + LoreDocs ~$8,580</div>
+    </div>
+  </div>
+
+  <!-- ===================== WHAT CHANGED THIS WEEK ===================== -->
+  <div class="card card-full">
+    <div class="card-header" onclick="toggleSection(this)">
+      <h2>What Changed This Week</h2>
+      <span class="toggle-arrow open">&#9660;</span>
+    </div>
+    <div class="collapsible">
+      <div class="card-body">
+        <div class="changelog-item">
+          <div class="changelog-date">2026-04-03</div>
+          <div class="changelog-dot"></div>
+          <div class="changelog-text">
+            <span class="changelog-tag">LoreConvo</span><span class="changelog-tag">LoreDocs</span>
+            <strong>Ed25519 license key validation</strong> -- Offline-verifiable Pro license keys implemented. Product-scoped, expiry-checked, Ed25519 signature-verified. Dev bypass (LORECONVO_PRO=1 + LAB_DEV_MODE=1) retained for agents. generate_license_key.py created for Debbie to issue paid customer keys post-Stripe. 44 new tests (29 LoreConvo + 15 LoreDocs).
+          </div>
+        </div>
+        <div class="changelog-item">
+          <div class="changelog-date">2026-04-03</div>
+          <div class="changelog-dot"></div>
+          <div class="changelog-text">
+            <span class="changelog-tag">LoreConvo</span>
+            <strong>/lore-onboard skill built</strong> -- 5-step guided wizard (MCP connection, database, save/load cycle, hooks, CLAUDE.md). Includes onboard_verify.py standalone CLI and 23 tests. Significantly improves new user setup experience.
+          </div>
+        </div>
+        <div class="changelog-item">
+          <div class="changelog-date">2026-04-03</div>
+          <div class="changelog-dot"></div>
+          <div class="changelog-text">
+            <span class="changelog-tag">Marketplace</span>
+            <strong>Marketplace repo structure built</strong> -- marketplace/claude-plugins/ directory with marketplace.json listing both products. Plugin .mcp.json defaults fixed (PRO: "" for public, dev bypasses for internal). Plugin READMEs updated with full install instructions. Both .plugin files rebuilt. Waiting on Debbie to create labyrinth-analytics/claude-plugins GitHub repo.
+          </div>
+        </div>
+        <div class="changelog-item">
+          <div class="changelog-date">2026-04-03</div>
+          <div class="changelog-dot"></div>
+          <div class="changelog-text">
+            <span class="changelog-tag">Security</span>
+            <strong>SEC-012 + SEC-013 resolved</strong> -- Anthropic bumped to 0.87.0 in SQL Optimizer (CVE fix). .gitignore added to SQL Optimizer directories. All products now pass pip-audit with 0 CVEs.
+          </div>
+        </div>
+        <div class="changelog-item">
+          <div class="changelog-date">2026-04-02</div>
+          <div class="changelog-dot"></div>
+          <div class="changelog-text">
+            <span class="changelog-tag">LoreConvo</span><span class="changelog-tag">LoreDocs</span>
+            <strong>Plugin onboarding UX fixes</strong> -- Fixed plugin.json hook array structure, added auto_load on session start, "Recommended CLAUDE.md Setup" and "Verify Installation" sections in both READMEs. COWORK_RESTORE.md rewritten with correct tool names. Fallback scripts (save_to_loreconvo.py, query_loredocs.py) created and documented.
+          </div>
+        </div>
+        <div class="changelog-item">
+          <div class="changelog-date">2026-04-01</div>
+          <div class="changelog-dot"></div>
+          <div class="changelog-text">
+            <span class="changelog-tag">QA</span><span class="changelog-tag">Security</span>
+            <strong>MEG-031/032/033 fixes + Brock SEC-010</strong> -- SQL Optimizer version mismatch fixed, FTS schema drift resolved, NOT NULL constraint added. API key redacted from historical security reports. Agent fallback scripts (save_to_loreconvo.py, query_loredocs.py) security-reviewed CLEAN.
+          </div>
+        </div>
+        <div class="changelog-item">
+          <div class="changelog-date">2026-04-01</div>
+          <div class="changelog-dot"></div>
+          <div class="changelog-text">
+            <span class="changelog-tag">LoreDocs</span>
+            <strong>LoreDocs README.md created</strong> -- Full user-facing README with all 34 tools documented by category, quick start for Code and Cowork, LoreConvo cross-reference, troubleshooting, BSL license.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== PROJECT PHASES ===================== -->
+  <div class="card card-full">
+    <div class="card-header" onclick="toggleSection(this)">
+      <h2>Project Phases -- 24-Month Horizon</h2>
+      <span class="toggle-arrow open">&#9660;</span>
+    </div>
+    <div class="collapsible">
+      <div class="card-body">
+        <div class="phase-now-marker">[Month 2 of 24 -- NOW: Phase 1, Build &amp; Validate]</div>
+        <div style="position:relative; margin-top:8px;">
+          <div class="phase-track">
+            <div class="phase-segment phase-1 phase-active" title="Phase 1: Build &amp; Validate -- Month 1-6, Mar-Aug 2026">Phase 1: Build &amp; Validate</div>
+            <div class="phase-segment phase-2" title="Phase 2: Launch &amp; First Revenue -- Month 7-12, Sep 2026-Feb 2027">Phase 2: Launch &amp; Revenue</div>
+            <div class="phase-segment phase-3" title="Phase 3: Growth &amp; Scale -- Month 13-18, Mar-Aug 2027">Phase 3: Growth &amp; Scale</div>
+            <div class="phase-segment phase-4" title="Phase 4: Maturity &amp; Optimization -- Month 19-24, Sep 2027-Feb 2028">Phase 4: Maturity</div>
+          </div>
+          <div class="phase-month-labels">
+            <span>Month 1 (Mar 2026)</span>
+            <span>Month 7 (Sep 2026)</span>
+            <span>Month 13 (Mar 2027)</span>
+            <span>Month 19 (Sep 2027)</span>
+            <span>Month 24 (Feb 2028)</span>
+          </div>
+        </div>
+        <div class="phase-legend">
+          <div class="phase-legend-item"><div class="phase-legend-dot" style="background:var(--accent);"></div>Phase 1: Build &amp; Validate (Mar-Aug 2026) -- Products built, marketplace live, first users</div>
+          <div class="phase-legend-item"><div class="phase-legend-dot" style="background:#0f6b8a;"></div>Phase 2: Launch &amp; First Revenue (Sep 2026-Feb 2027) -- Stripe live, first paid customers, $3K+ MRR</div>
+          <div class="phase-legend-item"><div class="phase-legend-dot" style="background:#1a7048;"></div>Phase 3: Growth &amp; Scale (Mar-Aug 2027) -- Semantic search, Team tier, $5K+ MRR</div>
+          <div class="phase-legend-item"><div class="phase-legend-dot" style="background:#6b4f0f;"></div>Phase 4: Maturity &amp; Optimization (Sep 2027-Feb 2028) -- $8K+ target, enterprise, cloud sync</div>
+        </div>
+        <div style="margin-top:16px; padding:10px 14px; background:rgba(123,45,142,0.1); border-radius:6px; border-left:3px solid var(--accent); font-size:0.82rem; color:var(--text-muted);">
+          <strong style="color:var(--gold);">Phase 1 Status:</strong> Products are built and working. The immediate bottleneck is getting the GitHub marketplace repo live so users can install LoreConvo and LoreDocs. Stripe activation is the next major gate after that. Ron completed ~85% of Phase 1 engineering work in the first 6 weeks.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== PRODUCT DETAILS ===================== -->
+  <div class="card card-full">
+    <div class="card-header" onclick="toggleSection(this)">
+      <h2>Product Details</h2>
+      <span class="toggle-arrow open">&#9660;</span>
+    </div>
+    <div class="collapsible">
+      <div class="card-body">
+        <div class="tab-nav">
+          <button class="tab-btn active" onclick="switchTab(this, 'tab-loreconvo')">LoreConvo</button>
+          <button class="tab-btn" onclick="switchTab(this, 'tab-loredocs')">LoreDocs</button>
+          <button class="tab-btn" onclick="switchTab(this, 'tab-sqlopt')">SQL Optimizer</button>
+          <button class="tab-btn" onclick="switchTab(this, 'tab-future')">Future Products</button>
+          <button class="tab-btn" onclick="switchTab(this, 'tab-portfolio')">Portfolio Summary</button>
+        </div>
+
+        <!-- LoreConvo Tab -->
+        <div id="tab-loreconvo" class="tab-pane active">
+          <div class="product-header">
+            <div>
+              <div class="product-name">LoreConvo<span class="product-version">v0.3.0</span></div>
+            </div>
+            <span class="badge badge-production">Production</span>
+          </div>
+          <div class="product-desc">
+            Cross-surface persistent memory for Claude. LoreConvo auto-saves session summaries, decisions, and context across Code, Cowork, and Chat so Claude remembers who you are and what you've built. 12 MCP tools, BSL 1.1 license, Ed25519 Pro license key validation. 50 free sessions, unlimited Pro at $8/month.
+          </div>
+
+          <div class="pricing-grid">
+            <div class="pricing-tier">
+              <div class="tier-name">Free Tier</div>
+              <div class="tier-price">$0 <span class="tier-period">forever</span></div>
+              <div class="tier-feature">50 sessions stored</div>
+              <div class="tier-feature">3 projects max</div>
+              <div class="tier-feature">Full-text search</div>
+              <div class="tier-feature">Persona tagging</div>
+              <div class="tier-feature">Auto-save/load hooks</div>
+            </div>
+            <div class="pricing-tier tier-pro">
+              <div class="tier-name">Pro Tier</div>
+              <div class="tier-price">$8 <span class="tier-period">/month</span></div>
+              <div class="tier-feature">Unlimited sessions</div>
+              <div class="tier-feature">Unlimited projects</div>
+              <div class="tier-feature">Session linking</div>
+              <div class="tier-feature">vault_suggest (proactive)</div>
+              <div class="tier-feature">Chat bridge export</div>
+              <div class="tier-feature">Ed25519 license key</div>
+            </div>
+            <div class="pricing-tier tier-team">
+              <div class="tier-name">Team Tier</div>
+              <div class="tier-price">$19 <span class="tier-period">/month</span></div>
+              <div class="tier-feature">Everything in Pro</div>
+              <div class="tier-feature">Cloud sync (planned)</div>
+              <div class="tier-feature">Shared vault (planned)</div>
+              <div class="tier-feature">Priority support</div>
+            </div>
+          </div>
+
+          <div class="feature-section-title">Feature Status</div>
+          <div class="feature-grid">
+            <div class="feature-item"><div class="dot dot-done"></div>Core MCP server (12 tools)</div>
+            <div class="feature-item"><div class="dot dot-done"></div>Auto-save / auto-load hooks</div>
+            <div class="feature-item"><div class="dot dot-done"></div>vault_suggest (proactive memory)</div>
+            <div class="feature-item"><div class="dot dot-done"></div>Free tier enforcement (50 sessions)</div>
+            <div class="feature-item"><div class="dot dot-done"></div>BSL 1.1 license</div>
+            <div class="feature-item"><div class="dot dot-done"></div>Ed25519 Pro license keys</div>
+            <div class="feature-item"><div class="dot dot-done"></div>Plugin packaging (.plugin file)</div>
+            <div class="feature-item"><div class="dot dot-done"></div>/lore-onboard guided setup skill</div>
+            <div class="feature-item"><div class="dot dot-done"></div>Marketplace repo structure built</div>
+            <div class="feature-item"><div class="dot dot-done"></div>Fallback scripts for scheduled agents</div>
+            <div class="feature-item"><div class="dot dot-wip"></div>GitHub marketplace live (Debbie action)</div>
+            <div class="feature-item"><div class="dot dot-planned"></div>Stripe billing active + first customer</div>
+            <div class="feature-item"><div class="dot dot-planned"></div>Cloud sync (Team tier, Year 2)</div>
+            <div class="feature-item"><div class="dot dot-planned"></div>Chat bridge export</div>
+          </div>
+
+          <div class="revenue-section-title">Revenue Projection -- Quarterly</div>
+          <table>
+            <thead><tr><th>Quarter</th><th>Phase</th><th>Free Users</th><th>Pro Users</th><th>Team Users</th><th>Exit MRR</th><th>Cumul. Rev</th></tr></thead>
+            <tbody>
+              <tr><td>Q1 (Mo 1-3)</td><td>Build + free launch</td><td>130</td><td>17</td><td>1</td><td>$155</td><td>$243</td></tr>
+              <tr><td>Q2 (Mo 4-6)</td><td>Pro tier launch</td><td>430</td><td>75</td><td>7</td><td>$733</td><td>$1,631</td></tr>
+              <tr><td>Q3 (Mo 7-9)</td><td>Growth</td><td>880</td><td>195</td><td>22</td><td>$1,978</td><td>$5,202</td></tr>
+              <tr><td>Q4 (Mo 10-12)</td><td>Optimization</td><td>1,380</td><td>310</td><td>42</td><td>$3,278</td><td>$12,741</td></tr>
+            </tbody>
+          </table>
+          <div style="font-size:0.72rem; color:var(--text-muted); margin-top:6px;">Month 12 target: $3,278 MRR | Pro $8/mo, Team $19/mo | Conservative conversion assumptions</div>
+
+          <div class="feature-section-title">Development Timeline</div>
+          <div class="dev-timeline">
+            <div class="tl-item">
+              <div class="tl-dot active"></div>
+              <div class="tl-date">Mar 22, 2026</div>
+              <div class="tl-label">Core product shipped</div>
+              <div class="tl-desc">12 MCP tools, vault_suggest, plugin packaging, marketplace listing approved</div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-dot active"></div>
+              <div class="tl-date">Mar 26, 2026</div>
+              <div class="tl-label">Lore rebrand complete</div>
+              <div class="tl-desc">ConvoVault -> LoreConvo across all surfaces, repos, and documentation</div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-dot active"></div>
+              <div class="tl-date">Mar 31, 2026</div>
+              <div class="tl-label">BSL 1.1 license + security hardening</div>
+              <div class="tl-desc">Business Source License 1.1 applied, dependency pinning, pip-audit clean</div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-dot active"></div>
+              <div class="tl-date">Apr 2, 2026</div>
+              <div class="tl-label">Plugin onboarding UX overhaul</div>
+              <div class="tl-desc">Hook fixes, CLAUDE.md setup guide, verify-install steps, COWORK_RESTORE.md rewrite</div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-dot active"></div>
+              <div class="tl-date">Apr 3, 2026</div>
+              <div class="tl-label">Ed25519 license keys + /lore-onboard skill</div>
+              <div class="tl-desc">Offline-verifiable Pro licensing, 44 new tests, guided onboarding wizard</div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-dot current"></div>
+              <div class="tl-date">Apr 2026 (Debbie action)</div>
+              <div class="tl-label">GitHub marketplace goes live</div>
+              <div class="tl-desc">Debbie creates labyrinth-analytics/claude-plugins repo and tests install flow</div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-dot future"></div>
+              <div class="tl-date">Q2 2026 target</div>
+              <div class="tl-label">Stripe live + first paid customer</div>
+              <div class="tl-desc">Business verification, bank account, EIN. Issuing first license key via generate_license_key.py</div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-dot future"></div>
+              <div class="tl-date">Year 2 target</div>
+              <div class="tl-label">Cloud sync + Team tier activation</div>
+              <div class="tl-desc">Shared vault, multi-user support, cross-device sync</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LoreDocs Tab -->
+        <div id="tab-loredocs" class="tab-pane">
+          <div class="product-header">
+            <div>
+              <div class="product-name">LoreDocs<span class="product-version">v0.1.0</span></div>
+            </div>
+            <span class="badge badge-alpha">Alpha</span>
+          </div>
+          <div class="product-desc">
+            AI project knowledge management. LoreDocs is a local-first "Git + file manager + search engine" for AI project knowledge -- structured vaults with full-text search, rich metadata, version history, and context injection into Claude conversations. 34 MCP tools, BSL 1.1 license, Ed25519 Pro license key validation. 3 vaults free, unlimited Pro at $9/month.
+          </div>
+
+          <div class="pricing-grid">
+            <div class="pricing-tier">
+              <div class="tier-name">Free Tier</div>
+              <div class="tier-price">$0 <span class="tier-period">forever</span></div>
+              <div class="tier-feature">3 vaults</div>
+              <div class="tier-feature">50 docs per vault, 500MB</div>
+              <div class="tier-feature">Single-vault FTS search</div>
+              <div class="tier-feature">Basic tags + categories</div>
+              <div class="tier-feature">Last 5 version history</div>
+            </div>
+            <div class="pricing-tier tier-pro">
+              <div class="tier-name">Pro Tier</div>
+              <div class="tier-price">$9 <span class="tier-period">/month</span></div>
+              <div class="tier-feature">Unlimited vaults + docs</div>
+              <div class="tier-feature">10GB total storage</div>
+              <div class="tier-feature">Cross-vault FTS search</div>
+              <div class="tier-feature">Unlimited version history</div>
+              <div class="tier-feature">vault_suggest (smart)</div>
+              <div class="tier-feature">Export/import tools</div>
+            </div>
+            <div class="pricing-tier tier-team">
+              <div class="tier-name">Team Tier</div>
+              <div class="tier-price">$19 <span class="tier-period">/month</span></div>
+              <div class="tier-feature">Everything in Pro</div>
+              <div class="tier-feature">25GB per seat</div>
+              <div class="tier-feature">Shared vaults via git</div>
+              <div class="tier-feature">Access controls per vault</div>
+              <div class="tier-feature">Audit log (git history)</div>
+            </div>
+          </div>
+
+          <div class="feature-section-title">Feature Status</div>
+          <div class="feature-grid">
+            <div class="feature-item"><div class="dot dot-done"></div>Core MCP server (34 tools)</div>
+            <div class="feature-item"><div class="dot dot-done"></div>Vault CRUD + document management</div>
+            <div class="feature-item"><div class="dot dot-done"></div>FTS5 full-text search</div>
+            <div class="feature-item"><div class="dot dot-done"></div>Tags, categories, version history</div>
+            <div class="feature-item"><div class="dot dot-done"></div>Cross-vault doc links (vault_link_doc)</div>
+            <div class="feature-item"><div class="dot dot-done"></div>Free tier enforcement (3 vaults)</div>
+            <div class="feature-item"><div class="dot dot-done"></div>BSL 1.1 license</div>
+            <div class="feature-item"><div class="dot dot-done"></div>Ed25519 Pro license keys</div>
+            <div class="feature-item"><div class="dot dot-done"></div>Plugin packaging (.plugin file)</div>
+            <div class="feature-item"><div class="dot dot-done"></div>Full user-facing README.md</div>
+            <div class="feature-item"><div class="dot dot-wip"></div>GitHub marketplace live (Debbie action)</div>
+            <div class="feature-item"><div class="dot dot-planned"></div>Stripe billing active + first customer</div>
+            <div class="feature-item"><div class="dot dot-planned"></div>Semantic search (embeddings, Year 2)</div>
+            <div class="feature-item"><div class="dot dot-planned"></div>Shared vaults via git (Team, Year 2)</div>
+            <div class="feature-item"><div class="dot dot-planned"></div>Claude Projects sync (when API available)</div>
+          </div>
+
+          <div class="revenue-section-title">Revenue Projection -- Quarterly (24 months)</div>
+          <table>
+            <thead><tr><th>Quarter</th><th>Phase</th><th>Pro Users</th><th>Team Users</th><th>Exit MRR</th><th>Cumul. Rev</th></tr></thead>
+            <tbody>
+              <tr><td>Q1 (Mo 1-3)</td><td>Free launch + alpha</td><td>0</td><td>0</td><td>$0</td><td>$0</td></tr>
+              <tr><td>Q2 (Mo 4-6)</td><td>Pro tier launch</td><td>35</td><td>0</td><td>$315</td><td>$945</td></tr>
+              <tr><td>Q3 (Mo 7-9)</td><td>Growth + Team</td><td>80</td><td>5</td><td>$815</td><td>$3,390</td></tr>
+              <tr><td>Q4 (Mo 10-12)</td><td>Year 1 optimization</td><td>150</td><td>15</td><td>$1,635</td><td>$8,295</td></tr>
+              <tr><td>Q5-Q6 (Mo 13-18)</td><td>Semantic search launch</td><td>400</td><td>50</td><td>$4,550</td><td>$30,405</td></tr>
+              <tr><td>Q7-Q8 (Mo 19-24)</td><td>Enterprise + maturity</td><td>700</td><td>120</td><td>$8,580</td><td>$75,555</td></tr>
+            </tbody>
+          </table>
+          <div style="font-size:0.72rem; color:var(--text-muted); margin-top:6px;">Month 24 target: $8,580 MRR | Pro $9/mo, Team $19/mo | Year 2 semantic search is major growth driver</div>
+
+          <div class="feature-section-title">Development Timeline</div>
+          <div class="dev-timeline">
+            <div class="tl-item">
+              <div class="tl-dot active"></div>
+              <div class="tl-date">Mar 22, 2026</div>
+              <div class="tl-label">Phase 1+2+3+4 complete at launch</div>
+              <div class="tl-desc">34 tools shipped: vault CRUD, FTS5 search, tags, version history, cross-vault links, context injection, import/export, free/Pro tiers</div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-dot active"></div>
+              <div class="tl-date">Mar 26, 2026</div>
+              <div class="tl-label">Lore rebrand + BSL 1.1</div>
+              <div class="tl-desc">ProjectVault -> LoreDocs, Business Source License applied</div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-dot active"></div>
+              <div class="tl-date">Apr 3, 2026</div>
+              <div class="tl-label">Ed25519 license keys</div>
+              <div class="tl-desc">Pro tier now requires signed license key. 15 new tests. MEG-037 resolved.</div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-dot current"></div>
+              <div class="tl-date">Apr 2026 (Debbie action)</div>
+              <div class="tl-label">GitHub marketplace goes live</div>
+              <div class="tl-desc">Same blocker as LoreConvo -- labyrinth-analytics/claude-plugins repo needed</div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-dot future"></div>
+              <div class="tl-date">Q2 2026 target</div>
+              <div class="tl-label">Stripe live + first paid subscriber</div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-dot future"></div>
+              <div class="tl-date">Year 2 target</div>
+              <div class="tl-label">Semantic search (Pro differentiator)</div>
+              <div class="tl-desc">Embeddings-based search -- either local (sentence-transformers) or API-based. Decision deferred to Year 2.</div>
+            </div>
+            <div class="tl-item">
+              <div class="tl-dot future"></div>
+              <div class="tl-date">Year 2 target</div>
+              <div class="tl-label">Team tier: shared vaults via git</div>
+              <div class="tl-desc">Git-based collaboration for data teams. No proprietary cloud required.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SQL Optimizer Tab -->
+        <div id="tab-sqlopt" class="tab-pane">
+          <div class="product-header">
+            <div>
+              <div class="product-name">SQL Query Optimizer<span class="product-version">v0.1.0</span></div>
+            </div>
+            <span class="badge badge-dev">Dev / On Hold</span>
+          </div>
+          <div class="product-desc">
+            A Claude Code skill + FastMCP backend that analyzes SQL queries and provides AI-powered optimization suggestions. Backend built with 34 tests passing. On hold pending marketplace infrastructure (LoreConvo + LoreDocs marketplace must be live before paid API backend launches). Uses Claude to analyze queries and identify performance improvements.
+          </div>
+
+          <div class="feature-section-title">Feature Status</div>
+          <div class="feature-grid">
+            <div class="feature-item"><div class="dot dot-done"></div>SQL analyzer backend (FastMCP)</div>
+            <div class="feature-item"><div class="dot dot-done"></div>Query analysis + optimization suggestions</div>
+            <div class="feature-item"><div class="dot dot-done"></div>Credit system (usage billing)</div>
+            <div class="feature-item"><div class="dot dot-done"></div>Security hardening (SEC-002-009 resolved)</div>
+            <div class="feature-item"><div class="dot dot-done"></div>ClawHub skill packaging</div>
+            <div class="feature-item"><div class="dot dot-planned"></div>Marketplace integration (blocked)</div>
+            <div class="feature-item"><div class="dot dot-planned"></div>Integration tests with real SQL Server</div>
+            <div class="feature-item"><div class="dot dot-planned"></div>Paid API backend + Stripe billing</div>
+          </div>
+
+          <div style="margin-top:12px; padding:10px 14px; background:rgba(59,130,246,0.08); border-radius:6px; border-left:3px solid var(--blue); font-size:0.82rem; color:var(--text-muted);">
+            <strong style="color:var(--blue);">Hold Reason:</strong> SQL Optimizer requires a paid API backend (credits model), which requires Stripe billing to be live. Blocked until LoreConvo/LoreDocs marketplace is proven. Also blocked on lack of local SQL Server for integration testing (Fred Hutch machines are off-limits). Unblocks when: marketplace live + Stripe active + database-agnostic approach validated.
+          </div>
+        </div>
+
+        <!-- Future Products Tab -->
+        <div id="tab-future" class="tab-pane">
+          <div style="margin-bottom:16px; color:var(--text-muted); font-size:0.85rem;">
+            Products in the pipeline, approved or pending architecture review. Build order follows marketplace + billing readiness.
+          </div>
+          <table>
+            <thead><tr><th>Product</th><th>Status</th><th>Pipeline ID</th><th>Priority</th><th>Notes</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><strong>Financial Report Generator</strong></td>
+                <td><span class="badge badge-planned">Not Started</span></td>
+                <td class="mono" style="font-size:0.75rem;">--</td>
+                <td>Post-marketplace</td>
+                <td style="font-size:0.8rem; color:var(--text-muted);">Ron TODO. Labyrinth Analytics domain strength. Will leverage Debbie's 25yr finance expertise.</td>
+              </tr>
+              <tr>
+                <td><strong>CSV/Excel Data Transformer</strong></td>
+                <td><span class="badge badge-planned">Not Started</span></td>
+                <td class="mono" style="font-size:0.75rem;">--</td>
+                <td>Post-marketplace</td>
+                <td style="font-size:0.8rem; color:var(--text-muted);">Ron TODO. Broad appeal for data teams. No SQL Server dependency.</td>
+              </tr>
+              <tr>
+                <td><strong>LorePrompts</strong></td>
+                <td><span class="badge badge-alpha">Architecture Proposed</span></td>
+                <td class="mono" style="font-size:0.75rem;">OPP-003</td>
+                <td>P3</td>
+                <td style="font-size:0.8rem; color:var(--text-muted);">Local prompt versioning. Awaiting Debbie approval. Would complete the Lore memory-knowledge-prompts trifecta.</td>
+              </tr>
+              <tr>
+                <td><strong>AI Cost Attribution MCP</strong></td>
+                <td><span class="badge badge-alpha">Architecture Proposed</span></td>
+                <td class="mono" style="font-size:0.75rem;">OPP-002</td>
+                <td>P2</td>
+                <td style="font-size:0.8rem; color:var(--text-muted);">Per-project Claude API cost tracking. Awaiting Debbie approval.</td>
+              </tr>
+              <tr>
+                <td><strong>MCP Token Profiler</strong></td>
+                <td><span class="badge badge-alpha">Architecture Proposed</span></td>
+                <td class="mono" style="font-size:0.75rem;">OPP-004</td>
+                <td>P4</td>
+                <td style="font-size:0.8rem; color:var(--text-muted);">Diagnostic CLI for MCP context bloat. Effort 1. Best built free as lead-gen. Awaiting approval.</td>
+              </tr>
+              <tr>
+                <td><strong>Data Pipeline Test Harness</strong></td>
+                <td><span class="badge badge-planned">Scouted</span></td>
+                <td class="mono" style="font-size:0.75rem;">OPP-013</td>
+                <td>--</td>
+                <td style="font-size:0.8rem; color:var(--text-muted);">Scout found. Awaiting Debbie triage decision (approve-for-review or hold).</td>
+              </tr>
+              <tr>
+                <td><strong>Data Catalog Lite MCP</strong></td>
+                <td><span class="badge badge-planned">Scouted</span></td>
+                <td class="mono" style="font-size:0.75rem;">OPP-015</td>
+                <td>--</td>
+                <td style="font-size:0.8rem; color:var(--text-muted);">Scout found. Local-first catalog crawling DB metadata. Awaiting Debbie triage.</td>
+              </tr>
+              <tr>
+                <td><strong>Smart SQL Server MCP</strong></td>
+                <td><span class="badge badge-hold">On Hold</span></td>
+                <td class="mono" style="font-size:0.75rem;">OPP-001</td>
+                <td>P1 (held)</td>
+                <td style="font-size:0.8rem; color:var(--text-muted);">Blocked: no local SQL Server for testing. Needs database-agnostic rearchitect to unblock.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Portfolio Summary Tab -->
+        <div id="tab-portfolio" class="tab-pane">
+          <div class="portfolio-grid">
+            <div class="portfolio-stat">
+              <div class="stat-val">3</div>
+              <div class="stat-label">Active Products</div>
+            </div>
+            <div class="portfolio-stat">
+              <div class="stat-val">$0</div>
+              <div class="stat-label">Current MRR</div>
+            </div>
+            <div class="portfolio-stat">
+              <div class="stat-val">338</div>
+              <div class="stat-label">Tests Passing</div>
+            </div>
+            <div class="portfolio-stat">
+              <div class="stat-val">0</div>
+              <div class="stat-label">CVEs (pip-audit)</div>
+            </div>
+          </div>
+          <div style="margin-top:20px;">
+            <table>
+              <thead><tr><th>Product</th><th>Version</th><th>Status</th><th>Tools</th><th>Tests</th><th>Mo 12 MRR</th><th>Mo 24 MRR</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><strong>LoreConvo</strong></td>
+                  <td class="mono">v0.3.0</td>
+                  <td><span class="badge badge-production">Production</span></td>
+                  <td>12 MCP</td>
+                  <td>197 pass</td>
+                  <td style="color:var(--green);">$3,278</td>
+                  <td style="color:var(--green);">~$4,500</td>
+                </tr>
+                <tr>
+                  <td><strong>LoreDocs</strong></td>
+                  <td class="mono">v0.1.0</td>
+                  <td><span class="badge badge-alpha">Alpha</span></td>
+                  <td>34 MCP</td>
+                  <td>39 pass</td>
+                  <td style="color:var(--blue);">$1,635</td>
+                  <td style="color:var(--blue);">$8,580</td>
+                </tr>
+                <tr>
+                  <td><strong>SQL Optimizer</strong></td>
+                  <td class="mono">v0.1.0</td>
+                  <td><span class="badge badge-dev">On Hold</span></td>
+                  <td>1 skill</td>
+                  <td>102 pass*</td>
+                  <td style="color:var(--text-muted);">$0 (hold)</td>
+                  <td style="color:var(--text-muted);">TBD</td>
+                </tr>
+                <tr>
+                  <td><strong>Future Products</strong></td>
+                  <td class="mono">--</td>
+                  <td><span class="badge badge-planned">Pipeline</span></td>
+                  <td>--</td>
+                  <td>--</td>
+                  <td style="color:var(--text-muted);">$0</td>
+                  <td style="color:var(--text-muted);">TBD</td>
+                </tr>
+                <tr style="border-top: 2px solid var(--border);">
+                  <td><strong>Portfolio Total</strong></td>
+                  <td>--</td>
+                  <td>--</td>
+                  <td>--</td>
+                  <td><strong>338 pass</strong></td>
+                  <td style="color:var(--gold);"><strong>$4,913</strong></td>
+                  <td style="color:var(--gold);"><strong>$13,080+</strong></td>
+                </tr>
+              </tbody>
+            </table>
+            <div style="font-size:0.72rem; color:var(--text-muted); margin-top:6px;">* SQL Optimizer: 34 analyzer + 34 SQL tests + 11 credits + 17 optimizer + 6 security = 102. Separate from LoreConvo (197) and LoreDocs (39). Total 338.</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== RISK REGISTER ===================== -->
+  <div class="card card-full">
+    <div class="card-header" onclick="toggleSection(this)">
+      <h2>Risk Register</h2>
+      <span class="toggle-arrow open">&#9660;</span>
+    </div>
+    <div class="collapsible">
+      <div class="card-body">
+        <div class="risk-grid">
+
+          <div class="risk-card risk">
+            <div class="risk-title"><span class="badge badge-high">OPEN</span> GitHub Marketplace Not Live</div>
+            <div class="risk-desc">Neither LoreConvo nor LoreDocs can be installed by external users until Debbie creates the labyrinth-analytics/claude-plugins GitHub repository and pushes the marketplace/ directory contents. This is the single biggest blocker to user acquisition and revenue.</div>
+            <div class="risk-meta">Severity: HIGH | Owner: Debbie | Unblocked by: Create GitHub repo + test install flow</div>
+          </div>
+
+          <div class="risk-card risk">
+            <div class="risk-title"><span class="badge badge-high">OPEN</span> Stripe Not Activated</div>
+            <div class="risk-desc">No paid subscriptions can be collected until Debbie activates the live Stripe account (sandbox created Mar 22). Requires: business verification, bank account for payouts, EIN for Labyrinth Analytics LLC. Blocks all Pro/Team revenue.</div>
+            <div class="risk-meta">Severity: HIGH | Owner: Debbie | Timeline: Before first paid customer</div>
+          </div>
+
+          <div class="risk-card risk">
+            <div class="risk-title"><span class="badge badge-high">OPEN</span> License Private Key Not Saved</div>
+            <div class="risk-desc">The Ed25519 private key for generating customer Pro license keys (generate_license_key.py) was created Apr 3 and exists ONLY in the LoreConvo session log. If lost, new Pro license keys CANNOT be generated for paying customers. Must be saved to a password manager immediately.</div>
+            <div class="risk-meta">Severity: HIGH | Owner: Debbie | Retrieve: python scripts/save_to_loreconvo.py --read --limit 3 --surface cowork</div>
+          </div>
+
+          <div class="risk-card warning">
+            <div class="risk-title"><span class="badge badge-medium">OPEN</span> SEC-011: TOCTOU Race in LoreDocs Export</div>
+            <div class="risk-desc">LoreDocs storage.py file export checks dest.exists() then writes -- classic TOCTOU race. Low urgency on single-user machine but must be fixed before any multi-user deployment. Remediation: atomic file creation with os.open(dest, os.O_CREAT | os.O_EXCL) or tempfile + rename.</div>
+            <div class="risk-meta">Severity: MEDIUM (single-user, low urgency) | Owner: Ron | Priority: Before multi-user launch</div>
+          </div>
+
+          <div class="risk-card warning">
+            <div class="risk-title"><span class="badge badge-medium">OPEN</span> MEG-036: SQL Optimizer Test Debt</div>
+            <div class="risk-desc">Two SQL credits concurrency tests (test_credits_concurrency.py) are failing against current defensive implementation. Tests were written for older behavior that raised exceptions; implementation now recovers gracefully instead. Tests need updating. Accumulating test debt.</div>
+            <div class="risk-meta">Severity: YELLOW (pre-existing, low risk) | Owner: Ron | Action: Update test expectations to match current behavior</div>
+          </div>
+
+          <div class="risk-card callout">
+            <div class="risk-title"><span class="badge" style="background:rgba(59,130,246,0.12);color:var(--blue);">INFO</span> SEC-006: CreditManager Race Condition</div>
+            <div class="risk-desc">JSON file read-modify-write without locking in SQL Optimizer credits.py. Not urgent until API goes public. Mitigation: filelock library or migrate to SQLite WAL mode. No action required until SQL Optimizer unblocked.</div>
+            <div class="risk-meta">Severity: LOW | Owner: Ron | Action: Fix before SQL Optimizer production launch</div>
+          </div>
+
+          <div class="risk-card callout">
+            <div class="risk-title"><span class="badge" style="background:rgba(59,130,246,0.12);color:var(--blue);">INFO</span> MEG-039/040: Stale Git Index + Untracked Files</div>
+            <div class="risk-desc">MEG-039: git working tree has stale index from prior session (lock files). MEG-040: generate_license_key.py and test_generate_license_key.py not yet committed to git (untracked). Neither is a code bug, both need housekeeping at next Ron session.</div>
+            <div class="risk-meta">Severity: ADVISORY | Owner: Ron | Action: Clean locks, commit untracked files at next session start</div>
+          </div>
+
+          <div class="risk-card callout">
+            <div class="risk-title"><span class="badge" style="background:rgba(59,130,246,0.12);color:var(--blue);">INFO</span> Internal Docs in Public Repo Git History</div>
+            <div class="risk-desc">CLAUDE.md and other internal docs still exist in git history for both LoreConvo and LoreDocs public repos. Not actively exposed but scrub_public_repos.sh needs to be run by Debbie before the next subtree push to clean the history.</div>
+            <div class="risk-meta">Severity: LOW | Owner: Debbie | Action: Run bash scripts/scrub_public_repos.sh before next subtree push</div>
+          </div>
+
+          <div class="risk-card resolved">
+            <div class="risk-title"><span class="badge badge-resolved">RESOLVED</span> SEC-012: Anthropic CVE (Apr 3)</div>
+            <div class="risk-desc">anthropic bumped from 0.86.0 to 0.87.0 in SQL Optimizer. CVE-2026-34450 and CVE-2026-34452 resolved. All products now pass pip-audit with 0 CVEs.</div>
+            <div class="risk-meta">Resolved: 2026-04-03 | Commit: pending next Ron push</div>
+          </div>
+
+          <div class="risk-card resolved">
+            <div class="risk-title"><span class="badge badge-resolved">RESOLVED</span> MEG-037: Plugin .mcp.json PRO Defaults (Apr 3)</div>
+            <div class="risk-desc">Public plugin .mcp.json files incorrectly shipped with LORECONVO_PRO: "1" (granting free Pro to all users). Now correctly default to empty strings. Internal dev .mcp.json retains LAB_DEV_MODE=1 for agent workflows.</div>
+            <div class="risk-meta">Resolved: 2026-04-03 | Commit: 9ad2bc1</div>
+          </div>
+
+          <div class="risk-card resolved">
+            <div class="risk-title"><span class="badge badge-resolved">RESOLVED</span> SEC-010: Redacted API Key in Reports (Mar 31)</div>
+            <div class="risk-desc">Partial Anthropic API key was present in two historical security reports. Both reports updated with sk-ant-***REDACTED***. Git history scrub available but not yet run.</div>
+            <div class="risk-meta">Resolved: 2026-03-31 | Commit: b52d96c</div>
+          </div>
+
+          <div class="risk-card resolved">
+            <div class="risk-title"><span class="badge badge-resolved">RESOLVED</span> SEC-013: SQL Optimizer .gitignore (Apr 3)</div>
+            <div class="risk-desc">SQL Optimizer directories now have .gitignore files covering .env, *.db, *.sqlite, and other sensitive patterns. Previously had no product-level .gitignore.</div>
+            <div class="risk-meta">Resolved: 2026-04-03 | Commit: staged, pending push</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== DEBBIE ACTION ITEMS ===================== -->
+  <div class="card card-full">
+    <div class="card-header" onclick="toggleSection(this)">
+      <h2>Debbie Action Items</h2>
+      <span class="toggle-arrow open">&#9660;</span>
+    </div>
+    <div class="collapsible">
+      <div class="card-body">
+        <table>
+          <thead><tr><th>#</th><th>Item</th><th>Priority</th><th>Status</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>1</td>
+              <td><strong>Create GitHub repo labyrinth-analytics/claude-plugins</strong> and push marketplace/ contents. Test: /plugin marketplace add + /install loreconvo.</td>
+              <td><span class="action-priority-high">HIGH</span></td>
+              <td><span class="badge badge-open">OPEN</span></td>
+              <td style="font-size:0.78rem; color:var(--text-muted);">TOP PRIORITY. Blocks all user acquisition. Ron has the marketplace/ directory ready to push.</td>
+            </tr>
+            <tr>
+              <td>2</td>
+              <td><strong>Save license signing private key</strong> to password manager as "Labyrinth Analytics License Signing Key".</td>
+              <td><span class="action-priority-high">HIGH</span></td>
+              <td><span class="badge badge-open">OPEN</span></td>
+              <td style="font-size:0.78rem; color:var(--text-muted);">Retrieve: python scripts/save_to_loreconvo.py --read --limit 3 --surface cowork. Search for "private key". Without this key, Pro customers cannot be issued license keys.</td>
+            </tr>
+            <tr>
+              <td>3</td>
+              <td><strong>Review and approve rebuilt .plugin files</strong> (LoreConvo v0.3.0 + LoreDocs v0.1.0, rebuilt Apr 3 with fixed .mcp.json and updated READMEs).</td>
+              <td><span class="action-priority-high">HIGH</span></td>
+              <td><span class="badge badge-open">OPEN</span></td>
+              <td style="font-size:0.78rem; color:var(--text-muted);">Files: ron_skills/loreconvo-v0.3.0.plugin and ron_skills/loredocs-v0.1.0.plugin</td>
+            </tr>
+            <tr>
+              <td>4</td>
+              <td><strong>Activate live Stripe account</strong>: business verification, bank account for payouts, EIN for Labyrinth Analytics LLC.</td>
+              <td><span class="action-priority-high">HIGH</span></td>
+              <td><span class="badge badge-open">OPEN</span></td>
+              <td style="font-size:0.78rem; color:var(--text-muted);">Sandbox created Mar 22. Live activation needed before collecting any Pro/Team payments. TierEnforcer and billing wiring already built.</td>
+            </tr>
+            <tr>
+              <td>5</td>
+              <td><strong>Review blog post draft</strong> from Madison: "Why Claude sessions start from zero" (LoreConvo auto-memory post, Apr 1).</td>
+              <td><span class="action-priority-medium">MEDIUM</span></td>
+              <td><span class="badge badge-open">OPEN</span></td>
+              <td style="font-size:0.78rem; color:var(--text-muted);">File: docs/marketing/blog_drafts/blog_why_claude_sessions_start_from_zero_2026_04_01.md. Madison also needs an email template direction (due Apr 4).</td>
+            </tr>
+            <tr>
+              <td>6</td>
+              <td><strong>Triage pipeline opportunities</strong>: OPP-013 (Data Pipeline Test Harness) and OPP-015 (Data Catalog Lite). Approve-for-review or hold?</td>
+              <td><span class="action-priority-medium">MEDIUM</span></td>
+              <td><span class="badge badge-open">OPEN</span></td>
+              <td style="font-size:0.78rem; color:var(--text-muted);">Also: 3 architecture-proposed items (OPP-002, OPP-003, OPP-004) awaiting Debbie approval. Gina noted these have been pending since proposals were written.</td>
+            </tr>
+            <tr>
+              <td>7</td>
+              <td><strong>Run bash scripts/scrub_public_repos.sh</strong> to clean internal docs from LoreConvo + LoreDocs git history before next subtree push.</td>
+              <td><span class="action-priority-low">LOW</span></td>
+              <td><span class="badge badge-open">OPEN</span></td>
+              <td style="font-size:0.78rem; color:var(--text-muted);">Script is present and ready. Run when convenient, before next public push.</td>
+            </tr>
+            <tr>
+              <td>8</td>
+              <td><strong>File USPTO trademarks</strong> for LoreConvo and LoreDocs (Class 009, $350 each).</td>
+              <td><span class="action-priority-low">LOW</span></td>
+              <td><span class="badge badge-hold">ON HOLD</span></td>
+              <td style="font-size:0.78rem; color:var(--text-muted);">On hold per explicit decision: wait for traction and revenue before filing. Will revisit in Phase 2.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== NEXT 30 DAYS -- CRITICAL PATH ===================== -->
+  <div class="card card-full">
+    <div class="card-header" onclick="toggleSection(this)">
+      <h2>Next 30 Days -- Critical Path</h2>
+      <span class="toggle-arrow open">&#9660;</span>
+    </div>
+    <div class="collapsible">
+      <div class="card-body">
+        <div class="next-timeline">
+
+          <div class="next-week">
+            <div class="next-week-dot"></div>
+            <div class="next-week-label">Week of Apr 3-9, 2026 -- UNBLOCK THE MARKETPLACE</div>
+            <div class="next-task priority">
+              <span class="next-task-owner">Debbie</span>
+              <span>[BLOCKER] Create GitHub repo labyrinth-analytics/claude-plugins -- top priority this week</span>
+            </div>
+            <div class="next-task priority">
+              <span class="next-task-owner">Debbie</span>
+              <span>[BLOCKER] Test full install flow: /plugin marketplace add labyrinth-analytics/claude-plugins + /install loreconvo</span>
+            </div>
+            <div class="next-task priority">
+              <span class="next-task-owner">Debbie</span>
+              <span>[CRITICAL] Save Ed25519 license private key to password manager (retrieve from LoreConvo session log)</span>
+            </div>
+            <div class="next-task">
+              <span class="next-task-owner">Ron</span>
+              <span>Fix MEG-039/040: clean git locks, commit generate_license_key.py + test_generate_license_key.py</span>
+            </div>
+            <div class="next-task">
+              <span class="next-task-owner">Madison</span>
+              <span>Email template for LoreConvo session memory post (due Apr 4, promo cadence)</span>
+            </div>
+          </div>
+
+          <div class="next-week">
+            <div class="next-week-dot"></div>
+            <div class="next-week-label">Week of Apr 7-14, 2026 -- FIRST USERS + MARKETING</div>
+            <div class="next-task priority">
+              <span class="next-task-owner">Madison</span>
+              <span>Publish: Knowledge stack Venn blog post (LoreDocs + Obsidian + NotebookLM, Apr 7)</span>
+            </div>
+            <div class="next-task">
+              <span class="next-task-owner">Ron</span>
+              <span>Agent path cleanup TODOs #1-2 (update CLAUDE.md paths, delete old monorepo scripts)</span>
+            </div>
+            <div class="next-task">
+              <span class="next-task-owner">Ron</span>
+              <span>Fix MEG-036: update SQL credits concurrency test expectations to match defensive implementation</span>
+            </div>
+            <div class="next-task">
+              <span class="next-task-owner">Debbie</span>
+              <span>Triage OPP-013 and OPP-015 pipeline opportunities (approve-for-review or hold)</span>
+            </div>
+            <div class="next-task">
+              <span class="next-task-owner">Gina</span>
+              <span>Architecture review if OPP items move to approved-for-review status</span>
+            </div>
+          </div>
+
+          <div class="next-week">
+            <div class="next-week-dot"></div>
+            <div class="next-week-label">Week of Apr 14-21, 2026 -- STRIPE ACTIVATION</div>
+            <div class="next-task priority">
+              <span class="next-task-owner">Debbie</span>
+              <span>[MAJOR MILESTONE] Activate live Stripe account (business verification + bank account + EIN)</span>
+            </div>
+            <div class="next-task">
+              <span class="next-task-owner">Madison</span>
+              <span>Thought leadership post: Building autonomous agent teams with human review gates (Apr 14)</span>
+            </div>
+            <div class="next-task">
+              <span class="next-task-owner">Ron</span>
+              <span>Begin Financial Report Generator or CSV/Excel Transformer design (pick highest-priority from pipeline)</span>
+            </div>
+            <div class="next-task">
+              <span class="next-task-owner">Ron</span>
+              <span>Fix SEC-011: TOCTOU race in LoreDocs storage.py export (prep for multi-user readiness)</span>
+            </div>
+          </div>
+
+          <div class="next-week">
+            <div class="next-week-dot"></div>
+            <div class="next-week-label">Week of Apr 21-28, 2026 -- PRODUCT EXPANSION</div>
+            <div class="next-task">
+              <span class="next-task-owner">Madison</span>
+              <span>Local-first AI blog post: "Why cloud dependency is a liability for data teams" (Apr 21)</span>
+            </div>
+            <div class="next-task">
+              <span class="next-task-owner">Ron</span>
+              <span>Continue new product development (Financial Report Generator or CSV/Excel Transformer)</span>
+            </div>
+            <div class="next-task">
+              <span class="next-task-owner">Madison</span>
+              <span>LoreDocs alpha access promo email (Apr 25) -- coordinate with Stripe activation status</span>
+            </div>
+          </div>
+
+          <div class="next-week">
+            <div class="next-week-dot"></div>
+            <div class="next-week-label">Apr 28 - May 2, 2026 -- FIRST REVENUE MILESTONE</div>
+            <div class="next-task priority">
+              <span class="next-task-owner">Goal</span>
+              <span>[TARGET] First paying Pro customer -- at least one license key issued via generate_license_key.py</span>
+            </div>
+            <div class="next-task">
+              <span class="next-task-owner">Madison</span>
+              <span>Episodic vs semantic memory blog (Apr 28) + token savings social proof (May 2)</span>
+            </div>
+            <div class="next-task">
+              <span class="next-task-owner">Ron</span>
+              <span>New product MVP progress checkpoint -- target working prototype</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== FOOTER ===================== -->
+  <footer class="footer">
+    Labyrinth Analytics Product Roadmap
+    <span class="footer-divider">|</span>
+    Labyrinth Analytics Consulting
+    <span class="footer-divider">|</span>
+    Lore Product Family
+    <span class="footer-divider">|</span>
+    Generated April 3, 2026
+  </footer>
+
+</div>
+
+<script>
+  // Collapsible sections
+  function toggleSection(header) {
+    var collapsible = header.nextElementSibling;
+    var arrow = header.querySelector('.toggle-arrow');
+    if (collapsible.style.maxHeight && collapsible.style.maxHeight !== '0px') {
+      collapsible.style.maxHeight = '0px';
+      arrow.classList.remove('open');
+    } else {
+      collapsible.style.maxHeight = collapsible.scrollHeight + 'px';
+      arrow.classList.add('open');
+    }
+  }
+
+  // Tab switcher
+  function switchTab(btn, tabId) {
+    var nav = btn.parentElement;
+    var tabContainer = nav.parentElement;
+    nav.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+    tabContainer.querySelectorAll('.tab-pane').forEach(function(p) { p.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById(tabId).classList.add('active');
+  }
+
+  // Initialize all collapsibles expanded
+  document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.collapsible').forEach(function(el) {
+      el.style.maxHeight = el.scrollHeight + 'px';
+    });
+  });
+
+  // Also run immediately in case DOM is already loaded
+  document.querySelectorAll('.collapsible').forEach(function(el) {
+    el.style.maxHeight = el.scrollHeight + 'px';
+  });
+</script>
+</body>
+</html>

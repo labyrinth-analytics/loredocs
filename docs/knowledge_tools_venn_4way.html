@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Knowledge Tools: Obsidian + NotebookLM + LoreConvo + LoreDocs</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Raleway:wght@300;400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --card: #2d2d44;
+    --border: rgba(154,148,148,0.2);
+    --text: #e8e0d4;
+    --muted: #9a9494;
+    --accent: #7b2d8e;
+    --accent-hover: #b794c7;
+    --gold: #d4a843;
+    --green: #22c55e;
+    --yellow: #eab308;
+    --red: #ef4444;
+    --orange: #f97316;
+    --blue: #3b82f6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Raleway', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .header {
+    text-align: center;
+    padding: 28px 20px 8px;
+  }
+  .header h1 {
+    font-family: 'Cinzel', serif;
+    font-size: 1.7rem;
+    color: var(--text);
+    margin-bottom: 6px;
+    letter-spacing: 0.5px;
+  }
+  .header p {
+    font-size: 0.92rem;
+    color: var(--muted);
+    max-width: 640px;
+    margin: 0 auto;
+    line-height: 1.5;
+  }
+
+  .main-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 20px 40px;
+    gap: 20px;
+  }
+
+  .hint {
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-top: -4px;
+  }
+
+  /* Venn diagram - diamond layout */
+  .venn-wrapper {
+    position: relative;
+    width: 720px;
+    height: 620px;
+    flex-shrink: 0;
+  }
+
+  .venn-circle {
+    position: absolute;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.3s ease, box-shadow 0.3s ease, opacity 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+  .venn-circle:hover {
+    transform: scale(1.04);
+    z-index: 10;
+  }
+  .venn-circle.active {
+    transform: scale(1.06);
+    z-index: 10;
+  }
+  .venn-circle.dimmed {
+    opacity: 0.2;
+  }
+
+  .circle-label {
+    font-family: 'Cinzel', serif;
+    font-weight: 600;
+    font-size: 1.05rem;
+    pointer-events: none;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.8);
+    line-height: 1.3;
+    color: var(--text);
+  }
+  .circle-sublabel {
+    font-family: 'Raleway', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 400;
+    opacity: 0.85;
+    display: block;
+    margin-top: 3px;
+  }
+
+  /* Obsidian - arcane violet (top) */
+  .obsidian {
+    width: 290px; height: 290px;
+    left: 215px; top: 0px;
+    background: radial-gradient(circle at 45% 45%, rgba(123, 45, 142, 0.35), rgba(123, 45, 142, 0.08));
+    border: 2px solid rgba(123, 45, 142, 0.6);
+    box-shadow: 0 0 30px rgba(123, 45, 142, 0.12);
+  }
+  .obsidian:hover, .obsidian.active {
+    box-shadow: 0 0 50px rgba(123, 45, 142, 0.35);
+    border-color: rgba(123, 45, 142, 0.9);
+  }
+
+  /* NotebookLM - torchlight gold (right) */
+  .notebooklm {
+    width: 290px; height: 290px;
+    right: 20px; top: 165px;
+    background: radial-gradient(circle at 55% 45%, rgba(212, 168, 67, 0.35), rgba(212, 168, 67, 0.08));
+    border: 2px solid rgba(212, 168, 67, 0.6);
+    box-shadow: 0 0 30px rgba(212, 168, 67, 0.12);
+  }
+  .notebooklm:hover, .notebooklm.active {
+    box-shadow: 0 0 50px rgba(212, 168, 67, 0.35);
+    border-color: rgba(212, 168, 67, 0.9);
+  }
+
+  /* LoreConvo - status green (left) */
+  .loreconvo {
+    width: 290px; height: 290px;
+    left: 20px; top: 165px;
+    background: radial-gradient(circle at 45% 45%, rgba(34, 197, 94, 0.32), rgba(34, 197, 94, 0.08));
+    border: 2px solid rgba(34, 197, 94, 0.55);
+    box-shadow: 0 0 30px rgba(34, 197, 94, 0.12);
+  }
+  .loreconvo:hover, .loreconvo.active {
+    box-shadow: 0 0 50px rgba(34, 197, 94, 0.35);
+    border-color: rgba(34, 197, 94, 0.9);
+  }
+
+  /* LoreDocs - mystic lavender (bottom) */
+  .loredocs {
+    width: 290px; height: 290px;
+    left: 215px; bottom: 0px;
+    background: radial-gradient(circle at 50% 55%, rgba(183, 148, 199, 0.35), rgba(183, 148, 199, 0.08));
+    border: 2px solid rgba(183, 148, 199, 0.55);
+    box-shadow: 0 0 30px rgba(183, 148, 199, 0.12);
+  }
+  .loredocs:hover, .loredocs.active {
+    box-shadow: 0 0 50px rgba(183, 148, 199, 0.35);
+    border-color: rgba(183, 148, 199, 0.9);
+  }
+
+  /* Overlap click zones */
+  .overlap-zone {
+    position: absolute;
+    cursor: pointer;
+    z-index: 5;
+    transition: background 0.3s ease;
+    border-radius: 40%;
+  }
+  .overlap-zone:hover {
+    background: rgba(232, 224, 212, 0.05);
+  }
+
+  /* Pairwise overlaps */
+  .ov-obs-nlm { width: 90px; height: 110px; right: 165px; top: 115px; }
+  .ov-obs-cv  { width: 90px; height: 110px; left: 165px; top: 115px; }
+  .ov-obs-ld  { width: 80px; height: 80px; left: 320px; top: 210px; border-radius: 50%; }
+  .ov-nlm-ld  { width: 90px; height: 110px; right: 165px; top: 385px; }
+  .ov-cv-ld   { width: 90px; height: 110px; left: 165px; top: 385px; }
+  .ov-cv-nlm  { width: 80px; height: 80px; left: 320px; top: 275px; border-radius: 50%; }
+
+  /* Center zone */
+  .ov-all {
+    width: 70px; height: 70px;
+    left: 325px; top: 275px;
+    border-radius: 50%;
+    z-index: 6;
+  }
+
+  /* Detail panel */
+  .detail-panel {
+    width: 720px;
+    min-height: 150px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 22px 26px;
+    transition: all 0.3s ease;
+  }
+  .detail-panel.hl-obsidian    { border-color: rgba(123, 45, 142, 0.5); }
+  .detail-panel.hl-notebooklm  { border-color: rgba(212, 168, 67, 0.5); }
+  .detail-panel.hl-loreconvo   { border-color: rgba(34, 197, 94, 0.5); }
+  .detail-panel.hl-loredocs    { border-color: rgba(183, 148, 199, 0.5); }
+  .detail-panel.hl-obs-nlm     { border-color: rgba(168, 107, 105, 0.5); }
+  .detail-panel.hl-obs-cv      { border-color: rgba(79, 121, 118, 0.5); }
+  .detail-panel.hl-obs-ld      { border-color: rgba(153, 97, 171, 0.5); }
+  .detail-panel.hl-nlm-ld      { border-color: rgba(198, 158, 133, 0.5); }
+  .detail-panel.hl-cv-ld       { border-color: rgba(109, 173, 147, 0.5); }
+  .detail-panel.hl-cv-nlm      { border-color: rgba(123, 183, 81, 0.5); }
+  .detail-panel.hl-all         { border-color: rgba(212, 168, 67, 0.5); }
+
+  .detail-title {
+    font-family: 'Cinzel', serif;
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .detail-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  .detail-items {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px 20px;
+  }
+  .detail-item {
+    font-size: 0.86rem;
+    color: var(--muted);
+    padding-left: 16px;
+    position: relative;
+    line-height: 1.5;
+  }
+  .detail-item::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 8px;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    opacity: 0.5;
+  }
+  .detail-note {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    font-size: 0.84rem;
+    color: var(--muted);
+    font-style: italic;
+    line-height: 1.55;
+  }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 2px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.78rem;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: background 0.2s;
+  }
+  .legend-item:hover { background: rgba(123, 45, 142, 0.1); }
+  .legend-dot {
+    width: 11px; height: 11px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* Insight box */
+  .insight-box {
+    width: 720px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gold);
+    border-radius: 10px;
+    padding: 20px 24px;
+    font-size: 0.88rem;
+    line-height: 1.65;
+    color: var(--muted);
+  }
+  .insight-box strong { color: var(--text); }
+  .insight-box em { color: var(--accent-hover); }
+
+  /* Quadrant summary grid */
+  .quadrant-grid {
+    width: 720px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 4px;
+  }
+  .quadrant-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    border-left: 3px solid;
+  }
+  .quadrant-card.q-obsidian    { border-left-color: #7b2d8e; }
+  .quadrant-card.q-notebooklm  { border-left-color: #d4a843; }
+  .quadrant-card.q-loreconvo   { border-left-color: #22c55e; }
+  .quadrant-card.q-loredocs    { border-left-color: #b794c7; }
+  .quadrant-card h3 {
+    font-family: 'Cinzel', serif;
+    font-size: 0.92rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--text);
+  }
+  .quadrant-card .q-role {
+    font-size: 0.78rem;
+    color: var(--gold);
+    margin-bottom: 8px;
+    font-style: italic;
+  }
+  .quadrant-card p {
+    font-size: 0.82rem;
+    color: var(--muted);
+    line-height: 1.55;
+  }
+
+  /* Gold divider */
+  .divider {
+    width: 720px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    margin: 8px 0;
+  }
+
+  /* Token savings */
+  .token-section { width: 720px; margin-top: 8px; }
+  .token-title {
+    font-family: 'Cinzel', serif;
+    font-size: 1.3rem;
+    color: var(--text);
+    text-align: center;
+    margin-bottom: 6px;
+  }
+  .token-subtitle {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.88rem;
+    margin-bottom: 18px;
+    line-height: 1.5;
+  }
+  .token-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+  .token-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .token-card-header {
+    padding: 11px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    font-size: 0.88rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .token-icon {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.82rem;
+    flex-shrink: 0;
+  }
+  .token-icon.bad { background: rgba(239, 68, 68, 0.2); color: var(--red); }
+  .token-icon.good { background: rgba(34, 197, 94, 0.2); color: var(--green); }
+  .token-card-body { padding: 11px 14px; }
+  .token-row {
+    display: flex;
+    gap: 10px;
+    padding: 5px 0;
+    font-size: 0.8rem;
+    line-height: 1.45;
+  }
+  .token-row + .token-row { border-top: 1px solid rgba(45, 45, 68, 0.5); }
+  .token-label { flex-shrink: 0; width: 85px; color: var(--muted); font-weight: 500; }
+  .token-val { color: var(--muted); }
+  .bad-text { color: #f87171; }
+  .good-text { color: #4ade80; }
+  .highlight-row { margin-top: 5px; padding-top: 8px !important; border-top: 1px solid var(--border) !important; }
+  .bad-row .token-label, .bad-row .token-val { font-weight: 600; }
+  .good-row .token-label, .good-row .token-val { font-weight: 600; }
+
+  .token-math {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 22px;
+  }
+  .math-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .math-card {
+    text-align: center;
+    padding: 9px 14px;
+    background: rgba(123, 45, 142, 0.08);
+    border-radius: 8px;
+    min-width: 75px;
+  }
+  .math-card.result {
+    background: rgba(34, 197, 94, 0.12);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+  }
+  .math-number {
+    font-family: 'Cinzel', serif;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .math-card.result .math-number { color: var(--green); }
+  .math-label { font-size: 0.68rem; color: var(--muted); margin-top: 2px; }
+  .math-op { font-size: 1.1rem; color: var(--muted); font-weight: 300; }
+  .math-note { font-size: 0.8rem; color: var(--muted); line-height: 1.6; font-style: italic; }
+
+  /* Footer */
+  .footer {
+    width: 720px;
+    text-align: center;
+    padding: 16px 0 8px;
+    font-size: 0.72rem;
+    color: var(--muted);
+    border-top: 1px solid var(--border);
+  }
+  .footer a { color: var(--accent); text-decoration: none; }
+  .footer a:hover { color: var(--accent-hover); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Your AI Knowledge Stack</h1>
+  <p>Four tools, four roles, zero overlap in what matters. Click any circle or overlap to explore how Obsidian, NotebookLM, LoreConvo, and LoreDocs work together.</p>
+</div>
+
+<div class="main-container">
+  <p class="hint">Click a zone to explore</p>
+
+  <div class="venn-wrapper">
+    <div class="venn-circle obsidian" data-zone="obsidian" onclick="showZone('obsidian')">
+      <div class="circle-label">Obsidian<span class="circle-sublabel">Human Knowledge Base</span></div>
+    </div>
+    <div class="venn-circle notebooklm" data-zone="notebooklm" onclick="showZone('notebooklm')">
+      <div class="circle-label">NotebookLM<span class="circle-sublabel">Research Synthesizer</span></div>
+    </div>
+    <div class="venn-circle loreconvo" data-zone="loreconvo" onclick="showZone('loreconvo')">
+      <div class="circle-label">LoreConvo<span class="circle-sublabel">AI Session Memory</span></div>
+    </div>
+    <div class="venn-circle loredocs" data-zone="loredocs" onclick="showZone('loredocs')">
+      <div class="circle-label">LoreDocs<span class="circle-sublabel">AI Project Knowledge</span></div>
+    </div>
+
+    <div class="overlap-zone ov-obs-nlm" onclick="showZone('obs-nlm')"></div>
+    <div class="overlap-zone ov-obs-cv" onclick="showZone('obs-cv')"></div>
+    <div class="overlap-zone ov-obs-ld" onclick="showZone('obs-ld')"></div>
+    <div class="overlap-zone ov-nlm-ld" onclick="showZone('nlm-ld')"></div>
+    <div class="overlap-zone ov-cv-ld" onclick="showZone('cv-ld')"></div>
+    <div class="overlap-zone ov-cv-nlm" onclick="showZone('cv-nlm')"></div>
+    <div class="overlap-zone ov-all" onclick="showZone('all')"></div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item" onclick="showZone('obsidian')">
+      <div class="legend-dot" style="background: #7b2d8e;"></div> Obsidian
+    </div>
+    <div class="legend-item" onclick="showZone('notebooklm')">
+      <div class="legend-dot" style="background: #d4a843;"></div> NotebookLM
+    </div>
+    <div class="legend-item" onclick="showZone('loreconvo')">
+      <div class="legend-dot" style="background: #22c55e;"></div> LoreConvo
+    </div>
+    <div class="legend-item" onclick="showZone('loredocs')">
+      <div class="legend-dot" style="background: #b794c7;"></div> LoreDocs
+    </div>
+  </div>
+
+  <div class="detail-panel" id="detailPanel">
+    <div class="detail-title" id="detailTitle">
+      <span class="detail-dot" id="detailDot" style="background: var(--muted);"></span>
+      <span id="detailTitleText">Select a zone to compare</span>
+    </div>
+    <div class="detail-items" id="detailItems">
+      <div class="detail-item">Click any circle to see what makes it unique</div>
+      <div class="detail-item">Click overlap areas to see shared capabilities</div>
+      <div class="detail-item">Click the center to see what all four share</div>
+    </div>
+    <div class="detail-note" id="detailNote"></div>
+  </div>
+
+  <!-- Quadrant summary -->
+  <div class="quadrant-grid">
+    <div class="quadrant-card q-obsidian">
+      <h3>Obsidian</h3>
+      <div class="q-role">Your second brain</div>
+      <p>Where you think, connect ideas, and build personal knowledge. Markdown files, graph view, 800+ plugins. Designed for humans to write and browse.</p>
+    </div>
+    <div class="quadrant-card q-notebooklm">
+      <h3>Google NotebookLM</h3>
+      <div class="q-role">Your research assistant</div>
+      <p>Upload documents, get AI-grounded Q&A and audio summaries. Excellent for consuming and synthesizing existing material. No API, no agent access.</p>
+    </div>
+    <div class="quadrant-card q-loreconvo">
+      <h3>LoreConvo</h3>
+      <div class="q-role">Your AI's working memory</div>
+      <p>Auto-saves and auto-loads Claude session context across Code, Cowork, and Chat. Your agents pick up where they left off without you re-explaining anything.</p>
+    </div>
+    <div class="quadrant-card q-loredocs">
+      <h3>LoreDocs</h3>
+      <div class="q-role">Your AI's reference library</div>
+      <p>Structured project knowledge organized in vaults. Architecture docs, domain rules, API contracts -- queryable by AI agents via 34 MCP tools.</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="insight-box">
+    <strong>The knowledge stack:</strong> Obsidian is where <em>you</em> think and write. NotebookLM helps you <em>consume and synthesize</em> research. LoreConvo remembers what <em>your AI</em> did across sessions. LoreDocs stores what your AI <em>knows</em> about your projects. Each tool owns a different layer. None of them replace each other -- and using all four means nothing falls through the cracks, whether the reader is you or your AI agent.
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="token-section">
+    <h2 class="token-title">How the Lore Stack Saves Tokens</h2>
+    <p class="token-subtitle">Every Claude session starts from zero. Without persistent memory, you burn tokens re-explaining context. NotebookLM helps you research faster, but the Lore products keep your AI agents fast too.</p>
+
+    <div class="token-grid">
+      <div class="token-card">
+        <div class="token-card-header">
+          <div class="token-icon bad">!</div>
+          <span>Without the Lore Stack</span>
+        </div>
+        <div class="token-card-body">
+          <div class="token-row"><span class="token-label">Session start</span><span class="token-val bad-text">You paste 500-2,000 words of context from notes, prior chats, or memory</span></div>
+          <div class="token-row"><span class="token-label">Mid-session</span><span class="token-val bad-text">Claude asks clarifying questions it already answered last time</span></div>
+          <div class="token-row"><span class="token-label">Repeated work</span><span class="token-val bad-text">Redo discovery: "What did we decide about X?" burns full back-and-forth</span></div>
+          <div class="token-row"><span class="token-label">Context window</span><span class="token-val bad-text">Fills up faster with duplicate background, less room for real work</span></div>
+          <div class="token-row highlight-row bad-row"><span class="token-label">Overhead</span><span class="token-val bad-text">~3,000-8,000 tokens/session in re-contexting</span></div>
+        </div>
+      </div>
+
+      <div class="token-card">
+        <div class="token-card-header">
+          <div class="token-icon good">+</div>
+          <span>With LoreConvo + LoreDocs</span>
+        </div>
+        <div class="token-card-body">
+          <div class="token-row"><span class="token-label">Session start</span><span class="token-val good-text">LoreConvo auto-loads top-scored recent sessions (~800 tokens, pre-filtered)</span></div>
+          <div class="token-row"><span class="token-label">Project context</span><span class="token-val good-text">LoreDocs injects a compact vault summary (~500 tokens)</span></div>
+          <div class="token-row"><span class="token-label">No repetition</span><span class="token-val good-text">Prior decisions, open questions, artifacts already in context</span></div>
+          <div class="token-row"><span class="token-label">Context window</span><span class="token-val good-text">Lean context leaves room for longer, more productive sessions</span></div>
+          <div class="token-row highlight-row good-row"><span class="token-label">Savings</span><span class="token-val good-text">~2,000-6,000 tokens/session, compounding across daily use</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="token-math">
+      <div class="math-row">
+        <div class="math-card">
+          <div class="math-number">~4,000</div>
+          <div class="math-label">tokens saved/session</div>
+        </div>
+        <div class="math-op">x</div>
+        <div class="math-card">
+          <div class="math-number">5</div>
+          <div class="math-label">sessions/day</div>
+        </div>
+        <div class="math-op">x</div>
+        <div class="math-card">
+          <div class="math-number">22</div>
+          <div class="math-label">working days/month</div>
+        </div>
+        <div class="math-op">=</div>
+        <div class="math-card result">
+          <div class="math-number">440K</div>
+          <div class="math-label">tokens saved/month</div>
+        </div>
+      </div>
+      <p class="math-note">At API pricing (~$3/M input tokens for Sonnet), that is roughly $1.30/month in direct savings for a power user. The real win is fewer wasted turns, faster ramp-up, and more context window for actual work -- which saves far more in human time and session count. NotebookLM saves you research time on the input side; the Lore products save your AI time on the execution side.</p>
+    </div>
+  </div>
+
+  <div class="footer">
+    <a href="https://labyrinthanalyticsconsulting.com">Labyrinth Analytics Consulting</a> -- Built for data teams who work with AI every day.
+  </div>
+</div>
+
+<script>
+var zones = {
+  obsidian: {
+    title: 'Obsidian',
+    color: '#7b2d8e',
+    highlight: 'hl-obsidian',
+    circles: ['obsidian'],
+    items: [
+      'Rich markdown editor with live preview',
+      'Graph view showing linked notes visually',
+      'Community plugins (800+): Kanban, calendars, etc.',
+      'Human-first UI with themes and custom CSS',
+      'Wikilinks ([[note]]) for associative thinking',
+      'Daily notes and journaling workflows',
+      'Canvas: visual boards for spatial thinking',
+      'Templates and Templater for structured notes',
+      'Publish to web (Obsidian Publish)',
+      'Sync across devices (Obsidian Sync or iCloud)'
+    ],
+    note: 'Obsidian excels as a thinking tool for humans. It is designed around how people naturally connect ideas, with a GUI and plugin ecosystem built for human interaction. AI agents cannot use Obsidian directly -- which is exactly why LoreConvo and LoreDocs exist.'
+  },
+  notebooklm: {
+    title: 'Google NotebookLM',
+    color: '#d4a843',
+    highlight: 'hl-notebooklm',
+    circles: ['notebooklm'],
+    items: [
+      'Upload documents, websites, YouTube videos as sources',
+      'AI-grounded Q&A: answers cite your sources directly',
+      'Audio Overview: auto-generated podcast-style summaries',
+      'Multi-modal input: PDFs, Google Docs, audio, video',
+      'Beautiful consumer UX -- zero setup, drag and drop',
+      'Cross-source synthesis: finds connections across documents',
+      'Inline citations with source highlighting',
+      'Free to use (Google account only)',
+      'No API or programmatic access',
+      'Cloud-only: all data processed by Google'
+    ],
+    note: 'NotebookLM is the best tool for consuming and making sense of existing documents. Its audio overview feature is genuinely novel. But it has no API, no agent integration, and no way to write back to your workflow. It is a one-way research tool -- powerful for humans, invisible to AI agents.'
+  },
+  loreconvo: {
+    title: 'LoreConvo',
+    color: '#22c55e',
+    highlight: 'hl-loreconvo',
+    circles: ['loreconvo'],
+    items: [
+      'Auto-saves sessions via Claude Code hooks',
+      'Auto-loads relevant context on session start',
+      'Structured metadata: decisions, artifacts, open questions',
+      'Session scoring by signal (questions +3, decisions +2)',
+      'Cross-surface persistence (Code, Cowork, Chat)',
+      'MCP tool interface (12 tools) for AI consumption',
+      'CLI interface (6 commands) for human debugging',
+      'Session linking (continues/references relationships)',
+      'Built for ephemeral conversation memory',
+      'Free/Pro tier gating for monetization'
+    ],
+    note: 'LoreConvo solves the problem none of the other three tools can: giving AI agents memory across sessions. When an agent starts a new session, LoreConvo auto-loads the most relevant recent context so it picks up where it left off. No human curation required.'
+  },
+  loredocs: {
+    title: 'LoreDocs',
+    color: '#b794c7',
+    highlight: 'hl-loredocs',
+    circles: ['loredocs'],
+    items: [
+      'Multi-vault architecture (one vault per project)',
+      'Document versioning with history tracking',
+      'Tag-based organization with inheritance',
+      'Context injection: vault_inject_summary for AI priming',
+      'Document linking and relationship mapping',
+      'vault_find_related for discovery across projects',
+      'vault_export_manifest for portability',
+      'Tier enforcement (Free: 3 vaults, Pro: unlimited)',
+      'Designed for long-lived project knowledge',
+      'MCP-native: 34 tools, all callable by AI agents'
+    ],
+    note: 'LoreDocs is the "institutional memory" for AI projects. While LoreConvo remembers conversations, LoreDocs stores durable knowledge: architecture decisions, API contracts, domain rules, style guides. Think of it as the AI equivalent of a team wiki that agents can actually read and write.'
+  },
+  'obs-nlm': {
+    title: 'Obsidian + NotebookLM',
+    color: 'linear-gradient(135deg, #7b2d8e, #d4a843)',
+    highlight: 'hl-obs-nlm',
+    circles: ['obsidian', 'notebooklm'],
+    items: [
+      'Both designed for human knowledge workers',
+      'Both help you understand and organize information',
+      'Both support document-based research workflows',
+      'Both are great for synthesis and sense-making',
+      'Export Obsidian notes into NotebookLM for audio summaries',
+      'Use NotebookLM insights to feed new Obsidian notes'
+    ],
+    note: 'This is the "human knowledge" overlap. Both tools are designed for you to read and interact with. A powerful combo: write your thinking in Obsidian, then upload a set of notes to NotebookLM for cross-document synthesis or to generate a podcast overview you can listen to on a walk.'
+  },
+  'obs-cv': {
+    title: 'Obsidian + LoreConvo',
+    color: 'linear-gradient(135deg, #7b2d8e, #22c55e)',
+    highlight: 'hl-obs-cv',
+    circles: ['obsidian', 'loreconvo'],
+    items: [
+      'Both store timestamped, searchable entries',
+      'Both support tagging for categorization',
+      'Both are local-first (data on your machine)',
+      'Both capture "what happened" journals',
+      'Full-text search across all content',
+      'A bridge could auto-create Obsidian notes from sessions'
+    ],
+    note: 'The "daily log" overlap. Obsidian daily notes and LoreConvo session records both capture what happened. The difference is audience: Obsidian for you to read, LoreConvo for Claude to read. An integration could sync them automatically.'
+  },
+  'obs-ld': {
+    title: 'Obsidian + LoreDocs',
+    color: 'linear-gradient(135deg, #7b2d8e, #b794c7)',
+    highlight: 'hl-obs-ld',
+    circles: ['obsidian', 'loredocs'],
+    items: [
+      'Both organize knowledge by project or topic',
+      'Both support linking related documents',
+      'Both use plain-text-friendly storage (markdown)',
+      'Both serve as a "second brain" for reference material',
+      'Both store architecture docs and design decisions',
+      'An MCP server for Obsidian vaults would bridge both'
+    ],
+    note: 'The biggest overlap zone. Both are "project wikis" at heart. Obsidian organizes knowledge for humans to browse; LoreDocs organizes it for AI to query. An Obsidian MCP server would let your agents tap into your existing notes without duplicating content.'
+  },
+  'nlm-ld': {
+    title: 'NotebookLM + LoreDocs',
+    color: 'linear-gradient(135deg, #d4a843, #b794c7)',
+    highlight: 'hl-nlm-ld',
+    circles: ['notebooklm', 'loredocs'],
+    items: [
+      'Both are document-centric knowledge stores',
+      'Both support multi-source synthesis',
+      'Both help answer "what do we know about X?"',
+      'Both organize by project or topic',
+      'Export LoreDocs vaults into NotebookLM for audio briefs',
+      'Use NotebookLM synthesis to write better LoreDocs summaries'
+    ],
+    note: 'The "reference library" overlap. Both store documents you want to query later. The difference: NotebookLM is for you to query interactively with a beautiful UI. LoreDocs is for your AI agents to query programmatically via MCP tools. Export your vaults to NotebookLM when you want the audio overview experience.'
+  },
+  'cv-ld': {
+    title: 'LoreConvo + LoreDocs',
+    color: 'linear-gradient(135deg, #22c55e, #b794c7)',
+    highlight: 'hl-cv-ld',
+    circles: ['loreconvo', 'loredocs'],
+    items: [
+      'Both use SQLite + FTS5 for storage and search',
+      'Both expose MCP tools for AI agent access',
+      'Both are part of the Lore product family',
+      'Both have Free/Pro tier gating (Stripe-ready)',
+      'Both run as stdio MCP servers (Code + Cowork)',
+      'Both use local-first, no-cloud architecture'
+    ],
+    note: 'Designed as companions from day one. LoreConvo handles "what did we discuss" (episodic memory) while LoreDocs handles "what do we know" (semantic memory). Together they give an AI agent both working memory and long-term reference -- the two things Obsidian and NotebookLM give a human.'
+  },
+  'cv-nlm': {
+    title: 'LoreConvo + NotebookLM',
+    color: 'linear-gradient(135deg, #22c55e, #d4a843)',
+    highlight: 'hl-cv-nlm',
+    circles: ['loreconvo', 'notebooklm'],
+    items: [
+      'Both capture conversation-style content',
+      'Both help with "what was discussed" retrieval',
+      'Both support searching through past interactions',
+      'Export LoreConvo sessions to NotebookLM for review',
+      'Use NotebookLM audio overviews to review a week of sessions',
+      'Different audiences: AI agents vs. human researchers'
+    ],
+    note: 'The "conversation memory" overlap. NotebookLM can ingest transcripts and conversations for human review. LoreConvo captures Claude sessions for AI continuity. Exporting a week of LoreConvo sessions into NotebookLM would give you a podcast-style recap of what your agents accomplished.'
+  },
+  all: {
+    title: 'All Four Share',
+    color: 'linear-gradient(135deg, #7b2d8e, #d4a843, #22c55e, #b794c7)',
+    highlight: 'hl-all',
+    circles: ['obsidian', 'notebooklm', 'loreconvo', 'loredocs'],
+    items: [
+      'Knowledge persistence beyond a single moment',
+      'Full-text search across stored content',
+      'The core goal: remembering so you do not have to',
+      'Tagging and categorization of information',
+      'Support for iterative, multi-session work'
+    ],
+    note: 'At the center is the universal need: not losing important knowledge. All four tools solve this for different audiences (human vs. AI) and different time horizons (sessions vs. projects vs. research). The complete stack means nothing falls through the cracks, whether the reader is you or your AI agent.'
+  }
+};
+
+var currentZone = null;
+
+function showZone(zone) {
+  var data = zones[zone];
+  var panel = document.getElementById('detailPanel');
+  var titleEl = document.getElementById('detailTitleText');
+  var dotEl = document.getElementById('detailDot');
+  var itemsEl = document.getElementById('detailItems');
+  var noteEl = document.getElementById('detailNote');
+
+  panel.className = 'detail-panel';
+  panel.classList.add(data.highlight);
+
+  titleEl.textContent = data.title;
+  dotEl.style.background = data.color;
+
+  itemsEl.innerHTML = data.items.map(function(item) {
+    return '<div class="detail-item">' + item + '</div>';
+  }).join('');
+
+  noteEl.textContent = data.note;
+
+  document.querySelectorAll('.venn-circle').forEach(function(el) {
+    el.classList.remove('active', 'dimmed');
+    if (data.circles.indexOf(el.dataset.zone) >= 0) {
+      el.classList.add('active');
+    } else {
+      el.classList.add('dimmed');
+    }
+  });
+
+  currentZone = zone;
+}
+</script>
+</body>
+</html>

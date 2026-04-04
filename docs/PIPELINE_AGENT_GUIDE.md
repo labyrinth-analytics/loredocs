@@ -32,6 +32,22 @@ architecture-proposed -> rejected (disposition: rearchitect or archive)
 Any status -> on-hold (with hold reason)
 ```
 
+## Debbie's Triage Statuses (4-state)
+
+When Scout discovers new opportunities, they start as "New" (equivalent to `scouted` in
+the pipeline). Debbie triages them using one of four decisions:
+
+| Triage Decision | Pipeline Status | Meaning |
+|----------------|----------------|---------|
+| **Approve** | `approved-for-review` | Greenlit for Gina's architecture pass |
+| **Needs Info** | `scouted` (with open_questions) | Scout or Gina should dig deeper before Debbie decides |
+| **Defer** | `on-hold` | Not now, revisit later |
+| **Reject** | `archived` | Killed, won't pursue |
+
+Ron syncs Debbie's triage decisions to PipelineDB at the start of each session.
+Jacqueline surfaces untriaged items (status=`scouted`, no open_questions) in
+the daily dashboard with a count badge so Debbie knows how many need attention.
+
 ---
 
 ## Agent-Specific Instructions
@@ -54,6 +70,23 @@ Any status -> on-hold (with hold reason)
    ```
 3. At the end of your run, print a summary of all OPP IDs you created so other
    agents can reference them.
+4. **Save a LATEST report (MANDATORY).** In addition to the timestamped HTML and
+   Markdown files in `~/Documents/Claude/Projects/Side Hustle/Opportunities/`,
+   ALWAYS save an extra copy to this fixed path (overwriting the previous one):
+   ```
+   ~/Documents/Claude/Projects/Side Hustle/Opportunities/LATEST_SCOUT_REPORT.html
+   ```
+   This is Debbie's bookmarked path. She checks it every Monday after your run.
+5. **Opportunity table format.** Each opportunity in the HTML report MUST include
+   these columns:
+   - ID (OPP-xxx)
+   - Name (short product name)
+   - Description (1-2 sentence summary)
+   - Effort (1-5 scale)
+   - MRR Month 12 (projected monthly recurring revenue)
+   - Debbie Fit (1-5 score)
+   - Status (default: **New** for freshly scouted items)
+   - Action Needed (what Debbie needs to decide)
 
 **DO NOT** update status on existing items. Your job is to ADD new scouted items only.
 

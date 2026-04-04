@@ -39,10 +39,12 @@ License key generation: Debbie needs to save the private signing key from the 20
 ## Product Research Scout (Scheduled Task)
 - **Task:** `weekly-product-scout` — runs every Monday at 3 AM
 - **Purpose:** Scans all AI platforms and developer ecosystems for niche product opportunities (picks and shovels)
-- **Output:** HTML report + markdown summary saved to `~/Documents/Claude/Projects/Side Hustle/Opportunities/`
+- **Output:** Timestamped HTML report + markdown summary saved to `~/Documents/Claude/Projects/Side Hustle/Opportunities/`. ALSO saves a stable copy to `~/Documents/Claude/Projects/Side Hustle/Opportunities/LATEST_SCOUT_REPORT.html` (overwritten each run — Debbie's bookmarked path).
+- **Report format:** Each opportunity row includes: ID, Name, Description, Effort, MRR (M12), Debbie Fit, Status (default: New), Action Needed.
+- **Triage statuses:** New (default) | Approve | Needs Info | Defer | Reject. See `docs/PIPELINE_AGENT_GUIDE.md` for status mappings.
 - **Scope:** All AI platforms (Claude, OpenAI, Cursor, Copilot, LangChain, etc.), developer forums, GitHub trending
 - **Criteria:** Lightweight builds (weekend project or one-week sprint), monetizable, complements Lore ecosystem
-- **Review:** Debbie reviews weekly report and picks winners for Ron to build
+- **Review:** Debbie opens LATEST_SCOUT_REPORT.html Monday, triages opportunities. Jacqueline's daily dashboard shows untriaged count.
 
 ## Agent Team
 
@@ -53,7 +55,7 @@ License key generation: Debbie needs to save the private signing key from the 20
 | Brock | Cybersecurity Expert | `brock-security-daily` | Daily 3:00 AM | docs/security/, LoreConvo |
 | Scout | Product Research | `weekly-product-scout` | Monday 3:00 AM | Opportunities/, LoreConvo |
 | Gina | Enterprise Architect | `enterprise-architect-gina` | Wed + Sat 4:00 AM | LoreConvo (pipeline) |
-| Jacqueline | Project Manager | `pm-jacqueline-daily` | Daily 4:30 AM | docs/pm/, LoreConvo |
+| Jacqueline | Project Manager | `pm-jacqueline-daily` + `pm-jacqueline-roadmap` | Daily 4:30 AM + Sat 5:00 AM | docs/pm/, LoreConvo |
 | Madison | Content Marketer | `madison-marketing-agent` | Tue + Fri 1:00 AM | docs/marketing/, LoreConvo |
 
 ### Meg - QA Engineer (Scheduled Task)
@@ -77,13 +79,18 @@ License key generation: Debbie needs to save the private signing key from the 20
 - **Dependency pinning:** Check for `requirements-lock.txt` files (not just `pyproject.toml`). It is normal and expected for `pyproject.toml` to use `>=` minimum version constraints -- that is library metadata. The `requirements-lock.txt` files contain the actual exact pins. If lock files exist with exact versions, the dependency pinning finding is RESOLVED.
 - **Single-user context:** All products currently run locally on a single-user machine. Severity ratings should reflect this context. Findings that would be CRITICAL in a multi-user server deployment may be LOW or INFO in the current local-only setup.
 
-### Jacqueline - Project Manager (Scheduled Task)
-- **Task:** `pm-jacqueline-daily` -- runs daily at 4:30 AM (after Brock)
-- **Purpose:** Synthesizes all overnight agent outputs into a single interactive HTML executive dashboard. Cross-validates agent findings, tracks pipeline status, monitors TODO progress, and flags items needing Debbie's attention.
-- **Output:** Interactive HTML dashboard in `docs/pm/executive_dashboard_YYYY_MM_DD.html` + LoreConvo session (surface='pm')
+### Jacqueline - Project Manager (Scheduled Tasks)
+- **Daily task:** `pm-jacqueline-daily` -- runs daily at 4:30 AM (after Brock)
+- **Weekly task:** `pm-jacqueline-roadmap` -- runs every Saturday at 5:00 AM (after Gina)
+- **Daily purpose:** Synthesizes all overnight agent outputs into a single interactive HTML executive dashboard ("Labyrinth Analytics -- Executive Dashboard"). Cross-validates agent findings, tracks pipeline status, monitors TODO progress, and flags items needing Debbie's attention.
+- **Weekly purpose:** Generates the "Labyrinth Analytics -- Product Roadmap" with KPI cards, product details, feature status, revenue projections, risk register, timeline, and Debbie action items.
+- **Daily output:** `docs/pm/executive_dashboard_YYYY_MM_DD.html` + LoreConvo session (surface='pm')
+- **Weekly output:** `docs/pm/labyrinth_product_roadmap_YYYY_MM_DD.html` + LoreConvo session (surface='pm', tags=['roadmap'])
 - **Scope:** All agent reports (Ron/Meg/Brock), pipeline data (Scout/Gina), CLAUDE.md TODOs, cross-agent validation
 - **Posture ratings:** ALL CLEAR / REVIEW NEEDED / ACTION REQUIRED
-- **Rule:** Jacqueline does NOT modify source code, TODOs, or other agents' reports -- only produces the dashboard
+- **IMPORTANT:** Read `.claude/skills/pm-jacqueline/SKILL.md` before generating ANY output. The dashboard and roadmap formats are LOCKED -- section order, titles, color scheme, and visual design must match the spec exactly.
+- **Naming rule:** Use "Labyrinth Analytics" in all visible titles and headers. Never use "Project Ron" or "Side Hustle" in document titles.
+- **Rule:** Jacqueline does NOT modify source code, TODOs, or other agents' reports -- only produces dashboards and roadmaps
 
 ### Madison - Marketing Content Creator (Scheduled Task)
 - **Task:** `madison-marketing-agent` -- runs twice weekly at 1:00 AM (Tuesday, Friday)
