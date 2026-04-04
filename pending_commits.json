@@ -8,5 +8,45 @@
     ],
     "agent": "debbie",
     "applied": false
+  },
+  {
+    "timestamp": "2026-04-04T18:46:38.704054+00:00",
+    "message": "standardize all agent prompts, log Debbie decisions, fix marketplace email\n\n- All 10 agent prompts rewritten: no inline Python, safe_git.py, turn budgets,\n  dependency maps, explicit inputs/outputs, structured session saves\n- DEBBIE_DASHBOARD.md: logged Debbie decisions (Gina review, OPP approvals,\n  governance, test file policy, business email)\n- marketplace.json: email updated to info@labyrinthanalyticsconsulting.com\n- LoreConvo: saved Debbie decisions session (agent:debbie tag)\n- docs/internal/AGENT_PROMPT_STANDARD.md: template and dependency map",
+    "files": [
+      "docs/internal/other documentation/agent prompts/ron.md",
+      "docs/internal/other documentation/agent prompts/meg.md",
+      "docs/internal/other documentation/agent prompts/brock.md",
+      "docs/internal/other documentation/agent prompts/gina.md",
+      "docs/internal/other documentation/agent prompts/scout.md",
+      "docs/internal/other documentation/agent prompts/jacqueline-daily.md",
+      "docs/internal/other documentation/agent prompts/jacquline-roadmap.md",
+      "docs/internal/other documentation/agent prompts/madison.md",
+      "docs/internal/other documentation/agent prompts/john.md",
+      "docs/internal/other documentation/agent prompts/competitive-intel.md",
+      "docs/DEBBIE_DASHBOARD.md",
+      "docs/DEBBIE_PROCESS.md",
+      "docs/internal/AGENT_PROMPT_STANDARD.md",
+      "marketplace/claude-plugins/.claude-plugin/marketplace.json"
+    ],
+    "agent": "debbie",
+    "applied": true
+  },
+  {
+    "timestamp": "2026-04-04T18:52:07.389468+00:00",
+    "message": "add pipeline_tracker.py - unified task/item tracking CLI for all agents\n\n- SQLite-backed pipeline database with items + history tables\n- Commands: add, update, block, depend, list, show, next\n- Smart DB path: repo data/ dir on Mac, auto-fallback to /tmp in Cowork VM\n- Reference ID formats: OPP/SEC/MEG/GINA/RON/DEBBIE/PROD-NNN\n- Full audit trail via history table\n- JSON-based blockers, dependencies, and notes",
+    "files": [
+      "scripts/pipeline_tracker.py"
+    ],
+    "agent": "debbie",
+    "applied": true
+  },
+  {
+    "timestamp": "2026-04-04T19:21:12.409955+00:00",
+    "message": "pipeline_tracker: auto-generate ref IDs, improve help for bare flags\n\n- --ref is now optional on 'add' -- auto-generates OPP-025, RON-012, etc.\n  based on highest existing number for that type\n- bare --type or --status (no value) now shows valid choices instead of error\n- invalid values show helpful error with valid options listed\n- new 'types' command shows all types with ref ID prefix and description\n- new 'statuses' command shows all statuses with meanings\n- help text improved throughout",
+    "files": [
+      "scripts/pipeline_tracker.py"
+    ],
+    "agent": "debbie",
+    "applied": true
   }
 ]

@@ -113,7 +113,7 @@ Under "Reviews Waiting", add below the finding:
 
 ## Daily Routine (5 minutes)
 
-1. Open `docs/pm/executive_dashboard_YYYY_MM_DD.html` (Jacqueline's daily report)
+1. Open `docs/internal/pm/executive_dashboard_YYYY_MM_DD.html` (Jacqueline's daily report)
 2. Scan the action items -- anything urgent?
 3. Open `docs/DEBBIE_DASHBOARD.md` -- update any decisions you've made
 4. If you completed a Debbie TODO, mark it COMPLETED with date

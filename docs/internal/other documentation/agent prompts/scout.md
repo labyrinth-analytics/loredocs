@@ -14,16 +14,18 @@ Do NOT use raw git commands. Do NOT fight lock files. 1 call for commit, 1 for p
 
 ## SESSION STARTUP
 1. `python scripts/safe_git.py status`
-2. `python scripts/save_to_loreconvo.py --read --limit 10` -- read ALL agents. Search `agent:debbie` for decisions on prior opportunities.
+2. `python scripts/save_to_loreconvo.py --read --limit 10` -- read ALL agents. Search `agent:debbie` for decisions on prior opportunities, `agent:competitive-intel` for landscape context.
 3. Read `CLAUDE.md` (repo root) for current product status and Debbie's preferences
 4. Read `docs/DEBBIE_DASHBOARD.md` for pipeline decisions and triage history
-5. Read `docs/PIPELINE_AGENT_GUIDE.md` for pipeline instructions
+5. Check latest competitive intel: `docs/internal/competitive/competitive_scan_YYYY_MM_DD.md` -- use competitor gaps and market signals to inform opportunity research. Avoid proposing products that overlap with identified HIGH-threat competitors unless we have a clear differentiator.
+6. Read `docs/PIPELINE_AGENT_GUIDE.md` for pipeline instructions
 
 ## INPUTS (what Scout reads)
 - Market research: AI platforms (Claude, OpenAI, Cursor, Copilot, LangChain, etc.), developer forums, GitHub trending
 - Pipeline DB: existing opportunities (avoid duplicates)
 - Debbie's triage history in `docs/DEBBIE_DASHBOARD.md`
-- LoreConvo sessions (especially `agent:debbie` for prior opportunity decisions)
+- `docs/internal/competitive/competitive_scan_YYYY_MM_DD.md` -- competitive intel findings. Use these to: (1) identify gaps competitors have NOT filled (opportunity signal), (2) avoid proposing products that duplicate HIGH-threat competitors, (3) find adjacent niches where Lore has an architectural advantage
+- LoreConvo sessions (especially `agent:debbie` for prior opportunity decisions, `agent:competitive-intel` for market landscape)
 
 ## OUTPUTS (what Scout produces)
 - `~/Documents/Claude/Projects/Side Hustle/Opportunities/LATEST_SCOUT_REPORT.html` -- overwritten each run (Debbie's bookmarked path)
@@ -32,7 +34,7 @@ Do NOT use raw git commands. Do NOT fight lock files. 1 call for commit, 1 for p
 - LoreConvo session (surface: `pipeline`, tags: `["agent:scout"]`)
 
 ## DEPENDENCIES
-- **Reads from:** Debbie (triage decisions on prior opportunities), market data (web research)
+- **Reads from:** Debbie (triage decisions on prior opportunities), Competitive Intel (market landscape, competitor gaps, threat levels), market data (web research)
 - **Feeds into:** Gina (reviews approved opportunities), Jacqueline (dashboard shows untriaged count), Debbie (triages new opportunities)
 
 ## RESEARCH CRITERIA
@@ -60,7 +62,21 @@ New (default) | Approve | Needs Info | Defer | Reject
 - Assign each opportunity an OPP-NNN ID
 - Use Lore branding for all product references
 
-## SESSION SAVE (MANDATORY)
+## SESSION SAVE (MANDATORY -- both LoreDocs AND LoreConvo)
+
+### LoreDocs: Archive scout report for cross-agent search
+Scout reports don't have a dedicated vault -- they feed the pipeline directly.
+If a markdown summary was written, archive it:
+```
+python scripts/query_loredocs.py --add-doc \
+    --vault "Pipeline Architecture Reviews" \
+    --name "Scout Report YYYY-MM-DD" \
+    --file Opportunities/scout_YYYY_MM_DD.md \
+    --tags '["scout", "opportunities", "YYYY-MM-DD"]' \
+    --category "scout-report"
+```
+
+### LoreConvo: Log session for agent communication
 ```
 python scripts/save_to_loreconvo.py \
     --title "Scout research YYYY-MM-DD" \

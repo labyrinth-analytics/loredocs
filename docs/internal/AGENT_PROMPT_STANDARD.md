@@ -37,7 +37,7 @@ NO raw git add, commit, or push commands. NO lock file workarounds. NO GIT_INDEX
 3. python scripts/query_loredocs.py --list
 4. Read CLAUDE.md (repo root) for TODOs and rules
 5. Read docs/DEBBIE_DASHBOARD.md for Debbie's latest decisions
-6. [agent-specific reads -- e.g., Meg reads docs/qa/, Ron reads docs/security/]
+6. [agent-specific reads -- e.g., Meg reads docs/internal/qa/, Ron reads docs/internal/security/]
 ```
 NO inline Python code for LoreConvo/LoreDocs access. Use the CLI scripts.
 
@@ -89,30 +89,30 @@ Debbie (decisions via DEBBIE_DASHBOARD.md + LoreConvo agent:debbie)
 Ron (builder) ---> produces code in ron_skills/, docs/COMPLETED.md
   |                 reads: competitive-intel tasks (RON: tagged items)
   v
-Meg (QA) ---> reads Ron's code, produces docs/qa/qa_report_YYYY_MM_DD.md
+Meg (QA) ---> reads Ron's code, produces docs/internal/qa/qa_report_YYYY_MM_DD.md
   |
-Brock (security) ---> reads Ron's code, produces docs/security/security_report_YYYY_MM_DD.md
+Brock (security) ---> reads Ron's code, produces docs/internal/security/security_report_YYYY_MM_DD.md
   |                    cross-refs with Gina (BROCK-REVIEW: / GINA-REVIEW: tags)
   |                    reads: competitive-intel security notes (BROCK-REVIEW: tags)
   v
-Gina (architecture) ---> reads pipeline + Ron's code, produces docs/architecture/
+Gina (architecture) ---> reads pipeline + Ron's code, produces docs/internal/architecture/
   |                       cross-refs with Brock
   |                       reads: competitive-intel architecture items (GINA-REVIEW: tags)
   v
 Scout (research) ---> reads market, produces Opportunities/ reports
   |
-Competitive Intel ---> reads market + products, produces docs/competitive/
+Competitive Intel ---> reads market + products, produces docs/internal/competitive/
   |                    feeds into: Ron (tasks), Madison (messaging), Gina (arch),
   |                    Brock (security), Jacqueline (dashboard)
   v
 Jacqueline (PM) ---> reads ALL of the above, produces:
-  |                   - docs/pm/executive_dashboard_YYYY_MM_DD.html (daily)
-  |                   - docs/pm/labyrinth_product_roadmap_YYYY_MM_DD.html (weekly)
+  |                   - docs/internal/pm/executive_dashboard_YYYY_MM_DD.html (daily)
+  |                   - docs/internal/pm/labyrinth_product_roadmap_YYYY_MM_DD.html (weekly)
   |                   - docs/DEBBIE_DASHBOARD.md (updates daily)
   v
 Madison (marketing) ---> reads product status + competitive intel messaging angles
   |                       (MADISON: tagged notes on PROD items)
-  |                       produces docs/marketing/blog_drafts/
+  |                       produces docs/internal/marketing/blog_drafts/
   |
 John (tech docs) ---> reads Meg-verified code, produces ron_skills/*/docs/
   |
@@ -136,20 +136,20 @@ Debbie (reviews dashboards, makes decisions, cycle repeats)
 ### Per-Agent Input/Output Reference
 
 **Ron**
-- Reads: CLAUDE.md, DEBBIE_DASHBOARD.md, docs/qa/, docs/security/, LoreConvo (all agents)
+- Reads: CLAUDE.md, DEBBIE_DASHBOARD.md, docs/internal/qa/, docs/internal/security/, LoreConvo (all agents)
 - Produces: Code in ron_skills/, docs/COMPLETED.md, LoreConvo session (surface: cowork)
 
 **Meg**
 - Reads: Ron's recent commits (git log), ron_skills/ code, previous QA reports
-- Produces: docs/qa/qa_report_YYYY_MM_DD.md, test files in ron_skills/*/tests/, LoreConvo (surface: qa)
+- Produces: docs/internal/qa/qa_report_YYYY_MM_DD.md, test files in ron_skills/*/tests/, LoreConvo (surface: qa)
 
 **Brock**
-- Reads: Ron's recent commits, ron_skills/ code, docs/architecture/ for BROCK-REVIEW items
-- Produces: docs/security/security_report_YYYY_MM_DD.md, LoreConvo (surface: security)
+- Reads: Ron's recent commits, ron_skills/ code, docs/internal/architecture/ for BROCK-REVIEW items
+- Produces: docs/internal/security/security_report_YYYY_MM_DD.md, LoreConvo (surface: security)
 
 **Gina**
-- Reads: Pipeline DB, ron_skills/ code, docs/security/ for GINA-REVIEW items
-- Produces: docs/architecture/OPP-XXX_*.md, docs/architecture/product_review_YYYY_MM_DD.md, Opportunities/LATEST_ARCHITECTURE_REVIEW.html, LoreConvo (surface: cowork)
+- Reads: Pipeline DB, ron_skills/ code, docs/internal/security/ for GINA-REVIEW items
+- Produces: docs/internal/architecture/OPP-XXX_*.md, docs/internal/architecture/product_review_YYYY_MM_DD.md, Opportunities/LATEST_ARCHITECTURE_REVIEW.html, LoreConvo (surface: cowork)
 
 **Scout**
 - Reads: Market research (web), pipeline DB for existing opportunities
@@ -157,17 +157,17 @@ Debbie (reviews dashboards, makes decisions, cycle repeats)
 
 **Jacqueline**
 - Reads: ALL agent outputs (Ron, Meg, Brock, Gina, Scout, Madison, John), CLAUDE.md, DEBBIE_DASHBOARD.md, pipeline DB, LoreConvo
-- Produces: docs/pm/executive_dashboard_YYYY_MM_DD.html, docs/pm/labyrinth_product_roadmap_YYYY_MM_DD.html (Sat), docs/DEBBIE_DASHBOARD.md (updates), LoreConvo (surface: pm)
+- Produces: docs/internal/pm/executive_dashboard_YYYY_MM_DD.html, docs/internal/pm/labyrinth_product_roadmap_YYYY_MM_DD.html (Sat), docs/DEBBIE_DASHBOARD.md (updates), LoreConvo (surface: pm)
 
 **Madison**
 - Reads: Product status from Jacqueline/CLAUDE.md, blog publishing skill
-- Produces: docs/marketing/blog_drafts/*.md, docs/marketing/promo/*.md, docs/marketing/content_calendar_madison.md, LoreConvo (surface: marketing)
+- Produces: docs/internal/marketing/blog_drafts/*.md, docs/internal/marketing/promo/*.md, docs/internal/marketing/content_calendar_madison.md, LoreConvo (surface: marketing)
 
 **Competitive Intel**
-- Reads: Web research, product CLAUDE.md files, previous reports in docs/competitive/, pipeline state
-- Produces: docs/competitive/competitive_scan_YYYY_MM_DD.md, pipeline items (tasks for Ron, opportunities, architecture items for Gina, MADISON: notes on PROD items), LoreConvo (surface: pipeline)
+- Reads: Web research, product CLAUDE.md files, previous reports in docs/internal/competitive/, pipeline state
+- Produces: docs/internal/competitive/competitive_scan_YYYY_MM_DD.md, pipeline items (tasks for Ron, opportunities, architecture items for Gina, MADISON: notes on PROD items), LoreConvo (surface: pipeline)
 - Feeds into: Ron (RON: tasks), Madison (MADISON: notes), Gina (GINA-REVIEW: arch items), Brock (BROCK-REVIEW: notes), Jacqueline (dashboard), Debbie (new opportunities to triage)
 
 **John**
 - Reads: Meg-verified code in ron_skills/, existing docs in ron_skills/*/docs/
-- Produces: ron_skills/*/docs/ (cli_reference, mcp_tool_catalog, quickstart, CHANGELOG), docs/technical/tech_docs_report_YYYY_MM_DD.md, LoreConvo (surface: cowork)
+- Produces: ron_skills/*/docs/ (cli_reference, mcp_tool_catalog, quickstart, CHANGELOG), docs/internal/technical/tech_docs_report_YYYY_MM_DD.md, LoreConvo (surface: cowork)

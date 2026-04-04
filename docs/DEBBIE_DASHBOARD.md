@@ -15,12 +15,14 @@ The /lore-onboard guided setup skill was also shipped. MEG-037 is RESOLVED.
 
 **Overnight summary:**
 - Ron: 9 commits (license key system, /lore-onboard skill, MEG-037 fix, SEC-012/013 fixes)
-- Meg (Apr 4): YELLOW -- 338 tests pass (+34). 3 new advisory findings (MEG-038/039/040), all LOW/ADVISORY
+- Meg (Apr 4): YELLOW -- 338 tests pass (+34). 3 new advisory findings (MEG-038/039/040), all LOW/ADVISORY (see `docs/internal/qa/`)
 - Brock: No Apr 4 report (last: Apr 3 Run B, NEEDS ATTENTION -- SEC-014 and SEC-015 are new)
 - Scout: 5 new opportunities (OPP-017 to OPP-021) -- AI observability and data quality theme
 - Gina: RAN -- 3 architecture proposals (OPP-013, OPP-015, OPP-016) + product review (2 MEDIUM findings)
 - John: FIRST RUN -- baseline documentation created for LoreConvo and LoreDocs
 - Madison: Friday promo email drafted (companion to Blog #1)
+
+**NOTE:** Agent reports now live in `docs/internal/` subdirectories (qa/, security/, architecture/, pm/, marketing/, technical/). Public-facing product docs remain in product directories.
 
 ### URGENT: Save License Signing Private Key
 
@@ -159,7 +161,7 @@ Where tracked: `CLAUDE.md` Debbie TODO #5
 
 #### Publish Madison blog post #2
 - "Building a Reference Library for AI Projects: How LoreDocs Vault Architecture Works"
-- File: `docs/marketing/blog_drafts/blog_loredocs_vault_architecture_2026_04_03.md`
+- File: `docs/internal/marketing/blog_drafts/blog_loredocs_vault_architecture_2026_04_03.md`
 - Blog #1 published successfully on Apr 2
 
 ### ON HOLD
@@ -183,7 +185,7 @@ Where tracked: `CLAUDE.md` Debbie TODOs #1 and #2
    Then commit untracked files:
    - `scripts/generate_license_key.py`
    - `scripts/test_generate_license_key.py`
-   - `docs/security/security_report_2026_04_03_b.md`
+   - `docs/internal/security/security_report_2026_04_03_b.md`
 
 3. **LoreConvo CLI entry point (TODO #1):** Add `ron_skills/loreconvo/src/cli/` with
    save-session, list-sessions, search commands. Migrate logic from scripts/save_to_loreconvo.py.
@@ -206,7 +208,7 @@ Where tracked: `CLAUDE.md` Debbie TODOs #1 and #2
 ## Reviews Waiting (Agent Reports)
 
 ### Gina Architecture -- 2026-04-04 (RAN -- 3 proposals)
-Architecture proposals for all 3 waiting items. Full proposals in `docs/architecture/`.
+Architecture proposals for all 3 waiting items. Full proposals in `docs/internal/architecture/`.
 
 **OPP-015 (Data Catalog Lite, P1):** HIGH COMPATIBILITY with Lore architecture. Reuses TierEnforcer pattern. $10/mo Pro. Gina recommends APPROVE.
 
@@ -218,14 +220,14 @@ Architecture proposals for all 3 waiting items. Full proposals in `docs/architec
 - **GINA-001 (MEDIUM):** LoreDocs `vault_set_tier('pro')` via MCP bypasses license validation. Ron must fix before publish.
 - **GINA-002 (MEDIUM):** `/lore-onboard` skill not packaged in .plugin bundle. Ron must rebuild .plugin zip.
 
-Full report: `docs/architecture/product_review_2026_04_04.md`
+Full report: `docs/internal/architecture/product_review_2026_04_04.md`
 
 ### John Tech Docs -- 2026-04-04 (FIRST RUN)
 John created baseline documentation for both products:
 - LoreConvo: `cli_reference.md`, `mcp_tool_catalog.md`, `quickstart.md`, `CHANGELOG.md`
 - LoreDocs: `mcp_tool_catalog.md`, `quickstart.md`, `CHANGELOG.md`
 - SEC-014 noted in LoreDocs CHANGELOG as known issue
-- Full report: `docs/technical/tech_docs_report_2026_04_04.md`
+- Full report: `docs/internal/technical/tech_docs_report_2026_04_04.md`
 
 ### Meg QA -- 2026-04-04 (YELLOW)
 338 tests pass (+34 from yesterday). 19 new tests written (generate_license_key.py). Findings:
@@ -234,7 +236,7 @@ John created baseline documentation for both products:
 - **MEG-038 (LOW, NEW):** Unused import in `loreconvo/license.py`. One-line fix.
 - **MEG-039 (ADVISORY, NEW):** Stale git index with .git/*.lock files. Clean before next commit.
 - **MEG-040 (ADVISORY, NEW):** `scripts/generate_license_key.py` not committed to git. Safe to commit.
-- Full report: `docs/qa/qa_report_2026_04_04.md`
+- Full report: `docs/internal/qa/qa_report_2026_04_04.md`
 
 ### Brock Security -- 2026-04-03 Run B (NEEDS ATTENTION)
 - **SEC-014 (MEDIUM, NEW):** cryptography missing from pyproject.toml in both products. Blocks Pro tier for fresh installs. Ron to fix next session.
@@ -244,12 +246,12 @@ John created baseline documentation for both products:
 - **SEC-011 (MEDIUM, EXISTING):** TOCTOU race in LoreDocs file export -- low risk single-user
 - **SEC-006 (LOW, EXISTING):** CreditManager race condition -- product on hold
 - Ed25519 implementation reviewed in depth: all cryptographic properties PASS
-- Full report: `docs/security/security_report_2026_04_03_b.md`
+- Full report: `docs/internal/security/security_report_2026_04_03_b.md`
 - No Apr 4 Brock report yet (schedule: 3:00 AM daily)
 
 ### Jacqueline PM -- 2026-04-04
-- Daily dashboard: `docs/pm/executive_dashboard_2026_04_04.html`
-- Weekly roadmap: `docs/pm/labyrinth_product_roadmap_2026_04_04.html`
+- Daily dashboard: `docs/internal/pm/executive_dashboard_2026_04_04.html`
+- Weekly roadmap: `docs/internal/pm/labyrinth_product_roadmap_2026_04_04.html`
 
 ---
 
@@ -290,12 +292,15 @@ These are tracked in the global `~/.claude/CLAUDE.md` under "Pending Items":
 | This dashboard | `docs/DEBBIE_DASHBOARD.md` |
 | Agent instructions + Ron/Debbie TODOs (source of truth) | `CLAUDE.md` (repo root) |
 | Completed work log | `docs/COMPLETED.md` |
-| QA reports (Meg) | `docs/qa/qa_report_YYYY_MM_DD.md` |
-| Security reports (Brock) | `docs/security/security_report_YYYY_MM_DD.md` |
-| PM dashboard (Jacqueline) | `docs/pm/executive_dashboard_YYYY_MM_DD.html` |
-| Weekly roadmap (Jacqueline) | `docs/pm/labyrinth_product_roadmap_YYYY_MM_DD.html` |
+| QA reports (Meg) | `docs/internal/qa/qa_report_YYYY_MM_DD.md` |
+| Security reports (Brock) | `docs/internal/security/security_report_YYYY_MM_DD.md` |
+| PM dashboard (Jacqueline) | `docs/internal/pm/executive_dashboard_YYYY_MM_DD.html` |
+| Weekly roadmap (Jacqueline) | `docs/internal/pm/labyrinth_product_roadmap_YYYY_MM_DD.html` |
+| Architecture proposals (Gina) | `docs/internal/architecture/OPP-xxx_product_name.md` |
+| Architecture product reviews (Gina) | `docs/internal/architecture/product_review_YYYY_MM_DD.md` |
+| Tech docs report (John) | `docs/internal/technical/tech_docs_report_YYYY_MM_DD.md` |
 | Pipeline data | LoreConvo DB (`~/.loreconvo/sessions.db`, surface='pipeline') |
 | Product details | Per-product CLAUDE.md in `ron_skills/<product>/CLAUDE.md` |
 | Global project context | `~/.claude/CLAUDE.md` |
-| Marketing blog drafts | `docs/marketing/blog_drafts/` |
-| Content calendar | `docs/marketing/content_calendar_madison.md` |
+| Marketing blog drafts | `docs/internal/marketing/blog_drafts/` |
+| Content calendar | `docs/internal/marketing/content_calendar_madison.md` |

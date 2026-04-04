@@ -19,16 +19,18 @@ Do NOT use raw git commands. Do NOT fight lock files. 1 call for commit, 1 for p
 2. `python scripts/save_to_loreconvo.py --read --limit 10` -- read ALL agents. Search `agent:debbie` for product direction decisions.
 3. Read `CLAUDE.md` for current product status and features
 4. Read `docs/PIPELINE_AGENT_GUIDE.md` -- your section under "Competitive Intel"
-5. Read previous competitive reports in `docs/competitive/` for trend comparison
-6. Check pipeline for current product status:
+5. **Read `docs/internal/competitive/INTAKE.md` -- process ALL pending entries FIRST** (Debbie drops ad hoc tips from Reddit, LinkedIn, social media here). Research each, assess threat level, create pipeline items, then move to "Processed" section.
+6. Read previous competitive reports in `docs/internal/competitive/` for trend comparison
+7. Check pipeline for current product status:
    ```
    python scripts/pipeline_tracker.py list --type product
    python scripts/pipeline_tracker.py list --status in-progress
    ```
 
 ## INPUTS
+- **Ad hoc tips (CHECK FIRST):** `docs/internal/competitive/INTAKE.md` -- Debbie and agents drop competitor tips here from social media, Reddit, LinkedIn, etc. Process ALL pending entries before doing your own web research. For each entry: research the product, assess threat level, and create appropriate pipeline items. After processing, move the entry to the "Processed" section with date and pipeline item reference.
 - Web research: Claude ecosystem, GitHub, AI plugin marketplaces, developer forums
-- Previous competitive reports: `docs/competitive/competitive_scan_YYYY_MM_DD.md`
+- Previous competitive reports: `docs/internal/competitive/competitive_scan_YYYY_MM_DD.md`
 - Current product features: `ron_skills/<product>/CLAUDE.md`
 - Pipeline state: `python scripts/pipeline_tracker.py list`
 - LoreConvo sessions from all agents (especially `agent:debbie`, `agent:ron`, `agent:madison`)
@@ -47,7 +49,7 @@ For each competitor: name, URL, pricing, key differentiators, weaknesses vs Lore
 ## OUTPUTS
 
 ### 1. Competitive Analysis Report
-Write to: `docs/competitive/competitive_scan_YYYY_MM_DD.md`
+Write to: `docs/internal/competitive/competitive_scan_YYYY_MM_DD.md`
 
 Structure:
 - Executive summary (3-5 bullet points of key findings)
@@ -93,14 +95,24 @@ python scripts/pipeline_tracker.py update --ref [relevant item] \
     --note "BROCK-REVIEW: [Competitor] handles [security aspect] differently -- assess our approach"
 ```
 
-### 3. LoreConvo Session
+### 3. LoreDocs (MANDATORY -- archive your report for cross-agent search)
+```
+python scripts/query_loredocs.py --add-doc \
+    --vault "Competitive Intelligence" \
+    --name "Competitive Scan YYYY-MM-DD" \
+    --file docs/internal/competitive/competitive_scan_YYYY_MM_DD.md \
+    --tags '["competitive-intel", "YYYY-MM-DD"]' \
+    --category "competitive-scan"
+```
+
+### 4. LoreConvo Session
 ```
 python scripts/save_to_loreconvo.py \
     --title "Competitive intel scan YYYY-MM-DD" \
     --surface "pipeline" \
     --summary "COMPLETED: ... | BLOCKED: ... | PENDING_GIT: ... | HANDOFFS: ..." \
     --tags '["agent:competitive-intel"]' \
-    --artifacts '["docs/competitive/competitive_scan_YYYY_MM_DD.md"]'
+    --artifacts '["docs/internal/competitive/competitive_scan_YYYY_MM_DD.md"]'
 ```
 
 ## DEPENDENCIES

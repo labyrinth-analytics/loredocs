@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Pipeline Flow - Labyrinth Analytics</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Patrick+Hand&family=Nunito:wght@700;800;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #fdf6e3;
+    font-family: 'Patrick Hand', cursive;
+    color: #2d2a26;
+    min-height: 100vh;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-image:
+      repeating-linear-gradient(transparent, transparent 31px, #e8dcc8 31px, #e8dcc8 32px);
+    opacity: 0.3;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .page {
+    position: relative;
+    z-index: 1;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 30px 60px;
+  }
+
+  .title {
+    text-align: center;
+    margin-bottom: 8px;
+  }
+  .title h1 {
+    font-family: 'Caveat', cursive;
+    font-size: 2.8em;
+    font-weight: 700;
+    color: #2d2a26;
+    display: inline-block;
+    position: relative;
+  }
+  .title h1::before {
+    content: '';
+    position: absolute;
+    bottom: 4px; left: -10px; right: -10px;
+    height: 18px;
+    background: #ffd166;
+    opacity: 0.5;
+    z-index: -1;
+    border-radius: 4px;
+    transform: rotate(-0.8deg);
+  }
+  .title .sub {
+    font-family: 'Patrick Hand', cursive;
+    font-size: 1.25em;
+    color: #6b6560;
+    margin-top: 2px;
+  }
+
+  /* ---- CIRCULAR FLOW ---- */
+  .flow-container {
+    position: relative;
+    width: 900px;
+    height: 900px;
+    margin: 30px auto 40px;
+  }
+
+  /* Center hub */
+  .center-hub {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 200px;
+    height: 200px;
+    border: 3px solid #2d2a26;
+    border-radius: 50%;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 4px 4px 0 rgba(0,0,0,0.08);
+    z-index: 10;
+  }
+  .center-hub .hub-icon {
+    font-size: 2.2em;
+    margin-bottom: 4px;
+  }
+  .center-hub .hub-title {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 900;
+    font-size: 1.1em;
+    text-align: center;
+    line-height: 1.2;
+    color: #2d2a26;
+  }
+  .center-hub .hub-sub {
+    font-size: 0.9em;
+    color: #6b6560;
+    text-align: center;
+    margin-top: 2px;
+  }
+
+  /* Agent nodes */
+  .agent-node {
+    position: absolute;
+    width: 155px;
+    text-align: center;
+    z-index: 5;
+  }
+  .agent-circle {
+    width: 90px;
+    height: 90px;
+    border: 3px solid #2d2a26;
+    border-radius: 50%;
+    margin: 0 auto 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 3px 3px 0 rgba(0,0,0,0.08);
+    position: relative;
+    transition: transform 0.2s;
+  }
+  .agent-circle:hover {
+    transform: scale(1.08);
+  }
+  .agent-circle .agent-emoji {
+    font-size: 2em;
+  }
+  .agent-name {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 900;
+    font-size: 1.05em;
+    color: #2d2a26;
+  }
+  .agent-role {
+    font-size: 0.88em;
+    color: #6b6560;
+    line-height: 1.3;
+  }
+  .agent-time {
+    font-size: 0.82em;
+    color: #999;
+    margin-top: 2px;
+    font-family: 'Patrick Hand', cursive;
+  }
+
+  /* Color coding */
+  .bg-coral { background: #f4a4a4; }
+  .bg-teal { background: #a8e6cf; }
+  .bg-blue { background: #a8d8ea; }
+  .bg-yellow { background: #ffd166; }
+  .bg-purple { background: #d4b8ff; }
+  .bg-green { background: #b5e8c3; }
+  .bg-orange { background: #ffc09f; }
+  .bg-pink { background: #ffb7c5; }
+  .bg-slate { background: #c4cdd5; }
+
+  /* SVG arrows layer */
+  .arrows-layer {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  /* Debbie node special styling */
+  .debbie-node .agent-circle {
+    width: 100px;
+    height: 100px;
+    border-width: 3.5px;
+    border-color: #ef8354;
+  }
+  .debbie-node .agent-emoji { font-size: 2.4em; }
+  .debbie-node .agent-name { color: #ef8354; font-size: 1.15em; }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 30px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    padding: 16px 24px;
+    border: 2.5px solid #2d2a26;
+    border-radius: 12px 18px 14px 20px / 20px 12px 18px 14px;
+    background: #fff;
+    box-shadow: 3px 3px 0 rgba(0,0,0,0.06);
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.95em;
+  }
+  .legend-line {
+    width: 35px;
+    height: 3px;
+    border-radius: 2px;
+  }
+  .legend-line.dashed {
+    background: repeating-linear-gradient(90deg, #4a90d9 0, #4a90d9 6px, transparent 6px, transparent 10px);
+  }
+
+  /* Flow description boxes */
+  .flow-desc {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 30px;
+  }
+  .desc-card {
+    border: 2.5px solid #2d2a26;
+    border-radius: 12px 18px 14px 20px / 20px 12px 18px 14px;
+    padding: 16px 20px;
+    background: #fff;
+    box-shadow: 3px 3px 0 rgba(0,0,0,0.06);
+  }
+  .desc-card h3 {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 900;
+    font-size: 1em;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .desc-card p {
+    font-size: 0.95em;
+    line-height: 1.5;
+    color: #4a4540;
+  }
+  .highlight {
+    display: inline;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  .hl-yellow { background: #ffd166; }
+  .hl-blue { background: #a8d8ea; }
+  .hl-green { background: #b5e8c3; }
+  .hl-pink { background: #f4a4a4; }
+  .hl-purple { background: #d4b8ff; }
+  .hl-orange { background: #ffc09f; }
+
+  /* Schedule timeline */
+  .timeline {
+    margin-top: 30px;
+    border: 2.5px solid #2d2a26;
+    border-radius: 12px 18px 14px 20px / 20px 12px 18px 14px;
+    padding: 20px 24px;
+    background: #fff;
+    box-shadow: 3px 3px 0 rgba(0,0,0,0.06);
+  }
+  .timeline h2 {
+    font-family: 'Caveat', cursive;
+    font-size: 1.8em;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+  .timeline-bar {
+    position: relative;
+    height: 60px;
+    background: linear-gradient(90deg, #ffd166 0%, #ef8354 25%, #4a90d9 50%, #2a9d8f 75%, #7b68ee 100%);
+    border-radius: 30px;
+    border: 2.5px solid #2d2a26;
+    display: flex;
+    align-items: center;
+    overflow: visible;
+    margin-bottom: 60px;
+  }
+  .timeline-dot {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    border: 2.5px solid #2d2a26;
+    border-radius: 50%;
+    background: #fff;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 3;
+  }
+  .timeline-label {
+    position: absolute;
+    top: 42px;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    font-size: 0.78em;
+    text-align: center;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    line-height: 1.3;
+  }
+  .timeline-label .tl-time {
+    font-family: 'Patrick Hand', cursive;
+    font-weight: 400;
+    font-size: 1.1em;
+    color: #6b6560;
+  }
+
+  .banner {
+    display: inline-block;
+    padding: 6px 22px;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 900;
+    font-size: 0.95em;
+    color: #fff;
+    border-radius: 6px;
+    transform: rotate(-1deg);
+    box-shadow: 3px 3px 0 rgba(0,0,0,0.1);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  /* Intake callout */
+  .intake-callout {
+    margin-top: 30px;
+    border: 2.5px dashed #ef8354;
+    border-radius: 12px 18px 14px 20px / 20px 12px 18px 14px;
+    padding: 20px 24px;
+    background: #fff9f5;
+    position: relative;
+  }
+  .intake-callout h3 {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 900;
+    font-size: 1.1em;
+    color: #ef8354;
+    margin-bottom: 8px;
+  }
+  .intake-callout p {
+    font-size: 0.95em;
+    line-height: 1.5;
+    color: #4a4540;
+  }
+  .intake-callout code {
+    background: #ffd166;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: 'Patrick Hand', cursive;
+    font-size: 1em;
+  }
+
+  @media (max-width: 960px) {
+    .flow-container { transform: scale(0.7); transform-origin: top center; height: 650px; }
+    .flow-desc { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="title">
+    <h1>Agent Pipeline Flow</h1>
+    <div class="sub">How competitive intelligence flows through the Labyrinth Analytics agent team</div>
+  </div>
+
+  <!-- ===== CIRCULAR FLOW DIAGRAM ===== -->
+  <div class="flow-container">
+
+    <!-- SVG arrows -->
+    <svg class="arrows-layer" viewBox="0 0 900 900">
+      <defs>
+        <marker id="arrow-teal" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+          <polygon points="0 0, 10 4, 0 8" fill="#2a9d8f"/>
+        </marker>
+        <marker id="arrow-coral" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+          <polygon points="0 0, 10 4, 0 8" fill="#e07a5f"/>
+        </marker>
+        <marker id="arrow-blue" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+          <polygon points="0 0, 10 4, 0 8" fill="#4a90d9"/>
+        </marker>
+        <marker id="arrow-purple" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+          <polygon points="0 0, 10 4, 0 8" fill="#7b68ee"/>
+        </marker>
+        <marker id="arrow-orange" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+          <polygon points="0 0, 10 4, 0 8" fill="#ef8354"/>
+        </marker>
+      </defs>
+
+      <!-- Main clockwise flow: thick curved arrows between adjacent nodes -->
+      <!-- Competitive Intel -> Ron -->
+      <path d="M 270,165 C 310,130 370,108 420,125" stroke="#2a9d8f" stroke-width="4" fill="none" marker-end="url(#arrow-teal)" stroke-linecap="round"/>
+      <!-- Ron -> Meg -->
+      <path d="M 555,140 C 610,150 660,190 690,240" stroke="#2a9d8f" stroke-width="4" fill="none" marker-end="url(#arrow-teal)" stroke-linecap="round"/>
+      <!-- Meg -> Brock -->
+      <path d="M 760,345 C 775,400 775,460 760,510" stroke="#2a9d8f" stroke-width="4" fill="none" marker-end="url(#arrow-teal)" stroke-linecap="round"/>
+      <!-- Brock -> Gina -->
+      <path d="M 700,650 C 660,700 600,735 540,745" stroke="#2a9d8f" stroke-width="4" fill="none" marker-end="url(#arrow-teal)" stroke-linecap="round"/>
+      <!-- Gina -> John -->
+      <path d="M 370,760 C 310,750 250,720 210,680" stroke="#2a9d8f" stroke-width="4" fill="none" marker-end="url(#arrow-teal)" stroke-linecap="round"/>
+      <!-- John -> Madison -->
+      <path d="M 130,570 C 115,520 112,460 125,405" stroke="#2a9d8f" stroke-width="4" fill="none" marker-end="url(#arrow-teal)" stroke-linecap="round"/>
+      <!-- Madison -> Jacqueline -->
+      <path d="M 155,290 C 170,245 200,210 235,190" stroke="#2a9d8f" stroke-width="4" fill="none" marker-end="url(#arrow-teal)" stroke-linecap="round"/>
+
+      <!-- Cross-connections to center (LoreConvo + Pipeline) -->
+      <!-- Each agent connects to center hub via dotted lines -->
+      <line x1="280" y1="210" x2="370" y2="380" stroke="#4a90d9" stroke-width="2" stroke-dasharray="6,4" opacity="0.5"/>
+      <line x1="495" y1="160" x2="450" y2="370" stroke="#4a90d9" stroke-width="2" stroke-dasharray="6,4" opacity="0.5"/>
+      <line x1="730" y1="310" x2="540" y2="410" stroke="#4a90d9" stroke-width="2" stroke-dasharray="6,4" opacity="0.5"/>
+      <line x1="730" y1="580" x2="540" y2="490" stroke="#4a90d9" stroke-width="2" stroke-dasharray="6,4" opacity="0.5"/>
+      <line x1="455" y1="770" x2="450" y2="540" stroke="#4a90d9" stroke-width="2" stroke-dasharray="6,4" opacity="0.5"/>
+      <line x1="170" y1="640" x2="360" y2="500" stroke="#4a90d9" stroke-width="2" stroke-dasharray="6,4" opacity="0.5"/>
+      <line x1="140" y1="365" x2="350" y2="420" stroke="#4a90d9" stroke-width="2" stroke-dasharray="6,4" opacity="0.5"/>
+      <line x1="240" y1="195" x2="370" y2="390" stroke="#4a90d9" stroke-width="2" stroke-dasharray="6,4" opacity="0.5"/>
+
+      <!-- Debbie's connections (orange, to all) -->
+      <path d="M 450,60 C 380,75 310,120 270,170" stroke="#ef8354" stroke-width="2.5" fill="none" marker-end="url(#arrow-orange)" stroke-dasharray="8,4" opacity="0.6"/>
+      <path d="M 475,70 C 540,90 580,120 600,160" stroke="#ef8354" stroke-width="2.5" fill="none" marker-end="url(#arrow-orange)" stroke-dasharray="8,4" opacity="0.6"/>
+      <path d="M 490,65 C 600,100 700,200 730,280" stroke="#ef8354" stroke-width="2.5" fill="none" marker-end="url(#arrow-orange)" stroke-dasharray="8,4" opacity="0.6"/>
+    </svg>
+
+    <!-- Debbie at top center -->
+    <div class="agent-node debbie-node" style="top: -30px; left: 50%; transform: translateX(-50%);">
+      <div class="agent-circle bg-orange">
+        <span class="agent-emoji">&#x1f451;</span>
+      </div>
+      <div class="agent-name">Debbie</div>
+      <div class="agent-role">Decisions, Approvals,<br>Ad Hoc Intel Tips</div>
+    </div>
+
+    <!-- Competitive Intel (top-left, ~10 o'clock) -->
+    <div class="agent-node" style="top: 130px; left: 145px;">
+      <div class="agent-circle bg-coral">
+        <span class="agent-emoji">&#x1f50d;</span>
+      </div>
+      <div class="agent-name">Comp Intel</div>
+      <div class="agent-role">Competitive Scan<br>+ INTAKE.md Tips</div>
+      <div class="agent-time">Mon/Thu 3:00 PM</div>
+    </div>
+
+    <!-- Ron (top-right, ~2 o'clock) -->
+    <div class="agent-node" style="top: 100px; left: 545px;">
+      <div class="agent-circle bg-teal">
+        <span class="agent-emoji">&#x1f528;</span>
+      </div>
+      <div class="agent-name">Ron</div>
+      <div class="agent-role">Builder<br><span class="highlight hl-pink">RON:</span> tasks</div>
+      <div class="agent-time">Daily 5:05 PM</div>
+    </div>
+
+    <!-- Meg (right, ~3 o'clock) -->
+    <div class="agent-node" style="top: 260px; left: 690px;">
+      <div class="agent-circle bg-blue">
+        <span class="agent-emoji">&#x1f9ea;</span>
+      </div>
+      <div class="agent-name">Meg</div>
+      <div class="agent-role">QA Engineer<br>Tests Ron's Code</div>
+      <div class="agent-time">Daily 6:33 PM</div>
+    </div>
+
+    <!-- Brock (right-bottom, ~5 o'clock) -->
+    <div class="agent-node" style="top: 520px; left: 690px;">
+      <div class="agent-circle bg-slate">
+        <span class="agent-emoji">&#x1f6e1;</span>
+      </div>
+      <div class="agent-name">Brock</div>
+      <div class="agent-role">Security<br><span class="highlight hl-pink">BROCK-REVIEW:</span></div>
+      <div class="agent-time">Daily 11:38 PM</div>
+    </div>
+
+    <!-- Gina (bottom-right, ~7 o'clock) -->
+    <div class="agent-node" style="top: 700px; left: 530px;">
+      <div class="agent-circle bg-purple">
+        <span class="agent-emoji">&#x1f3db;</span>
+      </div>
+      <div class="agent-name">Gina</div>
+      <div class="agent-role">Architecture<br><span class="highlight hl-pink">GINA-REVIEW:</span></div>
+      <div class="agent-time">Wed/Sat 4:00 AM</div>
+    </div>
+
+    <!-- John (bottom-left, ~8 o'clock) -->
+    <div class="agent-node" style="top: 700px; left: 195px;">
+      <div class="agent-circle bg-green">
+        <span class="agent-emoji">&#x1f4dd;</span>
+      </div>
+      <div class="agent-name">John</div>
+      <div class="agent-role">Tech Docs<br>Documents Features</div>
+      <div class="agent-time">Tue/Sat 3:38 AM</div>
+    </div>
+
+    <!-- Madison (left, ~9 o'clock) -->
+    <div class="agent-node" style="top: 310px; left: 42px;">
+      <div class="agent-circle bg-pink">
+        <span class="agent-emoji">&#x1f4e3;</span>
+      </div>
+      <div class="agent-name">Madison</div>
+      <div class="agent-role">Marketing<br><span class="highlight hl-pink">MADISON:</span></div>
+      <div class="agent-time">Tue/Fri 12:31 AM</div>
+    </div>
+
+    <!-- Jacqueline (top-left, ~11 o'clock) -->
+    <div class="agent-node" style="top: 130px; left: 355px;">
+      <div class="agent-circle bg-yellow">
+        <span class="agent-emoji">&#x1f4ca;</span>
+      </div>
+      <div class="agent-name">Jacqueline</div>
+      <div class="agent-role">PM Dashboard<br>Synthesizes All</div>
+      <div class="agent-time">Daily 1:38 AM</div>
+    </div>
+
+    <!-- Scout (bottom center) -->
+    <div class="agent-node" style="top: 800px; left: 50%; transform: translateX(-50%);">
+      <div class="agent-circle bg-orange">
+        <span class="agent-emoji">&#x1f52d;</span>
+      </div>
+      <div class="agent-name">Scout</div>
+      <div class="agent-role">Opportunity Research<br>Informed by Comp Intel</div>
+      <div class="agent-time">Mon 3:08 AM</div>
+    </div>
+
+    <!-- Center Hub -->
+    <div class="center-hub">
+      <div class="hub-icon">&#x1f4ac;</div>
+      <div class="hub-title">LoreConvo + LoreDocs<br>+ Pipeline Tracker</div>
+      <div class="hub-sub">shared memory &amp; knowledge layer</div>
+    </div>
+
+  </div>
+
+  <!-- ===== LEGEND ===== -->
+  <div class="legend">
+    <div class="legend-item">
+      <div class="legend-line" style="background: #2a9d8f;"></div>
+      <span>Primary data flow (clockwise)</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-line dashed"></div>
+      <span>LoreConvo / Pipeline DB reads</span>
+    </div>
+    <div class="legend-item">
+      <div class="legend-line" style="background: repeating-linear-gradient(90deg, #ef8354 0, #ef8354 6px, transparent 6px, transparent 10px);"></div>
+      <span>Debbie decisions + ad hoc tips</span>
+    </div>
+    <div class="legend-item">
+      <span class="highlight hl-pink" style="font-size: 0.85em;">AGENT:</span>
+      <span>Cross-agent handoff tag</span>
+    </div>
+  </div>
+
+  <!-- ===== DEBBIE'S INTAKE PATH ===== -->
+  <div class="intake-callout">
+    <h3>&#x1F4E5; Debbie's Ad Hoc Intel Path</h3>
+    <p>
+      Spot a competitor on Reddit, LinkedIn, or social media? Drop it in
+      <code>docs/internal/competitive/INTAKE.md</code> with name, URL, and notes.
+      The Competitive Intel agent processes all pending entries at the start of every scan
+      and routes findings to the right agents via pipeline tracker tags.
+    </p>
+  </div>
+
+  <!-- ===== WHAT FLOWS WHERE ===== -->
+  <div style="text-align: center; margin-top: 34px; margin-bottom: 14px;">
+    <span class="banner" style="background: #4a90d9;">What Flows Where</span>
+  </div>
+
+  <div class="flow-desc">
+    <div class="desc-card">
+      <h3>&#x1f50d; Comp Intel Produces</h3>
+      <p>
+        Scans the competitive landscape and processes Debbie's INTAKE.md tips.
+        Creates pipeline items tagged
+        <span class="highlight hl-pink">RON:</span> (feature gaps),
+        <span class="highlight hl-pink">MADISON:</span> (messaging angles),
+        <span class="highlight hl-pink">GINA-REVIEW:</span> (architecture concerns),
+        <span class="highlight hl-pink">BROCK-REVIEW:</span> (security comparisons).
+        Report in <code>docs/internal/competitive/</code>.
+      </p>
+    </div>
+    <div class="desc-card">
+      <h3>&#x1f528; Ron Consumes</h3>
+      <p>
+        Reads <span class="highlight hl-pink">RON:</span> tasks from pipeline tracker.
+        Builds features to close competitive gaps. Also reads Meg (QA), Brock (security),
+        and Gina (architecture) findings. Outputs code + COMPLETED.md updates.
+      </p>
+    </div>
+    <div class="desc-card">
+      <h3>&#x1f9ea; Meg + &#x1f6e1; Brock Validate</h3>
+      <p>
+        Meg tests Ron's code for correctness. Brock scans for vulnerabilities and
+        picks up <span class="highlight hl-pink">BROCK-REVIEW:</span> items from competitive intel.
+        Both feed findings back to Ron.
+      </p>
+    </div>
+    <div class="desc-card">
+      <h3>&#x1f3db; Gina Evaluates</h3>
+      <p>
+        Reviews <span class="highlight hl-pink">GINA-REVIEW:</span> items -- evaluates
+        competitor approaches for architectural merit. Reviews Ron's product code for quality.
+        Feeds back to Ron (fixes) and Brock (security deep-dives).
+      </p>
+    </div>
+    <div class="desc-card">
+      <h3>&#x1f4dd; John Documents</h3>
+      <p>
+        Writes user-facing docs for features Meg has verified as working.
+        CLI references, MCP tool catalogs, quickstart guides, changelogs.
+        Outputs to <code>ron_skills/*/docs/</code>.
+      </p>
+    </div>
+    <div class="desc-card">
+      <h3>&#x1f4e3; Madison Markets</h3>
+      <p>
+        Picks up <span class="highlight hl-pink">MADISON:</span> messaging angles from
+        competitive intel. Writes blog drafts and promo copy positioning
+        Lore's differentiators. Never names competitors directly.
+      </p>
+    </div>
+    <div class="desc-card">
+      <h3>&#x1f4ca; Jacqueline Synthesizes</h3>
+      <p>
+        Reads ALL agent outputs including competitive scan reports. Produces the daily
+        executive dashboard and weekly product roadmap. Surfaces competitive findings,
+        handoff status, and action items for Debbie.
+      </p>
+    </div>
+    <div class="desc-card">
+      <h3>&#x1f52d; Scout Researches</h3>
+      <p>
+        Reads competitive intel to avoid proposing overlapping products. Uses competitor
+        gaps to find adjacent opportunities. Feeds new OPPs into pipeline for
+        Gina's architecture review and Debbie's triage.
+      </p>
+    </div>
+  </div>
+
+  <!-- ===== DAILY SCHEDULE TIMELINE ===== -->
+  <div class="timeline">
+    <h2>&#x23F0; Typical Day Schedule (Pacific Time)</h2>
+    <div style="font-size: 0.95em; text-align: center; color: #6b6560; margin-bottom: 18px;">
+      Competitive intel runs first on Mon/Thu so findings reach Ron the same day
+    </div>
+    <div class="timeline-bar">
+      <!-- Dots positioned as percentages across the bar -->
+      <!-- 3PM = 63%, 5PM = 71%, 6:30PM = 77%, 11:30PM = 98%, 12:30AM = 2%, 1:30AM = 6%, 3AM = 13%, 3:30AM = 15%, 4AM = 17%, 5AM = 21% -->
+      <div class="timeline-dot" style="left: 63%;"></div>
+      <div class="timeline-label" style="left: 63%;"><span class="tl-time">3 PM</span><br>Comp Intel</div>
+
+      <div class="timeline-dot" style="left: 71%;"></div>
+      <div class="timeline-label" style="left: 71%;"><span class="tl-time">5 PM</span><br>Ron</div>
+
+      <div class="timeline-dot" style="left: 77%;"></div>
+      <div class="timeline-label" style="left: 77%;"><span class="tl-time">6:30 PM</span><br>Meg</div>
+
+      <div class="timeline-dot" style="left: 90%;"></div>
+      <div class="timeline-label" style="left: 90%;"><span class="tl-time">11:30 PM</span><br>Brock</div>
+
+      <div class="timeline-dot" style="left: 2%;"></div>
+      <div class="timeline-label" style="left: 2%;"><span class="tl-time">12:30 AM</span><br>Madison*</div>
+
+      <div class="timeline-dot" style="left: 8%;"></div>
+      <div class="timeline-label" style="left: 8%;"><span class="tl-time">1:30 AM</span><br>Jacqueline</div>
+
+      <div class="timeline-dot" style="left: 15%;"></div>
+      <div class="timeline-label" style="left: 15%;"><span class="tl-time">3 AM</span><br>Scout*</div>
+
+      <div class="timeline-dot" style="left: 19%;"></div>
+      <div class="timeline-label" style="left: 19%;"><span class="tl-time">3:30 AM</span><br>John*</div>
+
+      <div class="timeline-dot" style="left: 23%;"></div>
+      <div class="timeline-label" style="left: 23%;"><span class="tl-time">4 AM</span><br>Gina*</div>
+
+      <div class="timeline-dot" style="left: 28%;"></div>
+      <div class="timeline-label" style="left: 28%;"><span class="tl-time">5 AM</span><br>Roadmap*</div>
+    </div>
+    <div style="font-size: 0.85em; color: #999; text-align: center; margin-top: -10px;">
+      * = Not daily (see agent schedules above for specific days)
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

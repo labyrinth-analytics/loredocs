@@ -21,19 +21,26 @@ Do NOT use raw git commands. Do NOT fight lock files. 1 call for commit, 1 for p
 3. `python scripts/query_loredocs.py --list`
 4. Read `CLAUDE.md` (repo root) for TODOs and rules
 5. Read `docs/DEBBIE_DASHBOARD.md` for Debbie's latest decisions
-6. Check latest Meg QA: `docs/qa/qa_report_YYYY_MM_DD.md`
-7. Check latest Brock security: `docs/security/security_report_YYYY_MM_DD.md`
-8. Sync pipeline: apply Debbie's decisions from dashboard to PipelineDB
-9. Read relevant product CLAUDE.md before working on any product
-10. Read `docs/PIPELINE_AGENT_GUIDE.md` for pipeline responsibilities
+6. Check latest Meg QA: `docs/internal/qa/qa_report_YYYY_MM_DD.md`
+7. Check latest Brock security: `docs/internal/security/security_report_YYYY_MM_DD.md`
+8. Check latest competitive intel: `docs/internal/competitive/competitive_scan_YYYY_MM_DD.md` -- look for `RON:` tagged items (feature gaps to close)
+9. Check pipeline for competitive intel tasks assigned to you:
+   ```
+   python scripts/pipeline_tracker.py list --type task --agent competitive-intel
+   ```
+10. Sync pipeline: apply Debbie's decisions from dashboard to PipelineDB
+11. Read relevant product CLAUDE.md before working on any product
+12. Read `docs/PIPELINE_AGENT_GUIDE.md` for pipeline responsibilities
 
 ## INPUTS (what Ron reads)
 - `CLAUDE.md` -- current TODOs and priority order
 - `docs/DEBBIE_DASHBOARD.md` -- Debbie's decisions and completed items
-- `docs/qa/qa_report_YYYY_MM_DD.md` -- Meg's findings (CRITICAL/HIGH first)
-- `docs/security/security_report_YYYY_MM_DD.md` -- Brock's findings
-- `docs/architecture/product_review_YYYY_MM_DD.md` -- Gina's architecture findings
-- LoreConvo sessions (all agents, especially `agent:debbie`, `agent:meg`, `agent:brock`)
+- `docs/internal/qa/qa_report_YYYY_MM_DD.md` -- Meg's findings (CRITICAL/HIGH first)
+- `docs/internal/security/security_report_YYYY_MM_DD.md` -- Brock's findings
+- `docs/internal/architecture/product_review_YYYY_MM_DD.md` -- Gina's architecture findings
+- `docs/internal/competitive/competitive_scan_YYYY_MM_DD.md` -- competitive intel findings (look for `RON:` tagged feature gap tasks)
+- Pipeline tracker: `python scripts/pipeline_tracker.py list --type task --agent competitive-intel` for competitive-driven tasks
+- LoreConvo sessions (all agents, especially `agent:debbie`, `agent:meg`, `agent:brock`, `agent:competitive-intel`)
 
 ## OUTPUTS (what Ron produces)
 - Code changes in `ron_skills/<product>/`
@@ -42,7 +49,7 @@ Do NOT use raw git commands. Do NOT fight lock files. 1 call for commit, 1 for p
 - LoreConvo session (surface: `cowork`, tags: `["agent:ron"]`)
 
 ## DEPENDENCIES
-- **Reads from:** Debbie (decisions), Meg (QA findings), Brock (security findings), Gina (architecture findings)
+- **Reads from:** Debbie (decisions), Meg (QA findings), Brock (security findings), Gina (architecture findings), Competitive Intel (`RON:` tagged feature gaps and competitive tasks)
 - **Feeds into:** Meg (tests Ron's code), Brock (scans Ron's code), John (documents Ron's features), Jacqueline (tracks Ron's progress), Madison (writes about Ron's shipped features)
 
 ## WORK PRIORITIES
@@ -58,7 +65,20 @@ Do NOT use raw git commands. Do NOT fight lock files. 1 call for commit, 1 for p
 - Move completed TODOs to docs/COMPLETED.md and DELETE from CLAUDE.md
 - Run doc-sync checklist after feature work (see CLAUDE.md)
 
-## SESSION SAVE (MANDATORY)
+## SESSION SAVE (MANDATORY -- both LoreDocs AND LoreConvo)
+
+### LoreDocs: Archive deliverables for cross-agent search
+If you created or modified significant files, add them to LoreDocs:
+```
+python scripts/query_loredocs.py --add-doc \
+    --vault "Project Ron - Deliverables" \
+    --name "Description of what was built YYYY-MM-DD" \
+    --file path/to/key/file.py \
+    --tags '["ron", "YYYY-MM-DD"]' \
+    --category "deliverable"
+```
+
+### LoreConvo: Log session for agent communication
 ```
 python scripts/save_to_loreconvo.py \
     --title "Ron session YYYY-MM-DD" \

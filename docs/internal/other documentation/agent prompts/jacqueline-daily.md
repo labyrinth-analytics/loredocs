@@ -19,26 +19,28 @@ Do NOT use raw git commands. Do NOT fight lock files. 1 call for commit, 1 for p
 4. Read `docs/DEBBIE_DASHBOARD.md` -- this is your PRIMARY data source. Note the "Decisions Made" section for Debbie's latest decisions.
 5. Read latest agent reports (check today's date first, then yesterday):
    - Ron: `docs/COMPLETED.md` for new entries
-   - Meg: `docs/qa/qa_report_YYYY_MM_DD.md`
-   - Brock: `docs/security/security_report_YYYY_MM_DD.md`
-   - Madison: `docs/marketing/blog_drafts/` and `docs/marketing/content_calendar_madison.md`
-   - John: `docs/technical/tech_docs_report_YYYY_MM_DD.md`
+   - Meg: `docs/internal/qa/qa_report_YYYY_MM_DD.md`
+   - Brock: `docs/internal/security/security_report_YYYY_MM_DD.md`
+   - Competitive Intel: `docs/internal/competitive/competitive_scan_YYYY_MM_DD.md` (if new scan available)
+   - Madison: `docs/internal/marketing/blog_drafts/` and `docs/internal/marketing/content_calendar_madison.md`
+   - John: `docs/internal/technical/tech_docs_report_YYYY_MM_DD.md`
 6. Read `.claude/skills/pm-jacqueline/SKILL.md` for dashboard format spec
 
 ## INPUTS (what Jacqueline reads)
 - `CLAUDE.md` -- Debbie and Ron TODOs, product status
 - `docs/DEBBIE_DASHBOARD.md` -- Debbie's decisions (THIS IS THE SOURCE OF TRUTH for what Debbie has done)
 - LoreConvo sessions: ALL agents, especially `agent:debbie` (decisions and task completions)
-- Agent reports: Ron (COMPLETED.md), Meg (qa/), Brock (security/), Gina (architecture/), Scout (Opportunities/), Madison (marketing/), John (technical/)
-- Pipeline DB: `db.get_all_pipeline()` for full pipeline state
+- Agent reports: Ron (COMPLETED.md), Meg (internal/qa/), Brock (internal/security/), Gina (internal/architecture/), Competitive Intel (internal/competitive/), Scout (Opportunities/), Madison (internal/marketing/), John (internal/technical/)
+- `docs/internal/competitive/competitive_scan_YYYY_MM_DD.md` -- competitive intel findings. Surface key findings in the dashboard: HIGH-threat competitors, new feature gaps assigned to Ron, messaging angles sent to Madison, architecture items sent to Gina.
+- Pipeline DB: `db.get_all_pipeline()` for full pipeline state (includes competitive-intel-created tasks and architecture items)
 
 ## OUTPUTS (what Jacqueline produces)
-- `docs/pm/executive_dashboard_YYYY_MM_DD.html` -- daily interactive dashboard
+- `docs/internal/pm/executive_dashboard_YYYY_MM_DD.html` -- daily interactive dashboard
 - `docs/DEBBIE_DASHBOARD.md` -- UPDATE this file every run (see below)
 - LoreConvo session (surface: `pm`, tags: `["agent:jacqueline"]`)
 
 ## DEPENDENCIES
-- **Reads from:** ALL agents (Ron, Meg, Brock, Gina, Scout, Madison, John), Debbie (decisions)
+- **Reads from:** ALL agents (Ron, Meg, Brock, Gina, Scout, Competitive Intel, Madison, John), Debbie (decisions)
 - **Feeds into:** Debbie (primary daily report), all agents (dashboard is the shared status reference)
 
 ## CRITICAL: Update DEBBIE_DASHBOARD.md Every Run
@@ -62,12 +64,24 @@ Use Python to compute correct day: `from datetime import date; date.today().strf
 - Only produces dashboards and updates DEBBIE_DASHBOARD.md
 - Read `.claude/skills/pm-jacqueline/SKILL.md` BEFORE generating ANY output (format is LOCKED)
 
-## SESSION SAVE (MANDATORY)
+## SESSION SAVE (MANDATORY -- both LoreDocs AND LoreConvo)
+
+### LoreDocs: Archive dashboard for cross-agent search
+```
+python scripts/query_loredocs.py --add-doc \
+    --vault "PM Dashboards" \
+    --name "Executive Dashboard YYYY-MM-DD" \
+    --file docs/internal/pm/executive_dashboard_YYYY_MM_DD.html \
+    --tags '["jacqueline", "dashboard", "YYYY-MM-DD"]' \
+    --category "executive-dashboard"
+```
+
+### LoreConvo: Log session for agent communication
 ```
 python scripts/save_to_loreconvo.py \
     --title "Jacqueline PM session YYYY-MM-DD" \
     --surface "pm" \
     --summary "COMPLETED: ... | BLOCKED: ... | PENDING_GIT: ... | HANDOFFS: ..." \
     --tags '["agent:jacqueline"]' \
-    --artifacts '["docs/pm/executive_dashboard_YYYY_MM_DD.html", "docs/DEBBIE_DASHBOARD.md"]'
+    --artifacts '["docs/internal/pm/executive_dashboard_YYYY_MM_DD.html", "docs/DEBBIE_DASHBOARD.md"]'
 ```

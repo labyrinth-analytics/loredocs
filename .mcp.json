@@ -3,6 +3,20 @@
     "sequential-thinking": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+    },
+    "loreconvo": {
+      "command": "uvx",
+      "args": ["loreconvo"],
+      "env": {
+        "LORECONVO_PRO": "LAB-eyJlbWFpbCI6ImRlYmJpZS5zaGFwaXJvQHByb3Rvbm1lLmNvbSIsImV4cCI6Im5ldmVyIiwiaXNzIjoiMS4wIiwicHJvZHVjdCI6ImxvcmVjb252byIsInRpZXIiOiJwcm8ifQ.-VKB-9RbUPlPyAdngqhIyxW6ag_VlEtofBvDPBv6TXzU42YQmYyspXNZ44AYgdVtvxXWFjzkpbwpdgwfDYTlCw"
+      }
+    },
+    "loredocs": {
+      "command": "uvx",
+      "args": ["loredocs"],
+      "env": {
+        "LOREDOCS_PRO": "LAB-eyJlbWFpbCI6ImRlYmJpZS5zaGFwaXJvQHByb3Rvbm1lLmNvbSIsImV4cCI6Im5ldmVyIiwiaXNzIjoiMS4wIiwicHJvZHVjdCI6ImxvcmVkb2NzIiwidGllciI6InBybyJ9.y5fdELt6_7q_i1xeeA-S3CK5ZsDqggJs_T3CNRgtW6wb09GmSNUWGCSGAzbXX-5pNZgXs_p4iYkeHBQyze5aBg"
+      }
     }
   }
 }

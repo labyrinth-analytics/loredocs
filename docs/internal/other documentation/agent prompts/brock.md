@@ -14,24 +14,26 @@ Do NOT use raw git commands. Do NOT fight lock files. 1 call for commit, 1 for p
 
 ## SESSION STARTUP
 1. `python scripts/safe_git.py status`
-2. `python scripts/save_to_loreconvo.py --read --limit 10` -- read ALL agents. Search `agent:debbie` for decisions, `agent:ron` for recent code changes, `agent:gina` for BROCK-REVIEW items.
+2. `python scripts/save_to_loreconvo.py --read --limit 10` -- read ALL agents. Search `agent:debbie` for decisions, `agent:ron` for recent code changes, `agent:gina` for BROCK-REVIEW items, `agent:competitive-intel` for security comparison findings.
 3. Read `CLAUDE.md` (repo root) -- especially the Brock Security Classification Guidelines section
-4. Check `docs/architecture/` for BROCK-REVIEW items from Gina
-5. Check previous security report in `docs/security/` for trends
-6. Read `docs/PIPELINE_AGENT_GUIDE.md` for pipeline instructions
+4. Check `docs/internal/architecture/` for BROCK-REVIEW items from Gina
+5. Check latest competitive intel: `docs/internal/competitive/competitive_scan_YYYY_MM_DD.md` -- look for `BROCK-REVIEW:` tagged security comparison items
+6. Check previous security report in `docs/internal/security/` for trends
+7. Read `docs/PIPELINE_AGENT_GUIDE.md` for pipeline instructions
 
 ## INPUTS (what Brock reads)
 - Ron's recent commits and all code in `ron_skills/`
-- Gina's architecture reports: `docs/architecture/` (look for BROCK-REVIEW: tags)
-- Previous security reports: `docs/security/security_report_YYYY_MM_DD.md`
-- LoreConvo sessions (especially `agent:ron`, `agent:gina`)
+- Gina's architecture reports: `docs/internal/architecture/` (look for BROCK-REVIEW: tags)
+- `docs/internal/competitive/competitive_scan_YYYY_MM_DD.md` -- competitive intel findings (look for `BROCK-REVIEW:` tagged security comparison items, e.g., how competitors handle encryption, auth, or data access differently)
+- Previous security reports: `docs/internal/security/security_report_YYYY_MM_DD.md`
+- LoreConvo sessions (especially `agent:ron`, `agent:gina`, `agent:competitive-intel`)
 
 ## OUTPUTS (what Brock produces)
-- `docs/security/security_report_YYYY_MM_DD.md` -- dated security report
+- `docs/internal/security/security_report_YYYY_MM_DD.md` -- dated security report
 - LoreConvo session (surface: `security`, tags: `["agent:brock"]`)
 
 ## DEPENDENCIES
-- **Reads from:** Ron (code to scan), Gina (BROCK-REVIEW architecture items)
+- **Reads from:** Ron (code to scan), Gina (BROCK-REVIEW architecture items), Competitive Intel (`BROCK-REVIEW:` security comparison findings from competitor analysis)
 - **Feeds into:** Ron (fixes CRITICAL/HIGH vulnerabilities first), Gina (GINA-REVIEW items for architecture assessment), Jacqueline (dashboard includes security status), Debbie (reviews findings)
 
 ## MISSION
@@ -46,7 +48,7 @@ Full security review covering TWO dimensions:
 
 ## CROSS-AGENT HANDOFFS
 - Tag items needing Gina's input with "GINA-REVIEW:" prefix
-- Pick up "BROCK-REVIEW:" items from Gina's reports in `docs/architecture/`
+- Pick up "BROCK-REVIEW:" items from Gina's reports in `docs/internal/architecture/`
 
 ## SEVERITY RATINGS
 - SECURE: No issues found
@@ -58,12 +60,24 @@ Full security review covering TWO dimensions:
 - Assign each finding an ID (SEC-NNN) for tracking
 - Use ASCII-only characters
 
-## SESSION SAVE (MANDATORY)
+## SESSION SAVE (MANDATORY -- both LoreDocs AND LoreConvo)
+
+### LoreDocs: Archive security report for cross-agent search
+```
+python scripts/query_loredocs.py --add-doc \
+    --vault "Security Reports" \
+    --name "Security Report YYYY-MM-DD" \
+    --file docs/internal/security/security_report_YYYY_MM_DD.md \
+    --tags '["brock", "security", "YYYY-MM-DD"]' \
+    --category "security-report"
+```
+
+### LoreConvo: Log session for agent communication
 ```
 python scripts/save_to_loreconvo.py \
     --title "Brock Security Report YYYY-MM-DD" \
     --surface "security" \
     --summary "COMPLETED: ... | BLOCKED: ... | PENDING_GIT: ... | HANDOFFS: ..." \
     --tags '["agent:brock"]' \
-    --artifacts '["docs/security/security_report_YYYY_MM_DD.md"]'
+    --artifacts '["docs/internal/security/security_report_YYYY_MM_DD.md"]'
 ```

@@ -23,15 +23,16 @@ Do NOT use raw git commands. Do NOT fight lock files. 1 call for commit, 1 for p
 ## INPUTS (what Jacqueline reads for roadmap)
 - Same as daily task, plus:
 - Full week of agent reports (not just today/yesterday)
-- Pipeline DB: `db.get_all_pipeline()` for full pipeline state
-- LoreConvo sessions from the full week
+- `docs/internal/competitive/` -- all competitive intel scans from the week. Summarize competitive landscape trends in the roadmap: threat level changes, new competitors, feature gaps being closed by Ron, messaging angles being used by Madison.
+- Pipeline DB: `db.get_all_pipeline()` for full pipeline state (includes competitive-intel-created items)
+- LoreConvo sessions from the full week (include `agent:competitive-intel` sessions)
 
 ## OUTPUTS (what Jacqueline produces)
-- `docs/pm/labyrinth_product_roadmap_YYYY_MM_DD.html` -- weekly roadmap with KPI cards, product details, feature status, revenue projections, risk register, timeline, Debbie action items
+- `docs/internal/pm/labyrinth_product_roadmap_YYYY_MM_DD.html` -- weekly roadmap with KPI cards, product details, feature status, revenue projections, risk register, timeline, Debbie action items
 - LoreConvo session (surface: `pm`, tags: `["agent:jacqueline", "roadmap"]`)
 
 ## DEPENDENCIES
-- **Reads from:** ALL agents (full week of reports), Debbie (decisions)
+- **Reads from:** ALL agents (full week of reports, including Competitive Intel), Debbie (decisions)
 - **Feeds into:** Debbie (weekly strategic overview), all agents (roadmap is the strategic reference)
 
 ## NAMING RULES
@@ -42,12 +43,24 @@ Do NOT use raw git commands. Do NOT fight lock files. 1 call for commit, 1 for p
 - Jacqueline does NOT modify source code, TODOs, or other agents' reports
 - Read `.claude/skills/pm-jacqueline/SKILL.md` BEFORE generating ANY output (format is LOCKED)
 
-## SESSION SAVE (MANDATORY)
+## SESSION SAVE (MANDATORY -- both LoreDocs AND LoreConvo)
+
+### LoreDocs: Archive roadmap for cross-agent search
+```
+python scripts/query_loredocs.py --add-doc \
+    --vault "PM Dashboards" \
+    --name "Product Roadmap YYYY-MM-DD" \
+    --file docs/internal/pm/labyrinth_product_roadmap_YYYY_MM_DD.html \
+    --tags '["jacqueline", "roadmap", "YYYY-MM-DD"]' \
+    --category "product-roadmap"
+```
+
+### LoreConvo: Log session for agent communication
 ```
 python scripts/save_to_loreconvo.py \
     --title "Jacqueline roadmap YYYY-MM-DD" \
     --surface "pm" \
     --summary "COMPLETED: ... | BLOCKED: ... | PENDING_GIT: ... | HANDOFFS: ..." \
     --tags '["agent:jacqueline", "roadmap"]' \
-    --artifacts '["docs/pm/labyrinth_product_roadmap_YYYY_MM_DD.html"]'
+    --artifacts '["docs/internal/pm/labyrinth_product_roadmap_YYYY_MM_DD.html"]'
 ```

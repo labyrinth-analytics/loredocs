@@ -124,7 +124,7 @@ Jacqueline surfaces untriaged items (status=`new`) in the daily dashboard.
 
 5. **Save report.** Write competitive analysis to:
    ```
-   docs/competitive/competitive_scan_YYYY_MM_DD.md
+   docs/internal/competitive/competitive_scan_YYYY_MM_DD.md
    ```
 
 ---
@@ -146,7 +146,7 @@ Jacqueline surfaces untriaged items (status=`new`) in the daily dashboard.
    ```bash
    python scripts/pipeline_tracker.py update --ref OPP-015 \
        --status approved --agent gina \
-       --note "Architecture review complete. HIGH compatibility with Lore patterns. See docs/architecture/OPP-015_data_catalog_lite.md"
+       --note "Architecture review complete. HIGH compatibility with Lore patterns. See docs/internal/architecture/OPP-015_data_catalog_lite.md"
    ```
    For items that need rework:
    ```bash
@@ -157,7 +157,7 @@ Jacqueline surfaces untriaged items (status=`new`) in the daily dashboard.
 
 4. **Save architecture proposals as files:**
    ```
-   docs/architecture/OPP-xxx_product_name.md
+   docs/internal/architecture/OPP-xxx_product_name.md
    ```
 
 5. **Save LATEST architecture report:** Overwrite

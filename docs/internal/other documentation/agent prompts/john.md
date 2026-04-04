@@ -22,7 +22,7 @@ Do NOT use raw git commands. Do NOT fight lock files. 1 call for commit, 1 for p
 
 ## INPUTS (what John reads)
 - Ron's code in `ron_skills/` (source of truth for tool names, parameters, behavior)
-- Meg's QA reports: `docs/qa/` (only document features Meg verified as working)
+- Meg's QA reports: `docs/internal/qa/` (only document features Meg verified as working)
 - Existing docs: `ron_skills/<product>/docs/`
 - Product CLAUDE.md files for architecture context
 - LoreConvo sessions (especially `agent:ron` for recent features, `agent:meg` for verified status)
@@ -32,7 +32,7 @@ Do NOT use raw git commands. Do NOT fight lock files. 1 call for commit, 1 for p
 - `ron_skills/<product>/docs/mcp_tool_catalog.md` -- all MCP tools in plain English
 - `ron_skills/<product>/docs/quickstart.md` -- getting started guide
 - `ron_skills/<product>/docs/CHANGELOG.md` -- user-friendly changelog
-- `docs/technical/tech_docs_report_YYYY_MM_DD.md` -- run report
+- `docs/internal/technical/tech_docs_report_YYYY_MM_DD.md` -- run report
 - LoreConvo session (surface: `cowork`, tags: `["agent:john"]`)
 
 ## DEPENDENCIES
@@ -48,12 +48,25 @@ Non-technical users who are comfortable installing a plugin but do not read sour
 - Use ASCII-only characters
 - Use Lore branding consistently
 
-## SESSION SAVE (MANDATORY)
+## SESSION SAVE (MANDATORY -- both LoreDocs AND LoreConvo)
+
+### LoreDocs: Archive documentation for cross-agent search
+For each doc file created or updated, add to LoreDocs:
+```
+python scripts/query_loredocs.py --add-doc \
+    --vault "Project Ron - Deliverables" \
+    --name "Doc name (e.g., LoreConvo CLI Reference)" \
+    --file ron_skills/loreconvo/docs/cli_reference.md \
+    --tags '["john", "docs", "YYYY-MM-DD"]' \
+    --category "documentation"
+```
+
+### LoreConvo: Log session for agent communication
 ```
 python scripts/save_to_loreconvo.py \
     --title "John tech docs YYYY-MM-DD" \
     --surface "cowork" \
     --summary "COMPLETED: ... | BLOCKED: ... | PENDING_GIT: ... | HANDOFFS: ..." \
     --tags '["agent:john"]' \
-    --artifacts '["docs/technical/tech_docs_report_YYYY_MM_DD.md"]'
+    --artifacts '["docs/internal/technical/tech_docs_report_YYYY_MM_DD.md"]'
 ```

@@ -20,26 +20,76 @@ Build and ship products that generate $8K/month passive income through Claude pl
 
 All completed items are in `docs/COMPLETED.md`. Only open work lives here.
 
-### Marketplace & Plugin Distribution (TOP PRIORITY -- nothing else ships until this works)
+---
+**!! PRODUCT STABILITY MANDATE (set 2026-04-04 by Debbie) !!**
+
+FULL FEATURE FREEZE in effect. No new features, no CLI work, no new products until
+LoreConvo and LoreDocs have confirmed working basic functionality on BOTH Cowork and
+Code platforms. Debbie is hitting real disconnects and gaps that make these not
+shippable. Fix the foundation first.
+
+Current state (confirmed 2026-04-04):
+- Claude Code CLI: WORKING. settings.json has correct mcpServers + env blocks with Pro keys.
+  LoreConvo and LoreDocs MCP tools load and are callable in Code sessions.
+- Cowork: BROKEN. Cowork does NOT use mcpServers from settings.json -- it loads MCP servers
+  exclusively via the plugin system (.plugin files). LoreConvo/LoreDocs are not available
+  as MCP tools in any Cowork session until the plugin install flow is fixed.
+
+Action items (Ron's ONLY work until these are done, in order):
+
+1. [ ] Fix the .plugin install flow end-to-end.
+   - Reproduce the exact failure (what breaks, what error, which platform)
+   - Identify root cause: config, transport, server startup, path, .mcp.json, plugin.json, etc.
+   - Fix it so `plugin install loreconvo` and `plugin install loredocs` complete successfully
+   - Verify on Cowork AND Claude Code
+   - Document the confirmed working install path in INSTALL.md
+
+2. [ ] Wire up get_tier as an exposed MCP tool in both LoreConvo and LoreDocs server.py.
+   - get_license_status() already exists in each product's license.py -- just add @mcp.tool()
+   - This lets Debbie verify tier is active once the install flow is working
+   - Without this, there is no way to confirm Pro keys are loading correctly
+
+3. [ ] Build scripts/install_dev_plugins.sh -- developer install for Cowork.
+   - Install both .plugin files locally using dev bypass (LAB_DEV_MODE=1 + non-empty *_PRO value)
+   - Lets Debbie run her own products in Cowork without putting real signed keys into tracked files
+   - mcpServers in settings.json is Code-only and cannot be used for Cowork
+
+For each item: reproduce, root-cause, fix, verify on both platforms, document.
+
+Definition of done for this mandate: Debbie can install LoreConvo AND LoreDocs as
+plugins in Cowork, MCP tools are callable in Cowork sessions, and sessions persist
+and are retrievable. (Code is already working.) Until Cowork is confirmed, nothing else ships.
+---
+
+### FROZEN -- Do not start until Stability Mandate is resolved
+
+All items below are frozen. Do not begin any of them until the stability mandate above
+is fully resolved and Debbie has confirmed basic functionality works on both platforms.
+
+#### Marketplace & Plugin Distribution (FROZEN)
 NOTE: Marketplace repo, plugin .mcp.json fixes, README install docs, and license key validation are DONE (2026-04-03).
 Remaining: Debbie needs to create the GitHub repo (labyrinth-analytics/claude-plugins),
 push the marketplace/ directory contents, and test the full install flow end-to-end.
 License key generation: Debbie needs to save the private signing key from the 2026-04-03 session (see LoreConvo session log or docs/COMPLETED.md note).
 
-### LoreConvo CLI Interface (HIGH PRIORITY -- unblocks agent workflow improvements)
+#### LoreConvo CLI Interface (FROZEN)
 1. [ ] Add CLI entry point to LoreConvo (`ron_skills/loreconvo/src/cli/`) with save-session, list-sessions, search commands. Migrate logic from `scripts/save_to_loreconvo.py` into the product as a public feature (users running scheduled agents need programmatic access when MCP tools are unavailable).
 2. [ ] Add CLI entry point to LoreDocs (`ron_skills/loredocs/src/cli/`) with equivalent vault commands. Migrate logic from `scripts/query_loredocs.py`.
 3. [ ] Slim down all scheduled agent task prompts (starting with Scout) to reference the CLI instead of inlining boilerplate Python. Scout prompt should contain only: role, research focus, criteria, and "run the CLI to save results."
 4. [ ] Update monorepo `scripts/save_to_loreconvo.py` and `scripts/query_loredocs.py` to become thin wrappers that call the product CLIs (backward compat for existing agent prompts).
 
-### Cleanup (do after CLI migration)
+#### Cleanup (FROZEN -- do after CLI migration)
 5. [ ] Update CLAUDE.md agent paths to reference product copies (`ron_skills/*/scripts/`) instead of monorepo `scripts/`
 
-### New Products
-6. [ ] SQL Query Optimizer: ClawHub skill packaging (ON HOLD -- no local SQL Server)
-7. [ ] SQL Query Optimizer: integration tests with real SQL Server queries (ON HOLD)
-8. [ ] Build Financial Report Generator skill + FastMCP backend
-9. [ ] Build CSV/Excel Data Transformer skill + FastMCP backend
+#### Developer Install & Product Polish (FROZEN)
+6. [ ] Add `get_tier` as an exposed MCP tool in both LoreConvo and LoreDocs server.py files. The `get_license_status()` function already exists in each product's license module -- just wire it up as an `@mcp.tool()` so users (and Debbie) can call it to confirm their license tier without inferring it from behavior.
+7. [ ] Create a developer install script (`scripts/install_dev_plugins.sh` or similar) that installs LoreConvo and LoreDocs as local Cowork plugins using the dev bypass (`LAB_DEV_MODE=1` + a non-empty `*_PRO` value). This lets Debbie use her own products in Cowork sessions without putting real signed keys into tracked plugin files. Note: `mcpServers` in `~/.claude/settings.json` only works for Claude Code CLI -- Cowork loads MCP servers exclusively via the plugin system.
+
+#### New Products (FROZEN)
+8. [ ] SQL Query Optimizer: ClawHub skill packaging (ON HOLD -- no local SQL Server)
+9. [ ] SQL Query Optimizer: integration tests with real SQL Server queries (ON HOLD)
+10. [ ] Build Financial Report Generator skill + FastMCP backend
+11. [ ] Build CSV/Excel Data Transformer skill + FastMCP backend
 
 ## Product Research Scout (Scheduled Task)
 - **Task:** `weekly-product-scout` — runs every Monday at 3 AM
@@ -56,18 +106,18 @@ License key generation: Debbie needs to save the private signing key from the 20
 | Agent | Role | Task ID | Schedule | Reports To |
 |-------|------|---------|----------|------------|
 | Ron | Builder | `ron-daily` | Daily 12:00 AM | docs/COMPLETED.md, LoreConvo |
-| Meg | QA Engineer | `meg-qa-daily` | Daily 2:00 AM | docs/qa/, LoreConvo |
-| Brock | Cybersecurity Expert | `brock-security-daily` | Daily 3:00 AM | docs/security/, LoreConvo |
+| Meg | QA Engineer | `meg-qa-daily` | Daily 2:00 AM | docs/internal/qa/, LoreConvo |
+| Brock | Cybersecurity Expert | `brock-security-daily` | Daily 3:00 AM | docs/internal/security/, LoreConvo |
 | Scout | Product Research | `weekly-product-scout` | Monday 3:00 AM | Opportunities/, LoreConvo |
-| Gina | Enterprise Architect | `enterprise-architect-gina` | Wed + Sat 4:00 AM | docs/architecture/, Opportunities/LATEST_ARCHITECTURE_REVIEW.html, LoreConvo |
-| Jacqueline | Project Manager | `pm-jacqueline-daily` + `pm-jacqueline-roadmap` | Daily 4:30 AM + Sat 5:00 AM | docs/pm/, LoreConvo |
-| Madison | Content Marketer | `madison-marketing-agent` | Tue + Fri 1:00 AM | docs/marketing/, LoreConvo |
+| Gina | Enterprise Architect | `enterprise-architect-gina` | Wed + Sat 4:00 AM | docs/internal/architecture/, Opportunities/LATEST_ARCHITECTURE_REVIEW.html, LoreConvo |
+| Jacqueline | Project Manager | `pm-jacqueline-daily` + `pm-jacqueline-roadmap` | Daily 4:30 AM + Sat 5:00 AM | docs/internal/pm/, LoreConvo |
+| Madison | Content Marketer | `madison-marketing-agent` | Tue + Fri 1:00 AM | docs/internal/marketing/, LoreConvo |
 | John | Technical Documentation | `john-tech-docs` | Tue + Sat 3:30 AM | ron_skills/*/docs/, LoreConvo |
 
 ### Meg - QA Engineer (Scheduled Task)
 - **Task:** `meg-qa-daily` -- runs daily at 2:00 AM (after Ron)
 - **Purpose:** Full QA review of Ron's code: runs tests, writes new test cases, code walkthrough for logic errors, edge case analysis, verifies docs match behavior
-- **Output:** Dated QA report in `docs/qa/qa_report_YYYY_MM_DD.md` + LoreConvo session (surface='qa')
+- **Output:** Dated QA report in `docs/internal/qa/qa_report_YYYY_MM_DD.md` + LoreConvo session (surface='qa')
 - **Scope:** All products in ron_skills/ -- focuses on recently changed files
 - **Severity ratings:** GREEN (all tests pass, no issues) / YELLOW (minor issues found) / RED (critical bugs found)
 - **Rule:** Meg does NOT modify Ron's source code -- only adds test files and reports
@@ -75,10 +125,10 @@ License key generation: Debbie needs to save the private signing key from the 20
 ### Brock - Cybersecurity Expert (Scheduled Task)
 - **Task:** `brock-security-daily` -- runs daily at 3:00 AM (after Meg)
 - **Purpose:** Full security review covering TWO dimensions: (1) vulnerability scanning (secrets, dependency audit, OWASP, API security) and (2) security architecture evaluation of product design choices (transport security, data-at-rest, access patterns, tier enforcement bypass, trust boundaries, cloud sync readiness)
-- **Output:** Dated security report in `docs/security/security_report_YYYY_MM_DD.md` + LoreConvo session (surface='security')
+- **Output:** Dated security report in `docs/internal/security/security_report_YYYY_MM_DD.md` + LoreConvo session (surface='security')
 - **Scope:** Entire repo -- code, dependencies, configs, git history. Security architecture review focuses on recently changed product code in ron_skills/.
 - **Severity ratings:** SECURE / NEEDS ATTENTION / AT RISK
-- **Cross-agent handoff:** Brock tags items needing Gina's architectural input with "GINA-REVIEW:" prefix. Brock picks up "BROCK-REVIEW:" items from Gina's architecture reports in docs/architecture/.
+- **Cross-agent handoff:** Brock tags items needing Gina's architectural input with "GINA-REVIEW:" prefix. Brock picks up "BROCK-REVIEW:" items from Gina's architecture reports in docs/internal/architecture/.
 - **Rule:** Brock does NOT modify source code -- only writes reports and flags issues for Ron to fix
 
 #### Brock Security Classification Guidelines
@@ -89,10 +139,10 @@ License key generation: Debbie needs to save the private signing key from the 20
 ### Gina - Enterprise Architect (Scheduled Task)
 - **Task:** `enterprise-architect-gina` -- runs Wed + Sat at 4:00 AM
 - **Purpose:** TWO responsibilities: (1) review pipeline opportunities approved for architectural assessment (proposals with feasibility analysis, effort estimates, dependencies), and (2) review recent changes to existing shipped products for architectural quality, security architecture, and cross-product consistency
-- **Output:** Pipeline proposals in `docs/architecture/OPP-xxx_product_name.md` + product reviews in `docs/architecture/product_review_YYYY_MM_DD.md` + combined HTML report at `Opportunities/LATEST_ARCHITECTURE_REVIEW.html` + LoreConvo session (surface='cowork')
+- **Output:** Pipeline proposals in `docs/internal/architecture/OPP-xxx_product_name.md` + product reviews in `docs/internal/architecture/product_review_YYYY_MM_DD.md` + combined HTML report at `Opportunities/LATEST_ARCHITECTURE_REVIEW.html` + LoreConvo session (surface='cowork')
 - **Pipeline scope:** Items with status `approved-for-review` in PipelineDB
 - **Product scope:** Recent commits to `ron_skills/` -- evaluates code architecture, database design, API surface, security architecture (transport, data-at-rest, access patterns, tier enforcement, trust boundaries, cloud sync readiness), scalability, and cross-product consistency
-- **Cross-agent handoff:** Gina tags security-architectural findings needing Brock's deeper analysis with "BROCK-REVIEW:" prefix. Gina picks up "GINA-REVIEW:" items from Brock's security reports in docs/security/.
+- **Cross-agent handoff:** Gina tags security-architectural findings needing Brock's deeper analysis with "BROCK-REVIEW:" prefix. Gina picks up "GINA-REVIEW:" items from Brock's security reports in docs/internal/security/.
 - **Rule:** Gina does NOT modify source code -- only produces reviews, proposals, and reports
 
 ### Jacqueline - Project Manager (Scheduled Tasks)
@@ -100,8 +150,8 @@ License key generation: Debbie needs to save the private signing key from the 20
 - **Weekly task:** `pm-jacqueline-roadmap` -- runs every Saturday at 5:00 AM (after Gina)
 - **Daily purpose:** Synthesizes all overnight agent outputs into a single interactive HTML executive dashboard ("Labyrinth Analytics -- Executive Dashboard"). Cross-validates agent findings, tracks pipeline status, monitors TODO progress, and flags items needing Debbie's attention.
 - **Weekly purpose:** Generates the "Labyrinth Analytics -- Product Roadmap" with KPI cards, product details, feature status, revenue projections, risk register, timeline, and Debbie action items.
-- **Daily output:** `docs/pm/executive_dashboard_YYYY_MM_DD.html` + LoreConvo session (surface='pm')
-- **Weekly output:** `docs/pm/labyrinth_product_roadmap_YYYY_MM_DD.html` + LoreConvo session (surface='pm', tags=['roadmap'])
+- **Daily output:** `docs/internal/pm/executive_dashboard_YYYY_MM_DD.html` + LoreConvo session (surface='pm')
+- **Weekly output:** `docs/internal/pm/labyrinth_product_roadmap_YYYY_MM_DD.html` + LoreConvo session (surface='pm', tags=['roadmap'])
 - **Scope:** All agent reports (Ron/Meg/Brock), pipeline data (Scout/Gina), CLAUDE.md TODOs, cross-agent validation
 - **Posture ratings:** ALL CLEAR / REVIEW NEEDED / ACTION REQUIRED
 - **IMPORTANT:** Read `.claude/skills/pm-jacqueline/SKILL.md` before generating ANY output. The dashboard and roadmap formats are LOCKED -- section order, titles, color scheme, and visual design must match the spec exactly.
@@ -111,16 +161,16 @@ License key generation: Debbie needs to save the private signing key from the 20
 ### Madison - Marketing Content Creator (Scheduled Task)
 - **Task:** `madison-marketing-agent` -- runs twice weekly at 1:00 AM (Tuesday, Friday)
 - **Purpose:** Create blog post drafts, promotional copy, and marketing content for Labyrinth Analytics Consulting and the Lore product family. Promotes LoreConvo, LoreDocs, LorePrompts, and LoreScope through educational content, thought leadership, and product announcements.
-- **Output:** Dated blog post drafts in `docs/marketing/blog_drafts/` + promo copy in `docs/marketing/promo/` + LoreConvo session (surface='marketing')
+- **Output:** Dated blog post drafts in `docs/internal/marketing/blog_drafts/` + promo copy in `docs/internal/marketing/promo/` + LoreConvo session (surface='marketing')
 - **Scope:** Blog posts (800-2000 words) targeting data engineers and AI practitioners. Topics: data pipeline design, Claude plugins, AI productivity, Lore suite features.
-- **Content Calendar:** Madison maintains a rolling 8-week content calendar in `docs/marketing/content_calendar_madison.md`
+- **Content Calendar:** Madison maintains a rolling 8-week content calendar in `docs/internal/marketing/content_calendar_madison.md`
 - **Blog Standards:** Before drafting any blog post, read the blog publishing skill at `~/projects/labyrinthanalytics_website/.claude/skills/labyrinth-blog-publishing/SKILL.md`. It contains the frontmatter schema, editorial voice guidelines, post structure arc, and pre-publish checklist. All blog drafts must follow these standards.
 - **Rule:** Madison does NOT publish anything directly. All content goes to draft for Debbie's review before publishing.
 
 ### John - Technical Documentation Specialist (Scheduled Task)
 - **Task:** `john-tech-docs` -- runs twice weekly at 3:30 AM (Tuesday, Saturday)
 - **Purpose:** Write and maintain user-facing documentation for all Lore products. Produces CLI references with real sample output, MCP tool catalogs in plain English, install/quickstart guides, and changelogs translated from Ron's commits.
-- **Output:** Docs in `ron_skills/<product>/docs/` + updated INSTALL.md files + run report in `docs/technical/tech_docs_report_YYYY_MM_DD.md` + LoreConvo session (surface='cowork')
+- **Output:** Docs in `ron_skills/<product>/docs/` + updated INSTALL.md files + run report in `docs/internal/technical/tech_docs_report_YYYY_MM_DD.md` + LoreConvo session (surface='cowork')
 - **Scope:** All products in ron_skills/. Focuses on recently changed features that Meg has verified as working.
 - **Standards:** Read `.claude/skills/tech-docs-john/SKILL.md` before generating ANY output. Contains voice/tone guidelines, doc formats, and output locations.
 - **Audience:** Non-technical users who are comfortable installing a plugin but do not read source code. Plain English, every term explained, real command examples with captured output.
@@ -223,7 +273,7 @@ This script handles Cowork VM lock files automatically. If locks are immutable, 
 - ALWAYS attempt push after commit: `python scripts/safe_git.py push` (will fail from Cowork VM -- that is expected).
 - ALWAYS save sessions to LoreConvo at session end. Preferred: `save_session` MCP tool. **Fallback (if MCP tools unavailable):** run `python scripts/save_to_loreconvo.py --title "..." --surface "..." --summary "..."` -- this script auto-generates UUIDs and matches the MCP tool's behavior exactly. NEVER use raw SQL INSERT.
 - ALWAYS move completed TODOs out of this file immediately. When you finish a TODO: (1) add it to docs/COMPLETED.md with date/commit, (2) DELETE the [x] line from this file entirely, (3) renumber remaining items if needed. No [x] items should ever remain in this file -- only open [ ] items belong here.
-- ALWAYS check `docs/qa/` and `docs/security/` for recent Meg/Brock reports at session start. Fix CRITICAL/HIGH findings before regular TODOs.
+- ALWAYS check `docs/internal/qa/` and `docs/internal/security/` for recent Meg/Brock reports at session start. Fix CRITICAL/HIGH findings before regular TODOs.
 - ALWAYS follow the priority order in the Ron TODOs list. Work on #1 first unless it's blocked, then #2, etc.
 - Use Python 3.10+ and SQLite for all products. No external database dependencies.
 - Use FastMCP for MCP servers, Pydantic v2 for validation.
@@ -247,7 +297,7 @@ When starting a session:
 2. Check LoreDocs: try `vault_list()` then `vault_inject_summary()` MCP tools. Fallback: `python scripts/query_loredocs.py --list` and `python scripts/query_loredocs.py --info "vault name"`
 3. Read this file -- check Debbie TODOs for new approvals/decisions, then Ron TODOs for next work item. Also read `docs/DEBBIE_DASHBOARD.md` for Debbie's latest decisions.
 4. **Sync pipeline (Ron only):** Read DEBBIE_DASHBOARD.md for any new decisions. Apply status changes to PipelineDB using `update_status()`, `set_priority()`, `set_hold_reason()`. See `docs/PIPELINE_AGENT_GUIDE.md` for details.
-5. **Check for Meg/Brock findings:** Read the latest reports in `docs/qa/` and `docs/security/`. Also search LoreConvo: try `search_sessions("agent:meg")` MCP tool, or fallback: `python scripts/save_to_loreconvo.py --search "agent:meg"`. CRITICAL and HIGH severity bugs or vulnerabilities take priority over regular TODOs -- fix them first.
+5. **Check for Meg/Brock findings:** Read the latest reports in `docs/internal/qa/` and `docs/internal/security/`. Also search LoreConvo: try `search_sessions("agent:meg")` MCP tool, or fallback: `python scripts/save_to_loreconvo.py --search "agent:meg"`. CRITICAL and HIGH severity bugs or vulnerabilities take priority over regular TODOs -- fix them first.
 6. Read the relevant product CLAUDE.md for the product you will work on
 7. Read `docs/PIPELINE_AGENT_GUIDE.md` for your agent's pipeline responsibilities
 8. Pick the highest-priority work: Meg/Brock CRITICAL/HIGH fixes first, then Ron TODOs in order
