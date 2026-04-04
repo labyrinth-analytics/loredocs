@@ -44,7 +44,7 @@ code, .mono { font-family: 'Fira Code', monospace; font-size: 12px; }
 .kpi-card .kpi-sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
 
 /* Section headers */
-.section-header { margin-bottom: 18px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+.section-header { margin-bottom: 18px; border-bottom: 1px solid var(--border); padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
 .section-title { font-size: 14px; color: var(--gold); letter-spacing: 0.5px; text-transform: uppercase; }
 
 /* Badges */
@@ -57,6 +57,9 @@ code, .mono { font-family: 'Fira Code', monospace; font-size: 12px; }
 .badge-done { background: rgba(34,197,94,0.15); color: var(--green); }
 .badge-yellow { background: rgba(234,179,8,0.15); color: var(--yellow); }
 .badge-red { background: rgba(239,68,68,0.15); color: var(--red); }
+.badge-orange { background: rgba(249,115,22,0.15); color: var(--orange); }
+.badge-blue { background: rgba(59,130,246,0.15); color: var(--blue); }
+.badge-muted { background: rgba(136,136,160,0.15); color: var(--text-muted); }
 
 /* Tables */
 table { width: 100%; border-collapse: collapse; font-size: 12px; }
@@ -83,6 +86,7 @@ tr:last-child td { border-bottom: none; }
 /* Product tabs */
 .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
 .tab-btn { padding: 6px 14px; border-radius: 4px; font-size: 12px; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--text-muted); font-family: 'Raleway', sans-serif; transition: all 0.15s; }
+.tab-btn:hover { border-color: var(--accent); color: var(--text); }
 .tab-btn.active { background: var(--accent); color: var(--text); border-color: var(--accent); }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
@@ -118,10 +122,17 @@ tr:last-child td { border-bottom: none; }
 .tag-qa { background: rgba(59,130,246,0.15); color: var(--blue); }
 .tag-infra { background: rgba(136,136,160,0.15); color: var(--text-muted); }
 .tag-marketing { background: rgba(34,197,94,0.15); color: var(--green); }
+.tag-arch { background: rgba(212,168,67,0.15); color: var(--gold); }
 
 /* Debbie action table */
 .action-item-high td:first-child { color: var(--red); }
 .action-item-med td:first-child { color: var(--yellow); }
+
+/* Collapsible */
+.section-toggle { cursor: pointer; user-select: none; }
+.section-toggle::after { content: ' ▾'; font-size: 10px; }
+.section-toggle.collapsed::after { content: ' ▸'; }
+.collapsible { overflow: hidden; transition: max-height 0.3s ease; }
 
 @media (max-width: 900px) { .kpi-row { grid-template-columns: 1fr 1fr; } .grid-2, .risk-grid, .feature-grid { grid-template-columns: 1fr; } }
 </style>
@@ -155,16 +166,22 @@ tr:last-child td { border-bottom: none; }
     <div class="kpi-card">
       <div class="kpi-value">338</div>
       <div class="kpi-label">Tests Passing</div>
-      <div class="kpi-sub">+34 this week</div>
+      <div class="kpi-sub">+34 this week | 2 pre-existing fails</div>
     </div>
   </div>
 
   <!-- WHAT CHANGED THIS WEEK -->
   <div class="section">
     <div class="section-header">
-      <span class="section-title">What Changed This Week (Mar 28 -- Apr 4)</span>
+      <span class="section-title section-toggle" onclick="toggleSection(this)">What Changed This Week (Mar 28 -- Apr 4)</span>
     </div>
+    <div class="collapsible">
 
+    <div class="changelog-item">
+      <span class="changelog-date">Apr 4</span>
+      <span class="changelog-tag tag-arch">ARCH</span>
+      <strong> Gina architecture proposals complete</strong> -- OPP-015 (LoreCatalog) APPROVED, OPP-013 (LoreHarness) CONDITIONAL APPROVE after OPP-015, OPP-016 (ETL Pattern Library) MODIFY SCOPE then APPROVE. All three now status: architecture-proposed. Product review found 2 medium concerns (vault_set_tier bypass, lore-onboard not in plugin bundle).
+    </div>
     <div class="changelog-item">
       <span class="changelog-date">Apr 3</span>
       <span class="changelog-tag tag-feature">MAJOR</span>
@@ -178,40 +195,43 @@ tr:last-child td { border-bottom: none; }
     <div class="changelog-item">
       <span class="changelog-date">Apr 3</span>
       <span class="changelog-tag tag-feature">DONE</span>
-      <strong> Marketplace repo structure built</strong> -- marketplace/claude-plugins/ with marketplace.json listing both products. Plugin .mcp.json defaults fixed. READMEs updated with full install flow. Both .plugin zips rebuilt. (commit 4b483da)
+      <strong> Marketplace repo structure built</strong> -- marketplace/claude-plugins/ with marketplace.json listing both products. Plugin .mcp.json defaults fixed (free tier). READMEs updated with full install flow. Both .plugin zips rebuilt. (commit 4b483da)
     </div>
     <div class="changelog-item">
       <span class="changelog-date">Apr 3</span>
       <span class="changelog-tag tag-security">SEC</span>
-      <strong> SEC-012 + SEC-013 resolved</strong> -- anthropic bumped to 0.87.0 (CVE fix), .gitignore added to SQL Optimizer. (commits 9ad2bc1, 4b483da)
+      <strong> SEC-012 + SEC-013 resolved</strong> -- anthropic bumped to 0.87.0 (CVE fix), .gitignore added to SQL Optimizer. Two new findings: SEC-014 (MEDIUM, cryptography missing from pyproject.toml) and SEC-015 (LOW, personal email in marketplace.json).
     </div>
     <div class="changelog-item">
       <span class="changelog-date">Apr 3</span>
       <span class="changelog-tag tag-qa">QA</span>
-      <strong> MEG-037 resolved</strong> -- Plugin .mcp.json files now ship with empty PRO defaults (free tier). MEG-038 fixed (unused import in license.py). 338 total tests passing. (commits 9ad2bc1, c392738)
+      <strong> MEG-037 resolved, MEG-038 fixed</strong> -- Plugin .mcp.json files now ship with empty PRO defaults (free tier). Unused import removed from license.py. 338 total tests passing.
     </div>
     <div class="changelog-item">
       <span class="changelog-date">Apr 3</span>
       <span class="changelog-tag tag-marketing">MARKETING</span>
-      <strong> Madison blog #2 drafted</strong> -- LoreDocs vault architecture post (1400+ words). Email promo template also drafted Friday Apr 4. Blog #1 published Apr 2 on website.
-    </div>
-    <div class="changelog-item">
-      <span class="changelog-date">Apr 3</span>
-      <span class="changelog-tag tag-infra">PIPELINE</span>
-      <strong> Scout found 5 new opportunities</strong> -- OPP-017 to OPP-021 (AI observability, data quality, financial data). All awaiting Debbie triage.
+      <strong> Madison blog #2 drafted</strong> -- LoreDocs vault architecture post (1400+ words). Blog #1 published Apr 2 on website. Email promo template also drafted.
     </div>
     <div class="changelog-item">
       <span class="changelog-date">Apr 1-2</span>
       <span class="changelog-tag tag-feature">DONE</span>
       <strong> Plugin onboarding UX fixes</strong> -- LoreConvo plugin.json fixed, CLAUDE.md setup sections added to both READMEs, COWORK_RESTORE.md rewritten, fallback scripts added. Pipeline sync (TODOs #23-32).
     </div>
+    <div class="changelog-item">
+      <span class="changelog-date">Mar 31</span>
+      <span class="changelog-tag tag-feature">DONE</span>
+      <strong> BSL 1.1 license + infrastructure</strong> -- Both products switched from MIT to BSL 1.1 (change date 2030-03-31, Apache 2.0). Requirements-lock.txt for all products. pip-audit clean. 179 tests verified.
+    </div>
+
+    </div>
   </div>
 
   <!-- PROJECT PHASES -->
   <div class="section">
     <div class="section-header">
-      <span class="section-title">Project Phases -- 24 Month Horizon</span>
+      <span class="section-title section-toggle" onclick="toggleSection(this)">Project Phases -- 24 Month Horizon</span>
     </div>
+    <div class="collapsible">
     <div class="phase-bar">
       <div class="phase phase-active">
         <div>Phase 1</div>
@@ -235,16 +255,18 @@ tr:last-child td { border-bottom: none; }
       </div>
     </div>
     <div style="font-size:12px;color:var(--text-muted);">
-      <strong style="color:var(--green);">Phase 1 (current):</strong> Ship working products, validate architecture, build QA/security posture. LoreConvo production, LoreDocs alpha, marketplace structure built. License key system complete. <br>
-      <strong style="color:var(--gold);">Phase 2 (entering):</strong> Marketplace goes live (Debbie creates GitHub repo), Stripe activated, first paying customers, Pro tier generation workflow operational.
+      <strong style="color:var(--green);">Phase 1 (wrapping up):</strong> Products built, architecture validated, QA/security posture established. LoreConvo production, LoreDocs alpha. Marketplace structure built. License key system complete. Architecture proposals for 3 pipeline products done.<br>
+      <strong style="color:var(--gold);">Phase 2 (entering):</strong> Marketplace goes live (Debbie creates GitHub repo), Stripe activated, first paying customers. CLI interfaces for both products. Next pipeline products (LoreCatalog first).
+    </div>
     </div>
   </div>
 
   <!-- PRODUCT DETAILS (tabs) -->
   <div class="section">
     <div class="section-header">
-      <span class="section-title">Product Details</span>
+      <span class="section-title section-toggle" onclick="toggleSection(this)">Product Details</span>
     </div>
+    <div class="collapsible">
     <div class="tab-bar">
       <button class="tab-btn active" onclick="showTab('loreconvo')">LoreConvo</button>
       <button class="tab-btn" onclick="showTab('loredocs')">LoreDocs</button>
@@ -304,6 +326,7 @@ tr:last-child td { border-bottom: none; }
         <div class="feature-item"><span class="dot dot-done"></span>BSL 1.1 license (change date 2030)</div>
         <div class="feature-item"><span class="dot dot-wip"></span>CLI entry point (save/list/search)</div>
         <div class="feature-item"><span class="dot dot-wip"></span>cryptography in pyproject.toml (SEC-014)</div>
+        <div class="feature-item"><span class="dot dot-wip"></span>Include /lore-onboard in plugin bundle (Gina)</div>
         <div class="feature-item"><span class="dot dot-planned"></span>Team cloud sync</div>
         <div class="feature-item"><span class="dot dot-planned"></span>Stripe billing integration</div>
       </div>
@@ -315,7 +338,7 @@ tr:last-child td { border-bottom: none; }
         <div class="timeline-item"><span class="timeline-dot dot-active"></span><h4>v0.3.0 -- Lore rebrand, BSL license, requirements-lock</h4><p>Mar 25-31, 2026</p></div>
         <div class="timeline-item"><span class="timeline-dot dot-active"></span><h4>Marketplace ready, install flow fixed, plugin.json updated</h4><p>Apr 1-3, 2026</p></div>
         <div class="timeline-item"><span class="timeline-dot dot-active"></span><h4>Ed25519 Pro license validation + /lore-onboard skill</h4><p>Apr 3, 2026</p></div>
-        <div class="timeline-item"><span class="timeline-dot dot-current"></span><h4>CLI entry point + SEC-014 fix + commit untracked files</h4><p>Ron TODO #1 -- this week</p></div>
+        <div class="timeline-item"><span class="timeline-dot dot-current"></span><h4>CLI entry point + SEC-014 fix + plugin bundle rebuild</h4><p>Ron TODO #1 -- next session</p></div>
         <div class="timeline-item"><span class="timeline-dot dot-future-dot"></span><h4>Marketplace publish (Debbie creates GitHub repo)</h4><p>Blocked on Debbie</p></div>
         <div class="timeline-item"><span class="timeline-dot dot-future-dot"></span><h4>First paying customer (Stripe activated)</h4><p>Q2 2026</p></div>
       </div>
@@ -371,9 +394,20 @@ tr:last-child td { border-bottom: none; }
         <div class="feature-item"><span class="dot dot-wip"></span>CLI entry point</div>
         <div class="feature-item"><span class="dot dot-wip"></span>cryptography in pyproject.toml (SEC-014)</div>
         <div class="feature-item"><span class="dot dot-wip"></span>SEC-011: TOCTOU fix in file export</div>
+        <div class="feature-item"><span class="dot dot-wip"></span>Fix vault_set_tier license bypass (Gina)</div>
         <div class="feature-item"><span class="dot dot-planned"></span>Stripe billing integration</div>
         <div class="feature-item"><span class="dot dot-planned"></span>Cloud sync (Team tier)</div>
         <div class="feature-item"><span class="dot dot-planned"></span>LoreConvo cross-reference deeplink</div>
+      </div>
+
+      <h4 style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin:14px 0 8px;">Development Timeline</h4>
+      <div class="timeline">
+        <div class="timeline-item"><span class="timeline-dot dot-active"></span><h4>v0.1.0 -- Core 34 MCP tools + tier gating + tests</h4><p>Mar 22-25, 2026</p></div>
+        <div class="timeline-item"><span class="timeline-dot dot-active"></span><h4>Lore rebrand, BSL license, marketplace listing</h4><p>Mar 25-31, 2026</p></div>
+        <div class="timeline-item"><span class="timeline-dot dot-active"></span><h4>Ed25519 license validation + plugin fixes</h4><p>Apr 1-3, 2026</p></div>
+        <div class="timeline-item"><span class="timeline-dot dot-current"></span><h4>CLI entry point + SEC-014 + vault_set_tier fix</h4><p>Ron TODO #2 -- after LoreConvo CLI</p></div>
+        <div class="timeline-item"><span class="timeline-dot dot-future-dot"></span><h4>Marketplace publish (with LoreConvo)</h4><p>Blocked on Debbie</p></div>
+        <div class="timeline-item"><span class="timeline-dot dot-future-dot"></span><h4>v0.2.0 -- Cloud sync, team features</h4><p>Q3 2026</p></div>
       </div>
     </div>
 
@@ -413,16 +447,36 @@ tr:last-child td { border-bottom: none; }
           <tr><td class="mono">OPP-004</td><td>LoreScope</td><td>~$600</td><td><span class="badge badge-done">Approved</span></td></tr>
         </tbody>
       </table>
-      <h4 style="font-family:'Cinzel',serif;font-size:12px;color:var(--accent-hover);margin-bottom:12px;">Awaiting Architecture Review (Gina)</h4>
+
+      <h4 style="font-family:'Cinzel',serif;font-size:12px;color:var(--accent-hover);margin-bottom:12px;">Architecture Proposed (Gina reviewed Apr 4) <span class="badge badge-orange">NEW</span></h4>
       <table style="margin-bottom:16px;">
-        <thead><tr><th>OPP ID</th><th>Product</th><th>Priority</th><th>Status</th></tr></thead>
+        <thead><tr><th>OPP ID</th><th>Product</th><th>Effort</th><th>Status</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td class="mono">OPP-015</td><td>Data Catalog Lite MCP</td><td>P1</td><td><span class="badge badge-yellow">Awaiting Gina</span></td></tr>
-          <tr><td class="mono">OPP-013</td><td>Data Pipeline Test Harness MCP</td><td>P2</td><td><span class="badge badge-yellow">Awaiting Gina</span></td></tr>
-          <tr><td class="mono">OPP-016</td><td>ETL Pattern Library Skill</td><td>P3</td><td><span class="badge badge-yellow">Awaiting Gina</span></td></tr>
+          <tr>
+            <td class="mono">OPP-015</td>
+            <td>LoreCatalog (Data Catalog Lite MCP)</td>
+            <td>5</td>
+            <td><span class="badge badge-done">Arch Approved</span></td>
+            <td style="font-size:11px;color:var(--text-muted);">SQLite+FTS5 catalog, INFORMATION_SCHEMA crawler, 9 MCP tools, $10/mo Pro. P1 priority.</td>
+          </tr>
+          <tr>
+            <td class="mono">OPP-013</td>
+            <td>LoreHarness (Data Pipeline Test Harness)</td>
+            <td>5</td>
+            <td><span class="badge badge-yellow">Conditional</span></td>
+            <td style="font-size:11px;color:var(--text-muted);">ConnectionManager + ComparisonEngine. Build after OPP-015 (shares credential pattern).</td>
+          </tr>
+          <tr>
+            <td class="mono">OPP-016</td>
+            <td>ETL Pattern Library Skill</td>
+            <td>2</td>
+            <td><span class="badge badge-yellow">Modified Scope</span></td>
+            <td style="font-size:11px;color:var(--text-muted);">Ship as free SQL Server specialist skill MVP. V2 adds paid MCP generation tier.</td>
+          </tr>
         </tbody>
       </table>
-      <h4 style="font-family:'Cinzel',serif;font-size:12px;color:var(--accent-hover);margin-bottom:12px;">Awaiting Debbie Triage (New from Scout Apr 3)</h4>
+
+      <h4 style="font-family:'Cinzel',serif;font-size:12px;color:var(--accent-hover);margin-bottom:12px;">Awaiting Debbie Triage (Scout Apr 3)</h4>
       <table>
         <thead><tr><th>OPP ID</th><th>Product</th><th>Effort</th><th>Est. MRR (M12)</th></tr></thead>
         <tbody>
@@ -433,6 +487,15 @@ tr:last-child td { border-bottom: none; }
           <tr><td class="mono">OPP-021</td><td>Chain Lens (Prompt Chain Observability)</td><td>5</td><td>~$800</td></tr>
         </tbody>
       </table>
+
+      <h4 style="font-family:'Cinzel',serif;font-size:12px;color:var(--accent-hover);margin-bottom:12px;margin-top:16px;">Not Started (in CLAUDE.md TODOs)</h4>
+      <table>
+        <thead><tr><th>Product</th><th>Status</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Financial Report Generator</td><td><span class="badge badge-planned">NOT STARTED</span></td><td>Skill + FastMCP backend. Ron TODO #8.</td></tr>
+          <tr><td>CSV/Excel Data Transformer</td><td><span class="badge badge-planned">NOT STARTED</span></td><td>Skill + FastMCP backend. Ron TODO #9.</td></tr>
+        </tbody>
+      </table>
     </div>
 
     <!-- Portfolio Summary tab -->
@@ -441,73 +504,84 @@ tr:last-child td { border-bottom: none; }
       <table>
         <thead><tr><th>Metric</th><th>Value</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td>Total tests passing</td><td>338</td><td>+34 this week</td></tr>
+          <tr><td>Total tests passing</td><td>338</td><td>+34 this week (304 last week)</td></tr>
           <tr><td>Active findings (Brock)</td><td>6</td><td>0 CRITICAL, 0 HIGH, 2 MEDIUM, 2 LOW, 2 INFO</td></tr>
-          <tr><td>CVEs</td><td>0</td><td>All products clean</td></tr>
-          <tr><td>QA status</td><td>YELLOW</td><td>2 pre-existing failures (SQL Optimizer, on hold)</td></tr>
-          <tr><td>Marketplace readiness</td><td>80%</td><td>Blocked on Debbie creating GitHub repo</td></tr>
-          <tr><td>Pro tier readiness</td><td>95%</td><td>SEC-014 fix remaining; Stripe activation separate</td></tr>
+          <tr><td>Architecture concerns (Gina)</td><td>2</td><td>vault_set_tier bypass (MEDIUM), plugin bundle missing skill (MEDIUM)</td></tr>
+          <tr><td>CVEs</td><td>0</td><td>All products clean after SEC-012 fix</td></tr>
+          <tr><td>QA status</td><td>YELLOW</td><td>2 pre-existing failures (SQL Optimizer concurrency, on hold)</td></tr>
+          <tr><td>Marketplace readiness</td><td>85%</td><td>Blocked on Debbie creating GitHub repo + SEC-014 fix</td></tr>
+          <tr><td>Pro tier readiness</td><td>95%</td><td>SEC-014 + vault_set_tier fix remaining; Stripe activation separate</td></tr>
           <tr><td>MRR</td><td>$0</td><td>Pre-revenue, Stripe sandbox only</td></tr>
-          <tr><td>Pipeline opportunities</td><td>21 total</td><td>5 untriaged, 3 awaiting Gina, 3 approved</td></tr>
+          <tr><td>Pipeline opportunities</td><td>21 total</td><td>5 untriaged, 3 architecture-proposed, 3 approved, rest deferred/rejected</td></tr>
+          <tr><td>Blog posts</td><td>1 published, 1 in review</td><td>8-week content calendar active</td></tr>
+          <tr><td>Agent team</td><td>8 agents</td><td>Ron, Meg, Brock, Scout, Gina, Jacqueline, Madison, John</td></tr>
         </tbody>
       </table>
+    </div>
     </div>
   </div>
 
   <!-- RISK REGISTER -->
   <div class="section">
     <div class="section-header">
-      <span class="section-title">Risk Register</span>
+      <span class="section-title section-toggle" onclick="toggleSection(this)">Risk Register</span>
     </div>
+    <div class="collapsible">
     <div class="risk-grid">
       <div class="risk-card risk-medium">
         <h4>SEC-014: cryptography not in pyproject.toml</h4>
         <p>Fresh pip install of LoreConvo/LoreDocs will fail with ModuleNotFoundError at license check time. Must be fixed before marketplace publish. <strong>Ron next session.</strong></p>
       </div>
       <div class="risk-card risk-medium">
-        <h4>Stale git lock files (MEG-039)</h4>
-        <p>generate_license_key.py and Brock report not yet committed. Stale .git/*.lock files blocking git operations. Ron must clean with <code>find .git -name "*.lock" -mmin +30 -delete</code> before next commit.</p>
+        <h4>vault_set_tier bypasses license validation (Gina Apr 4)</h4>
+        <p>LoreDocs server.py allows Pro activation without a license key via vault_set_tier MCP tool. The config.json fallback in get_tier() is exploitable. <strong>Ron must validate LOREDOCS_PRO before writing.</strong></p>
+      </div>
+      <div class="risk-card risk-medium">
+        <h4>lore-onboard skill not in plugin bundle (Gina Apr 4)</h4>
+        <p>The /lore-onboard skill was built but not included in loreconvo-v0.3.0.plugin. Marketplace users will not get the onboarding wizard. <strong>Ron must rebuild plugin bundle.</strong></p>
       </div>
       <div class="risk-card risk-medium">
         <h4>License private key not saved</h4>
-        <p>Production Ed25519 private key generated Apr 3 is stored ONLY in LoreConvo session log. If the session log is deleted or corrupted, Pro license keys cannot be generated for paying customers. <strong>Debbie must save to password manager immediately.</strong></p>
-      </div>
-      <div class="risk-card risk-medium">
-        <h4>Gina and John not running on schedule</h4>
-        <p>Both agents missed their Saturday scheduled runs. Gina's absence delays 3 pipeline architecture proposals (OPP-013, OPP-015, OPP-016). John's absence delays documentation updates for the new license and onboarding features. Investigate scheduled task configuration.</p>
+        <p>Production Ed25519 private key generated Apr 3 is stored ONLY in LoreConvo session log. If deleted or corrupted, Pro license keys cannot be generated. <strong>Debbie must save to password manager immediately.</strong></p>
       </div>
       <div class="risk-card risk-info">
         <h4>Marketplace launch blocked on Debbie</h4>
-        <p>Ron's side is done. Debbie needs to (1) update marketplace.json email, (2) create GitHub repo, (3) push contents, (4) test install flow end-to-end. No revenue until this is done.</p>
+        <p>Ron's side is done (marketplace structure, .mcp.json fixes, plugin rebuilds, install docs). Debbie needs to: (1) update marketplace.json email (SEC-015), (2) create GitHub repo, (3) push contents, (4) test install flow. No revenue until this is done.</p>
       </div>
       <div class="risk-card risk-info">
         <h4>SEC-015: Personal email in marketplace.json</h4>
-        <p>debbie.wonderkitty@gmail.com will become public once the GitHub repo is created. Replace with a business contact email (e.g., hello@labyrinthanalyticsconsulting.com) before creating the repo.</p>
+        <p>debbie.wonderkitty@gmail.com will become public when the GitHub repo is created. Replace with business email before creating the repo.</p>
       </div>
       <div class="risk-card risk-info">
         <h4>Stripe activation pending</h4>
-        <p>Credit union account technical issue as of Apr 2. No revenue collection until Stripe is activated with business verification, bank account, and EIN.</p>
+        <p>Credit union account technical issue. No revenue collection until Stripe is activated with business verification, bank account, and EIN.</p>
       </div>
       <div class="risk-card risk-resolved">
         <h4 style="color:var(--green);">[RESOLVED] MEG-037: Plugin .mcp.json shipped with PRO=1</h4>
-        <p>Fixed Apr 3. Both public plugin files now ship with empty LORECONVO_PRO="" and LOREDOCS_PRO="". Internal dev .mcp.json retains LAB_DEV_MODE=1. Verified by Meg and Brock.</p>
+        <p>Fixed Apr 3. Both public plugin files now default to free tier. Verified by Meg and Brock.</p>
       </div>
       <div class="risk-card risk-resolved">
         <h4 style="color:var(--green);">[RESOLVED] SEC-012: anthropic CVE in SQL Optimizer</h4>
-        <p>Bumped to 0.87.0. 0 CVEs across all products as of Apr 3 Run B.</p>
+        <p>Bumped to 0.87.0. 0 CVEs across all products.</p>
       </div>
       <div class="risk-card risk-resolved">
         <h4 style="color:var(--green);">[RESOLVED] Pro tier bypassable by env var alone</h4>
-        <p>Ed25519 license key system shipped Apr 3. Bare LORECONVO_PRO=1 no longer grants Pro. Requires signed LAB-... key OR both LORECONVO_PRO=1 AND LAB_DEV_MODE=1 (agents only).</p>
+        <p>Ed25519 license key system shipped Apr 3. Bare env var no longer grants Pro.</p>
       </div>
+      <div class="risk-card risk-resolved">
+        <h4 style="color:var(--green);">[RESOLVED] Gina architecture proposals backlog</h4>
+        <p>OPP-013, OPP-015, OPP-016 all reviewed and proposed Apr 4. Pipeline is flowing.</p>
+      </div>
+    </div>
     </div>
   </div>
 
   <!-- DEBBIE ACTION ITEMS -->
   <div class="section">
     <div class="section-header">
-      <span class="section-title">Debbie Action Items</span>
+      <span class="section-title section-toggle" onclick="toggleSection(this)">Debbie Action Items</span>
     </div>
+    <div class="collapsible">
     <table>
       <thead><tr><th>Item</th><th>Priority</th><th>Status</th><th>Notes</th></tr></thead>
       <tbody>
@@ -521,25 +595,31 @@ tr:last-child td { border-bottom: none; }
           <td>Triage 5 new Scout opportunities (OPP-017 to OPP-021)</td>
           <td><span class="badge badge-red">HIGH</span></td>
           <td><span class="badge badge-yellow">PENDING</span></td>
-          <td>Approve / Needs Info / Defer / Reject. See Pipeline section in daily dashboard.</td>
+          <td>Approve / Needs Info / Defer / Reject per DEBBIE_DASHBOARD.md</td>
+        </tr>
+        <tr class="action-item-high">
+          <td>Review 3 Gina architecture proposals (OPP-013, OPP-015, OPP-016)</td>
+          <td><span class="badge badge-red">HIGH</span></td>
+          <td><span class="badge badge-orange">NEW</span></td>
+          <td>Architecture proposals completed Apr 4. See docs/architecture/. LoreCatalog (P1), LoreHarness (P2), ETL Patterns (P3).</td>
         </tr>
         <tr class="action-item-high">
           <td>Update marketplace.json email then create GitHub repo + push</td>
           <td><span class="badge badge-red">HIGH</span></td>
           <td><span class="badge badge-yellow">PENDING</span></td>
-          <td>Replace personal Gmail with business email first (SEC-015)</td>
+          <td>Replace personal Gmail with business email first (SEC-015). Then create labyrinth-analytics/claude-plugins and push marketplace/ contents.</td>
         </tr>
         <tr class="action-item-med">
           <td>Review rebuilt .plugin files (LoreConvo + LoreDocs)</td>
           <td><span class="badge badge-yellow">MEDIUM</span></td>
           <td><span class="badge badge-yellow">READY</span></td>
-          <td>All install flow fixes are in. MEG-037 resolved.</td>
+          <td>All install flow fixes are in. Note: plugin bundle will need one more rebuild after Ron adds lore-onboard skill.</td>
         </tr>
         <tr class="action-item-med">
           <td>Activate live Stripe account</td>
           <td><span class="badge badge-yellow">MEDIUM</span></td>
           <td><span class="badge badge-yellow">PENDING</span></td>
-          <td>Waiting on credit union account (technical issue). EIN for Labyrinth Analytics needed.</td>
+          <td>Business verification, bank account, EIN for Labyrinth Analytics. No revenue until activated.</td>
         </tr>
         <tr class="action-item-med">
           <td>Review and publish Madison blog post #2 (LoreDocs vault architecture)</td>
@@ -555,33 +635,35 @@ tr:last-child td { border-bottom: none; }
         </tr>
       </tbody>
     </table>
+    </div>
   </div>
 
   <!-- NEXT 30 DAYS -->
   <div class="section">
     <div class="section-header">
-      <span class="section-title">Next 30 Days -- Critical Path</span>
+      <span class="section-title section-toggle" onclick="toggleSection(this)">Next 30 Days -- Critical Path</span>
     </div>
+    <div class="collapsible">
     <div class="timeline">
       <div class="timeline-item">
         <span class="timeline-dot dot-current"></span>
         <h4>Week of Apr 5 (Ron next session)</h4>
-        <p>Fix SEC-014 (cryptography in pyproject.toml). Clean git locks, commit untracked files. LoreConvo CLI entry point (TODO #1). This unblocks agent workflow improvements.</p>
+        <p>Fix SEC-014 (cryptography in pyproject.toml). Fix vault_set_tier bypass (Gina concern). Rebuild plugin bundle to include /lore-onboard skill. LoreConvo CLI entry point (TODO #1). Clean git locks, commit untracked files.</p>
       </div>
       <div class="timeline-item">
         <span class="timeline-dot dot-current"></span>
         <h4>Week of Apr 5 (Debbie)</h4>
-        <p>Save license private key. Triage 5 new Scout opportunities. Update marketplace.json email. Create GitHub repo labyrinth-analytics/claude-plugins. Review rebuilt .plugin files.</p>
+        <p>Save license private key. Triage 5 Scout opportunities. Review 3 Gina architecture proposals. Update marketplace.json email. Create GitHub repo. Review .plugin files (after Ron's next rebuild).</p>
       </div>
       <div class="timeline-item">
         <span class="timeline-dot dot-future-dot"></span>
-        <h4>Week of Apr 7 (Gina Wed run)</h4>
-        <p>Architecture proposals for OPP-013, OPP-015, OPP-016 (Data Catalog Lite, Test Harness, ETL Patterns). Unblocks Debbie architecture review decisions.</p>
+        <h4>Week of Apr 7 (Madison Tue)</h4>
+        <p>Blog post #3: LoreDocs + Obsidian + NotebookLM knowledge stack. Friday Apr 11: LoreDocs alpha launch teaser social snippets.</p>
       </div>
       <div class="timeline-item">
         <span class="timeline-dot dot-future-dot"></span>
-        <h4>Week of Apr 7-11 (Madison)</h4>
-        <p>Tuesday blog post + Friday promo content. Topic TBD from content calendar. Blog #2 pending Debbie publish decision.</p>
+        <h4>Week of Apr 7-11 (Ron)</h4>
+        <p>LoreDocs CLI entry point (TODO #2). Slim down agent task prompts to use CLI (TODO #3). Begin LoreCatalog build if architecture approved.</p>
       </div>
       <div class="timeline-item">
         <span class="timeline-dot dot-future-dot"></span>
@@ -590,31 +672,55 @@ tr:last-child td { border-bottom: none; }
       </div>
       <div class="timeline-item">
         <span class="timeline-dot dot-future-dot"></span>
-        <h4>LoreDocs CLI entry point (Ron TODO #2)</h4>
-        <p>After LoreConvo CLI is done. Gives users programmatic access to vault queries. Makes agent prompts leaner.</p>
+        <h4>LoreCatalog build begins (OPP-015)</h4>
+        <p>After Debbie approves architecture. Effort: 5 (4-5 days). First new pipeline product. SQLite+FTS5, 9 MCP tools, $10/mo Pro tier.</p>
       </div>
       <div class="timeline-item">
         <span class="timeline-dot dot-future-dot"></span>
         <h4>First paying customer</h4>
-        <p>Requires: marketplace live + Stripe activated + credit union account open. Target: Q2 2026.</p>
+        <p>Requires: marketplace live + Stripe activated. Target: Q2 2026.</p>
       </div>
     </div>
-  </div>
-
-  <!-- FOOTER -->
-  <div style="text-align:center;padding:24px 0;color:var(--text-muted);font-size:11px;border-top:1px solid var(--border);margin-top:8px;">
-    Labyrinth Analytics Product Roadmap | Labyrinth Analytics Consulting | Lore Product Family | Generated April 04, 2026
+    </div>
   </div>
 
 </div>
 
+<div style="text-align:center;padding:24px 0;color:var(--text-muted);font-size:12px;border-top:1px solid var(--border);">
+  Labyrinth Analytics Product Roadmap | Labyrinth Analytics Consulting | Lore Product Family | Generated April 04, 2026
+</div>
+
 <script>
-function showTab(name) {
-  document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
-  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
-  document.getElementById('tab-' + name).classList.add('active');
+function showTab(id) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
   event.target.classList.add('active');
 }
+
+function toggleSection(el) {
+  var content = el.closest('.section-header').nextElementSibling;
+  if (!content || !content.classList.contains('collapsible')) {
+    content = el.parentElement.nextElementSibling;
+  }
+  if (content && content.classList.contains('collapsible')) {
+    if (content.style.maxHeight && content.style.maxHeight !== '0px') {
+      content.style.maxHeight = '0px';
+      el.classList.add('collapsed');
+    } else {
+      content.style.maxHeight = content.scrollHeight + 'px';
+      el.classList.remove('collapsed');
+    }
+  }
+}
+
+// Initialize all collapsible sections as expanded
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.collapsible').forEach(function(el) {
+    el.style.maxHeight = el.scrollHeight + 'px';
+  });
+});
 </script>
+
 </body>
 </html>

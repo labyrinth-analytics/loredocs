@@ -26,15 +26,20 @@ Remaining: Debbie needs to create the GitHub repo (labyrinth-analytics/claude-pl
 push the marketplace/ directory contents, and test the full install flow end-to-end.
 License key generation: Debbie needs to save the private signing key from the 2026-04-03 session (see LoreConvo session log or docs/COMPLETED.md note).
 
-### Cleanup (do after marketplace is working)
-1. [ ] Update CLAUDE.md agent paths to reference product copies (`ron_skills/*/scripts/`) instead of monorepo `scripts/`
-2. [ ] Delete old monorepo `scripts/save_to_loreconvo.py` and `scripts/query_loredocs.py` after path migration
+### LoreConvo CLI Interface (HIGH PRIORITY -- unblocks agent workflow improvements)
+1. [ ] Add CLI entry point to LoreConvo (`ron_skills/loreconvo/src/cli/`) with save-session, list-sessions, search commands. Migrate logic from `scripts/save_to_loreconvo.py` into the product as a public feature (users running scheduled agents need programmatic access when MCP tools are unavailable).
+2. [ ] Add CLI entry point to LoreDocs (`ron_skills/loredocs/src/cli/`) with equivalent vault commands. Migrate logic from `scripts/query_loredocs.py`.
+3. [ ] Slim down all scheduled agent task prompts (starting with Scout) to reference the CLI instead of inlining boilerplate Python. Scout prompt should contain only: role, research focus, criteria, and "run the CLI to save results."
+4. [ ] Update monorepo `scripts/save_to_loreconvo.py` and `scripts/query_loredocs.py` to become thin wrappers that call the product CLIs (backward compat for existing agent prompts).
+
+### Cleanup (do after CLI migration)
+5. [ ] Update CLAUDE.md agent paths to reference product copies (`ron_skills/*/scripts/`) instead of monorepo `scripts/`
 
 ### New Products
-3. [ ] SQL Query Optimizer: ClawHub skill packaging (ON HOLD -- no local SQL Server)
-4. [ ] SQL Query Optimizer: integration tests with real SQL Server queries (ON HOLD)
-5. [ ] Build Financial Report Generator skill + FastMCP backend
-6. [ ] Build CSV/Excel Data Transformer skill + FastMCP backend
+6. [ ] SQL Query Optimizer: ClawHub skill packaging (ON HOLD -- no local SQL Server)
+7. [ ] SQL Query Optimizer: integration tests with real SQL Server queries (ON HOLD)
+8. [ ] Build Financial Report Generator skill + FastMCP backend
+9. [ ] Build CSV/Excel Data Transformer skill + FastMCP backend
 
 ## Product Research Scout (Scheduled Task)
 - **Task:** `weekly-product-scout` — runs every Monday at 3 AM
@@ -57,6 +62,7 @@ License key generation: Debbie needs to save the private signing key from the 20
 | Gina | Enterprise Architect | `enterprise-architect-gina` | Wed + Sat 4:00 AM | docs/architecture/, Opportunities/LATEST_ARCHITECTURE_REVIEW.html, LoreConvo |
 | Jacqueline | Project Manager | `pm-jacqueline-daily` + `pm-jacqueline-roadmap` | Daily 4:30 AM + Sat 5:00 AM | docs/pm/, LoreConvo |
 | Madison | Content Marketer | `madison-marketing-agent` | Tue + Fri 1:00 AM | docs/marketing/, LoreConvo |
+| John | Technical Documentation | `john-tech-docs` | Tue + Sat 3:30 AM | ron_skills/*/docs/, LoreConvo |
 
 ### Meg - QA Engineer (Scheduled Task)
 - **Task:** `meg-qa-daily` -- runs daily at 2:00 AM (after Ron)
@@ -68,16 +74,26 @@ License key generation: Debbie needs to save the private signing key from the 20
 
 ### Brock - Cybersecurity Expert (Scheduled Task)
 - **Task:** `brock-security-daily` -- runs daily at 3:00 AM (after Meg)
-- **Purpose:** Full security posture review: secrets scanning, dependency audit (pip-audit + CVE check), OWASP code review, API security checks, security headers, infrastructure review
+- **Purpose:** Full security review covering TWO dimensions: (1) vulnerability scanning (secrets, dependency audit, OWASP, API security) and (2) security architecture evaluation of product design choices (transport security, data-at-rest, access patterns, tier enforcement bypass, trust boundaries, cloud sync readiness)
 - **Output:** Dated security report in `docs/security/security_report_YYYY_MM_DD.md` + LoreConvo session (surface='security')
-- **Scope:** Entire repo -- code, dependencies, configs, git history
+- **Scope:** Entire repo -- code, dependencies, configs, git history. Security architecture review focuses on recently changed product code in ron_skills/.
 - **Severity ratings:** SECURE / NEEDS ATTENTION / AT RISK
+- **Cross-agent handoff:** Brock tags items needing Gina's architectural input with "GINA-REVIEW:" prefix. Brock picks up "BROCK-REVIEW:" items from Gina's architecture reports in docs/architecture/.
 - **Rule:** Brock does NOT modify source code -- only writes reports and flags issues for Ron to fix
 
 #### Brock Security Classification Guidelines
 - **API keys in local .env files:** If a key is in a gitignored `.env` on Debbie's single-user Mac with no remote access, classify as **INFO** (not CRITICAL). Note it for awareness but do not flag as action-required or use alarm language ("!! CRITICAL - ACTION REQUIRED !!"). Only escalate to CRITICAL if the key is found in git history, a public repo, a shared system, or shows signs of compromise.
 - **Dependency pinning:** Check for `requirements-lock.txt` files (not just `pyproject.toml`). It is normal and expected for `pyproject.toml` to use `>=` minimum version constraints -- that is library metadata. The `requirements-lock.txt` files contain the actual exact pins. If lock files exist with exact versions, the dependency pinning finding is RESOLVED.
 - **Single-user context:** All products currently run locally on a single-user machine. Severity ratings should reflect this context. Findings that would be CRITICAL in a multi-user server deployment may be LOW or INFO in the current local-only setup.
+
+### Gina - Enterprise Architect (Scheduled Task)
+- **Task:** `enterprise-architect-gina` -- runs Wed + Sat at 4:00 AM
+- **Purpose:** TWO responsibilities: (1) review pipeline opportunities approved for architectural assessment (proposals with feasibility analysis, effort estimates, dependencies), and (2) review recent changes to existing shipped products for architectural quality, security architecture, and cross-product consistency
+- **Output:** Pipeline proposals in `docs/architecture/OPP-xxx_product_name.md` + product reviews in `docs/architecture/product_review_YYYY_MM_DD.md` + combined HTML report at `Opportunities/LATEST_ARCHITECTURE_REVIEW.html` + LoreConvo session (surface='cowork')
+- **Pipeline scope:** Items with status `approved-for-review` in PipelineDB
+- **Product scope:** Recent commits to `ron_skills/` -- evaluates code architecture, database design, API surface, security architecture (transport, data-at-rest, access patterns, tier enforcement, trust boundaries, cloud sync readiness), scalability, and cross-product consistency
+- **Cross-agent handoff:** Gina tags security-architectural findings needing Brock's deeper analysis with "BROCK-REVIEW:" prefix. Gina picks up "GINA-REVIEW:" items from Brock's security reports in docs/security/.
+- **Rule:** Gina does NOT modify source code -- only produces reviews, proposals, and reports
 
 ### Jacqueline - Project Manager (Scheduled Tasks)
 - **Daily task:** `pm-jacqueline-daily` -- runs daily at 4:30 AM (after Brock)
@@ -100,6 +116,15 @@ License key generation: Debbie needs to save the private signing key from the 20
 - **Content Calendar:** Madison maintains a rolling 8-week content calendar in `docs/marketing/content_calendar_madison.md`
 - **Blog Standards:** Before drafting any blog post, read the blog publishing skill at `~/projects/labyrinthanalytics_website/.claude/skills/labyrinth-blog-publishing/SKILL.md`. It contains the frontmatter schema, editorial voice guidelines, post structure arc, and pre-publish checklist. All blog drafts must follow these standards.
 - **Rule:** Madison does NOT publish anything directly. All content goes to draft for Debbie's review before publishing.
+
+### John - Technical Documentation Specialist (Scheduled Task)
+- **Task:** `john-tech-docs` -- runs twice weekly at 3:30 AM (Tuesday, Saturday)
+- **Purpose:** Write and maintain user-facing documentation for all Lore products. Produces CLI references with real sample output, MCP tool catalogs in plain English, install/quickstart guides, and changelogs translated from Ron's commits.
+- **Output:** Docs in `ron_skills/<product>/docs/` + updated INSTALL.md files + run report in `docs/technical/tech_docs_report_YYYY_MM_DD.md` + LoreConvo session (surface='cowork')
+- **Scope:** All products in ron_skills/. Focuses on recently changed features that Meg has verified as working.
+- **Standards:** Read `.claude/skills/tech-docs-john/SKILL.md` before generating ANY output. Contains voice/tone guidelines, doc formats, and output locations.
+- **Audience:** Non-technical users who are comfortable installing a plugin but do not read source code. Plain English, every term explained, real command examples with captured output.
+- **Rule:** John does NOT modify source code -- only creates/updates documentation files. Does NOT fabricate sample output -- runs actual commands to capture real output.
 
 ## Blocked
 
