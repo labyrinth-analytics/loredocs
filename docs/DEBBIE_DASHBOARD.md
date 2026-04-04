@@ -73,6 +73,40 @@ self-hosted is the path forward. Can submit to the official marketplace later if
 
 Project on hold -- no local SQL Server installation to test against.
 
+### 5. DECIDED: Gina architecture review dispositions (2026-04-04)
+
+**Architecture proposals:**
+- OPP-015 (Data Catalog Lite): APPROVED
+- OPP-013 (Data Pipeline Test Harness): ON HOLD
+- OPP-016 (ETL Pattern Library): ON HOLD
+
+**Gina product review findings -- add ALL to Ron's TODO:**
+- GINA-001, GINA-002: Add to Ron's TODO
+- LoreConvo v0.3.0: Add H1, H2, H3 and all 5 MEDIUM findings to Ron's TODO
+- LoreDocs v0.1.0: Add H1, H2, H3 and all 5 MEDIUM findings to Ron's TODO
+- BROCK-REVIEW items: Add to Brock's next review scope
+
+All products should use Lore branding consistently.
+
+### 6. DECIDED: Scout opportunity dispositions batch 2 (2026-04-04)
+
+- OPP-017 (LoreEval): Not triaged yet
+- OPP-018 (LangGraph Workflow Inspector): Not triaged yet
+- OPP-019 (FinNorm - Brokerage CSV Normalizer): APPROVED
+- OPP-020 (LoreCheck - Data Quality CLI): APPROVED
+- OPP-021 (Chain Lens - Prompt Chain Observability): APPROVED
+
+### 7. DECIDED: Agent governance updates (2026-04-04)
+
+- All agents now use safe_git.py for git operations (no more raw git commands)
+- Turn budgets enforced: Ron 30, Meg/Brock 25, others 20. Hard cap 50.
+- Agent Communication Protocol added to CLAUDE.md (structured LoreConvo sessions)
+- Business email for marketplace: info@labyrinthanalyticsconsulting.com (not Gmail)
+
+### 8. DECIDED: Test files should NOT be in public repos (2026-04-04)
+
+Meg's test scripts are being tracked in git and would be included in subtree pushes to public repos. Add tests/ to public repo .gitignore or exclude from subtree pushes. Ron to fix before next subtree push.
+
 ---
 
 ## Things Only Debbie Can Do
