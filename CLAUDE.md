@@ -54,7 +54,7 @@ License key generation: Debbie needs to save the private signing key from the 20
 | Meg | QA Engineer | `meg-qa-daily` | Daily 2:00 AM | docs/qa/, LoreConvo |
 | Brock | Cybersecurity Expert | `brock-security-daily` | Daily 3:00 AM | docs/security/, LoreConvo |
 | Scout | Product Research | `weekly-product-scout` | Monday 3:00 AM | Opportunities/, LoreConvo |
-| Gina | Enterprise Architect | `enterprise-architect-gina` | Wed + Sat 4:00 AM | LoreConvo (pipeline) |
+| Gina | Enterprise Architect | `enterprise-architect-gina` | Wed + Sat 4:00 AM | docs/architecture/, Opportunities/LATEST_ARCHITECTURE_REVIEW.html, LoreConvo |
 | Jacqueline | Project Manager | `pm-jacqueline-daily` + `pm-jacqueline-roadmap` | Daily 4:30 AM + Sat 5:00 AM | docs/pm/, LoreConvo |
 | Madison | Content Marketer | `madison-marketing-agent` | Tue + Fri 1:00 AM | docs/marketing/, LoreConvo |
 

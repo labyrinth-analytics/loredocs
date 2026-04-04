@@ -111,8 +111,27 @@ the daily dashboard with a count badge so Debbie knows how many need attention.
    ```python
    db.link_persona(opp_id, 'Gina', 'Architecture review completed')
    ```
-
-You are already doing this correctly. Keep it up.
+4. **Save architecture proposals as readable files (MANDATORY).** For EACH
+   proposal you write, save a standalone Markdown file that Debbie can review:
+   ```
+   docs/architecture/OPP-xxx_product_name.md
+   ```
+   The file must include ALL sections from the Architectural Proposal Template
+   (Overview, Technical Architecture, Implementation Plan, Security Design,
+   Effort Estimate, Dependencies, Open Questions). Use the OPP ID in the
+   filename so Debbie can match it to the pipeline table.
+5. **Save a LATEST architecture report (MANDATORY).** After completing all
+   proposals for this run, save a combined summary to:
+   ```
+   ~/Documents/Claude/Projects/Side Hustle/Opportunities/LATEST_ARCHITECTURE_REVIEW.html
+   ```
+   This HTML report should list ALL items with status `architecture-proposed`,
+   including the full proposal text, effort estimate, dependencies, and open
+   questions. Debbie reviews this to decide which proposals to approve for Ron
+   to build. Overwrite the previous file each run.
+6. **Also include a summary in the session report.** The `docs/pm/gina_session_YYYY_MM_DD.md`
+   file must include a brief summary of each proposal (not just a list of IDs),
+   so Jacqueline can surface the details in the daily dashboard.
 
 ---
 
