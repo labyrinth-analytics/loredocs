@@ -1,6 +1,10 @@
 # Full Push Workflow
 cd ~/projects/side_hustle
 
+##After agents run:
+
+python scripts/safe_git.py apply
+
 # Private monorepo (all your work)
 git push origin master
 
