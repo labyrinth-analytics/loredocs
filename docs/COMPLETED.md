@@ -202,3 +202,12 @@ in the LoreConvo session log (not in git). Retrieve it with:
   python scripts/save_to_loreconvo.py --read --limit 1 --surface cowork
 Or search: python scripts/save_to_loreconvo.py --search "license private key"
 Save the key to a password manager as "Labyrinth Analytics License Signing Key".
+
+## LoreConvo Onboarding Skill + Housekeeping (2026-04-03, Ron daily)
+
+- [x] Build `/lore-onboard` skill (SKILL.md + onboard_verify.py + 23 tests)
+  - SKILL.md: 5-step guided wizard (MCP connection, database, save/load cycle, hooks, CLAUDE.md)
+  - onboard_verify.py: standalone CLI verification script (--json, --cleanup flags)
+  - test_onboard.py: 23 tests covering all check functions, report formatting, and integration
+- [x] Fix MEG-038: removed unused import (Encoding, PublicFormat) in loreconvo/license.py
+- [x] 197 LoreConvo tests pass (174 existing + 23 new onboard tests, 0 failures)

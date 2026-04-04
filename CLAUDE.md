@@ -26,18 +26,15 @@ Remaining: Debbie needs to create the GitHub repo (labyrinth-analytics/claude-pl
 push the marketplace/ directory contents, and test the full install flow end-to-end.
 License key generation: Debbie needs to save the private signing key from the 2026-04-03 session (see LoreConvo session log or docs/COMPLETED.md note).
 
-### Plugin Onboarding
-1. [ ] Build `/lore-onboard` skill for LoreConvo plugin that walks users through first-time setup: verifies MCP server is connected, adds CLAUDE.md snippet, runs a test save/load cycle, confirms hooks are firing.
-
 ### Cleanup (do after marketplace is working)
-2. [ ] Update CLAUDE.md agent paths to reference product copies (`ron_skills/*/scripts/`) instead of monorepo `scripts/`
-3. [ ] Delete old monorepo `scripts/save_to_loreconvo.py` and `scripts/query_loredocs.py` after path migration
+1. [ ] Update CLAUDE.md agent paths to reference product copies (`ron_skills/*/scripts/`) instead of monorepo `scripts/`
+2. [ ] Delete old monorepo `scripts/save_to_loreconvo.py` and `scripts/query_loredocs.py` after path migration
 
 ### New Products
-4. [ ] SQL Query Optimizer: ClawHub skill packaging (ON HOLD -- no local SQL Server)
-5. [ ] SQL Query Optimizer: integration tests with real SQL Server queries (ON HOLD)
-6. [ ] Build Financial Report Generator skill + FastMCP backend
-7. [ ] Build CSV/Excel Data Transformer skill + FastMCP backend
+3. [ ] SQL Query Optimizer: ClawHub skill packaging (ON HOLD -- no local SQL Server)
+4. [ ] SQL Query Optimizer: integration tests with real SQL Server queries (ON HOLD)
+5. [ ] Build Financial Report Generator skill + FastMCP backend
+6. [ ] Build CSV/Excel Data Transformer skill + FastMCP backend
 
 ## Product Research Scout (Scheduled Task)
 - **Task:** `weekly-product-scout` — runs every Monday at 3 AM
