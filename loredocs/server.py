@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .storage import VaultStorage
 from .tiers import TierLimitError, get_tier, set_tier, TIER_LIMITS
+from .license import get_license_status
 
 
 # ---------------------------------------------------------------------------
@@ -1416,6 +1417,27 @@ async def vault_set_tier(params: VaultSetTierInput, ctx: Context) -> str:
         )
 
     return f"[OK] Tier set to '{params.tier}'. {summary}"
+
+
+# ---------------------------------------------------------------------------
+# License tier diagnostic
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+def get_license_tier() -> dict:
+    """Return the current LoreDocs license tier and status.
+
+    Use this to confirm whether the Pro license key is loaded and valid.
+
+    Returns a dict with keys:
+        is_pro  -- bool, True if Pro tier is active
+        mode    -- "licensed" | "dev_bypass" | "free" | "invalid_key"
+        product -- product name from the license payload (if licensed)
+        exp     -- expiry date or "never" (if licensed)
+        email   -- customer email (if licensed and present)
+        error   -- error message (if mode is "invalid_key")
+    """
+    return get_license_status()
 
 
 # ---------------------------------------------------------------------------
