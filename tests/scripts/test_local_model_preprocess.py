@@ -8,6 +8,7 @@ Tests cover:
 """
 
 import json
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -22,6 +23,7 @@ from local_model_preprocess import (
     get_template,
     parse_arguments,
     format_output,
+    save_preprocessing_to_loreconvo,
 )
 
 
@@ -555,6 +557,27 @@ class TestArgumentParsing:
             with pytest.raises(SystemExit):
                 parse_arguments()
 
+    def test_parse_save_to_loreconvo_flag_false_by_default(self):
+        """Should default --save-to-loreconvo to False."""
+        with patch.object(
+            sys, 'argv',
+            ['script', '--agent', 'meg', '--task', 'test_scenarios',
+             '--input', 'test.txt', '--model', 'qwen3.5:9b']
+        ):
+            args = parse_arguments()
+            assert args.save_to_loreconvo is False
+
+    def test_parse_save_to_loreconvo_flag_true_when_passed(self):
+        """Should set --save-to-loreconvo to True when flag is passed."""
+        with patch.object(
+            sys, 'argv',
+            ['script', '--agent', 'meg', '--task', 'test_scenarios',
+             '--input', 'test.txt', '--model', 'qwen3.5:9b',
+             '--save-to-loreconvo']
+        ):
+            args = parse_arguments()
+            assert args.save_to_loreconvo is True
+
 
 class TestCallOllama:
     """Test Ollama subprocess orchestration."""
@@ -773,3 +796,84 @@ class TestIntegration:
 
         result = call_ollama('qwen3.5:9b', 'Test prompt', 'Test input', 30)
         assert result is None
+
+    @patch('local_model_preprocess.subprocess.run')
+    def test_save_preprocessing_to_loreconvo_success(self, mock_run):
+        """Test successful save to LoreConvo"""
+        mock_run.return_value = MagicMock(returncode=0, stderr='')
+
+        result = save_preprocessing_to_loreconvo(
+            agent='meg',
+            task='test_scenarios',
+            output='Test scenario output here',
+            model='qwen3.5:9b'
+        )
+
+        assert result is True
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert any('save_to_loreconvo.py' in arg for arg in call_args)
+        assert '--surface' in call_args
+        assert 'preprocessing' in call_args
+
+    @patch('local_model_preprocess.subprocess.run')
+    def test_save_preprocessing_to_loreconvo_failure(self, mock_run):
+        """Test graceful handling when save fails"""
+        mock_run.return_value = MagicMock(returncode=1, stderr='DB error')
+
+        result = save_preprocessing_to_loreconvo(
+            agent='brock',
+            task='file_screening',
+            output='File output',
+            model='qwen3.5:9b'
+        )
+
+        assert result is False
+
+    @patch('local_model_preprocess.subprocess.run')
+    def test_save_preprocessing_to_loreconvo_timeout(self, mock_run):
+        """Test graceful handling when save times out"""
+        mock_run.side_effect = subprocess.TimeoutExpired('cmd', 10)
+
+        result = save_preprocessing_to_loreconvo(
+            agent='meg',
+            task='test_scenarios',
+            output='Output',
+            model='qwen3.5:9b'
+        )
+
+        assert result is False
+
+    @patch('local_model_preprocess.save_preprocessing_to_loreconvo')
+    @patch('local_model_preprocess.subprocess.run')
+    def test_main_with_save_to_loreconvo_flag(self, mock_ollama, mock_save):
+        """Test main() calls save function when flag is set"""
+        # Setup mocks
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+            f.write('test content')
+            input_file = f.name
+
+        try:
+            mock_ollama.return_value = MagicMock(
+                stdout='Test output\n',
+                returncode=0
+            )
+            mock_save.return_value = True
+
+            # Simulate args with --save-to-loreconvo
+            with patch.object(sys, 'argv', ['prog', '--agent', 'meg', '--task', 'test_scenarios',
+                                           '--input', input_file, '--model', 'qwen3.5:9b',
+                                           '--save-to-loreconvo']):
+                from local_model_preprocess import main
+
+                with patch('builtins.print') as mock_print:
+                    result = main()
+                    assert result == 0
+                    # Verify save function was called
+                    mock_save.assert_called_once()
+                    call_args = mock_save.call_args
+                    assert call_args[1]['agent'] == 'meg'
+                    assert call_args[1]['task'] == 'test_scenarios'
+
+        finally:
+            Path(input_file).unlink()
