@@ -48,5 +48,17 @@
     ],
     "agent": "debbie",
     "applied": true
+  },
+  {
+    "timestamp": "2026-04-05T02:30:06.424337+00:00",
+    "message": "fix(install): add cryptography dep to pyproject.toml; wire get_tier MCP tool\n\nSEC-014: cryptography package was missing from dependencies in both\nloreconvo and loredocs pyproject.toml files. uvx installs loreconvo/loredocs\nfrom pyproject.toml -- without cryptography declared, the license.py import\nfails at server startup with ImportError, breaking the plugin install flow.\n\nStability TODO #2: expose get_tier/@mcp.tool in loreconvo/server.py\nand get_license_tier/@mcp.tool in loredocs/server.py. Both call\nget_license_status() from the respective license.py module. Allows\nDebbie to verify Pro key is loaded and valid without inferring from\nbehavior. Named get_license_tier in loredocs to avoid clash with the\nexisting internal get_tier function imported from .tiers.\n\nMEG-038: verified unused import (Encoding/PublicFormat) already removed\nfrom a prior commit -- no fix needed.",
+    "files": [
+      "ron_skills/loreconvo/pyproject.toml",
+      "ron_skills/loreconvo/src/server.py",
+      "ron_skills/loredocs/pyproject.toml",
+      "ron_skills/loredocs/loredocs/server.py"
+    ],
+    "agent": "ron",
+    "applied": true
   }
 ]
