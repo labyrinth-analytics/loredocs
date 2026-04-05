@@ -25,6 +25,7 @@ import re
 import subprocess
 import sys
 import yaml
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -240,6 +241,52 @@ def format_output(result: str, output_format: str) -> str:
         return result
 
 
+def save_preprocessing_to_loreconvo(agent: str, task: str, output: str, model: str) -> bool:
+    """
+    Save preprocessing action to LoreConvo for audit trail.
+
+    Args:
+        agent: Agent name (meg, brock, etc.)
+        task: Task name (test_scenarios, file_screening, etc.)
+        output: The preprocessing output (result from local model)
+        model: Model used (qwen3.5:9b, gemma4)
+
+    Returns:
+        True if save successful, False if failed (logged as warning)
+    """
+    try:
+        # Create title and summary
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        title = f"Preprocessing: {agent} {task} ({now})"
+        summary = f"Local model preprocessing completed.\nAgent: {agent}\nTask: {task}\nModel: {model}\n\nOutput preview:\n{output[:500]}"
+
+        # Call save_to_loreconvo script
+        result = subprocess.run(
+            [
+                'python3',
+                'scripts/save_to_loreconvo.py',
+                '--title', title,
+                '--surface', 'preprocessing',
+                '--summary', summary,
+                '--tags', json.dumps(['preprocessing', f'agent:{agent}', f'task:{task}']),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        if result.returncode == 0:
+            logger.debug(f"Saved preprocessing action to LoreConvo: {title}")
+            return True
+        else:
+            logger.warning(f"Failed to save to LoreConvo: {result.stderr}")
+            return False
+
+    except Exception as e:
+        logger.warning(f"Error saving to LoreConvo: {e}")
+        return False
+
+
 def main() -> int:
     """
     Main orchestration function.
@@ -292,6 +339,15 @@ def main() -> int:
     if result is None:
         logger.error('Ollama preprocessing failed or timed out')
         sys.exit(1)
+
+    # Save to LoreConvo if requested
+    if args.save_to_loreconvo and result is not None:
+        save_preprocessing_to_loreconvo(
+            agent=args.agent,
+            task=args.task,
+            output=result,
+            model=args.model
+        )
 
     # Format output
     formatted = format_output(result, output_format)
