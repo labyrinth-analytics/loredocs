@@ -94,6 +94,12 @@ def parse_arguments() -> argparse.Namespace:
         default='text',
         help='Output format (default: text)'
     )
+    parser.add_argument(
+        '--save-to-loreconvo',
+        action='store_true',
+        default=False,
+        help='Save preprocessing action to LoreConvo for audit trail (optional)'
+    )
 
     return parser.parse_args()
 
