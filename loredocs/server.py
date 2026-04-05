@@ -1392,14 +1392,33 @@ async def vault_set_tier(params: VaultSetTierInput, ctx: Context) -> str:
     """Activate a tier (free or pro) for LoreDocs.
 
     Pro tier removes all vault, document, storage, and version limits.
-    After purchasing a Pro license, call this tool with tier='pro' to unlock
-    unlimited usage. Reverting to tier='free' re-enables limits (but does not
-    delete any existing data that exceeds the limits -- it only blocks new writes).
-
-    Note: In a future release this will verify a license key. For now it trusts
-    the caller (suitable for single-user local installs).
+    After purchasing a Pro license, set LOREDOCS_PRO=<your-license-key> in
+    your environment and restart the server, then call this tool with tier='pro'
+    to persist the Pro tier. Reverting to tier='free' re-enables limits (but
+    does not delete any existing data that exceeds the limits -- it only blocks
+    new writes).
     """
     storage = _get_storage(ctx)
+
+    # Require a valid license key before persisting Pro tier.
+    # This prevents callers from bypassing license validation by writing 'pro'
+    # directly to config.json (GINA-001 / SEC-017).
+    if params.tier == "pro":
+        status = get_license_status()
+        if not status["is_pro"]:
+            if status.get("mode") == "invalid_key":
+                return (
+                    "Error: Invalid or expired license key in LOREDOCS_PRO. "
+                    + status.get("error", "")
+                    + " Get a new key at labyrinthanalyticsconsulting.com."
+                )
+            return (
+                "Error: No Pro license key found. "
+                "Set LOREDOCS_PRO=<your-license-key> in your environment and "
+                "restart the server, then call vault_set_tier again. "
+                "Get a license key at labyrinthanalyticsconsulting.com."
+            )
+
     try:
         set_tier(storage.root, params.tier)
     except ValueError as exc:
