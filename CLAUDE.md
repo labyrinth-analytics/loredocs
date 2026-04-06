@@ -37,11 +37,21 @@ Current state (confirmed 2026-04-04):
 Action items (Ron's ONLY work until these are done, in order):
 
 1. [ ] Fix the .plugin install flow end-to-end.
-   - Reproduce the exact failure (what breaks, what error, which platform)
-   - Identify root cause: config, transport, server startup, path, .mcp.json, plugin.json, etc.
-   - Fix it so `plugin install loreconvo` and `plugin install loredocs` complete successfully
-   - Verify on Cowork AND Claude Code
-   - Document the confirmed working install path in INSTALL.md
+   - Root cause identified (2026-04-05): Both products have broken user-facing install scripts
+     that do NOT run `pip install .`, so the MCP server binary/package is never properly installed.
+   - **LoreConvo** (CRITICAL): `install.sh` only runs `pip install -r requirements.txt` -- it never
+     installs the `loreconvo` package itself. The binary at `.venv/bin/loreconvo` only exists
+     because Ron ran `pip install -e .` during development. Additionally, the editable install's
+     auto-generated MAPPING is broken: it maps `src` -> src/ but NOT `loreconvo` -> src/, so
+     `from loreconvo.server import main` fails with ModuleNotFoundError even when the binary exists.
+     Fix: change `install.sh` to run `pip install .` (non-editable) instead of
+     `pip install -r requirements.txt`. This installs the package + entry point correctly.
+   - **LoreDocs** (MODERATE): No `install.sh` exists at all -- there is no user-facing install
+     mechanism. The editable install MAPPING is correct (loredocs -> loredocs/ dir works), but a
+     fresh user has no way to create the venv or install the package.
+     Fix: add `install.sh` that runs `pip install .` (same pattern as LoreConvo's fix).
+   - After fixing both install scripts, verify on Cowork AND Claude Code
+   - Update INSTALL.md with confirmed working install path for both products
 
 For each item: reproduce, root-cause, fix, verify on both platforms, document.
 
@@ -325,6 +335,21 @@ LoreConvo is the shared communication backbone. Every agent reads it and writes 
 - Tag every session with `agent:your-name` (e.g., `agent:ron`, `agent:meg`)
 - Include structured fields in the summary: COMPLETED, BLOCKED, PENDING_GIT, HANDOFFS
 - If you found something another agent needs to know, tag the session with their name too (e.g., `agent:ron` if Meg found a critical bug Ron needs to fix)
+
+**Error logging (mid-session -- MANDATORY when things go wrong):**
+- If you encounter a tool failure, import/package error, crash, or are blocked on a CRITICAL item mid-session, log it immediately -- do NOT wait until session end.
+- Use the fallback script with surface `error`:
+  ```
+  python ron_skills/loreconvo/scripts/save_to_loreconvo.py \
+      --title "agent:your-name error YYYY-MM-DD" \
+      --surface "error" \
+      --summary "ERROR: <what failed> | IMPACT: <what could not be completed> | CONTEXT: <relevant state>" \
+      --tags '["agent:your-name", "error"]' \
+      --project "side_hustle"
+  ```
+- Log errors even if you intend to continue the session -- Jacqueline reads `surface:error` sessions to build the Agent Health report.
+- If your session crashes before you reach the normal end-of-session save, this mid-session error log is your only record. Write it as soon as the failure occurs.
+- Non-critical issues (minor warnings, skipped optional steps) do NOT need an error log -- only real blockers and failures.
 
 ## Architecture Principles
 - Local-first: all data on user's machine, no cloud dependency for core features

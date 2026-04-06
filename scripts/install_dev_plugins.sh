@@ -133,9 +133,13 @@ mcp["mcpServers"]["loreconvo"]["env"] = {
 with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
     # Write the modified .mcp.json
     zf.writestr(".mcp.json", json.dumps(mcp, indent=2))
+    # Always include plugin.json from .claude-plugin/ (required for Cowork validation)
+    plugin_json_path = os.path.join(plugin_dir, ".claude-plugin", "plugin.json")
+    if os.path.exists(plugin_json_path):
+        zf.write(plugin_json_path, ".claude-plugin/plugin.json")
     # Add all other files from the plugin directory
     for root, dirs, files in os.walk(plugin_dir):
-        dirs[:] = [d for d in dirs if not d.startswith(".")]  # skip hidden dirs
+        dirs[:] = [d for d in dirs if not d.startswith(".")]  # skip other hidden dirs
         for fname in files:
             if fname in (".DS_Store", ".mcp.json"):
                 continue
@@ -182,9 +186,13 @@ mcp["mcpServers"]["loredocs"]["env"] = {
 with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
     # Write the modified .mcp.json
     zf.writestr(".mcp.json", json.dumps(mcp, indent=2))
+    # Always include plugin.json from .claude-plugin/ (required for Cowork validation)
+    plugin_json_path = os.path.join(plugin_dir, ".claude-plugin", "plugin.json")
+    if os.path.exists(plugin_json_path):
+        zf.write(plugin_json_path, ".claude-plugin/plugin.json")
     # Add all other files from the plugin directory
     for root, dirs, files in os.walk(plugin_dir):
-        dirs[:] = [d for d in dirs if not d.startswith(".")]  # skip hidden dirs
+        dirs[:] = [d for d in dirs if not d.startswith(".")]  # skip other hidden dirs
         for fname in files:
             if fname in (".DS_Store", ".mcp.json"):
                 continue

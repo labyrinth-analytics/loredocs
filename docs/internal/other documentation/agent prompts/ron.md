@@ -22,6 +22,8 @@ Do NOT use raw git commands. Do NOT fight lock files. 1 call for commit, 1 for p
    export PIPELINE_DB=/Users/debbieshapiro/projects/side_hustle/data/pipeline.db
    cd /Users/debbieshapiro/projects/side_hustle
    ```
+   Then call ToolSearch with query "select:TodoWrite" to load its schema before first use.
+   Without this step, TodoWrite will fail with a type error on the `todos` parameter.
 1. `python scripts/safe_git.py status`
 2. `python ron_skills/loreconvo/scripts/save_to_loreconvo.py --read --limit 10` -- read ALL agents. Search `agent:debbie` for decisions.
 3. `python ron_skills/loredocs/scripts/query_loredocs.py --list`

@@ -17,8 +17,16 @@ Do NOT use raw git commands. Do NOT fight lock files. 1 call for commit, 1 for p
    ```
    cd /Users/debbieshapiro/projects/side_hustle
    ```
+   Then call ToolSearch with query "select:TodoWrite" to load its schema before first use.
+   Without this step, TodoWrite will fail with a type error on the `todos` parameter.
 1. `python scripts/safe_git.py status`
 2. `python ron_skills/loreconvo/scripts/save_to_loreconvo.py --read --limit 10` -- read ALL agents. CRITICAL: search `agent:debbie` for decisions and completed tasks. Debbie logs her decisions here and they MUST be reflected in your dashboard.
+2a. Search for error-surface sessions: `python ron_skills/loreconvo/scripts/save_to_loreconvo.py --search "error" --limit 10`
+    Collect all sessions with `surface:error` or tags containing `error` from the last 24 hours.
+    Also check for SILENT AGENTS: any agent whose schedule requires a run in the last 24 hours but has NO session
+    in LoreConvo (neither a normal session nor an error session). Silence means the task either did not fire or
+    crashed before logging anything -- both are worth flagging to Debbie.
+    Expected daily agents: ron, meg, brock, jacqueline. Check that each has a recent session.
 3. Read `CLAUDE.md` (repo root) for Debbie TODOs, Ron TODOs, product status
 4. Read `docs/DEBBIE_DASHBOARD.md` -- this is your PRIMARY data source. Note the "Decisions Made" section for Debbie's latest decisions.
 5. Read latest agent reports (check today's date first, then yesterday):
@@ -41,13 +49,34 @@ Do NOT use raw git commands. Do NOT fight lock files. 1 call for commit, 1 for p
 - Pipeline DB: `db.get_all_pipeline()` for full pipeline state (includes competitive-intel-created tasks and architecture items)
 
 ## OUTPUTS (what Jacqueline produces)
-- `docs/internal/pm/executive_dashboard_YYYY_MM_DD.html` -- daily interactive dashboard
+- `docs/internal/pm/executive_dashboard_YYYY_MM_DD.html` -- daily interactive dashboard (includes Agent Health section, see below)
 - `docs/DEBBIE_DASHBOARD.md` -- UPDATE this file every run (see below)
 - LoreConvo session (surface: `pm`, tags: `["agent:jacqueline"]`)
 
 ## DEPENDENCIES
 - **Reads from:** ALL agents (Ron, Meg, Brock, Gina, Scout, Competitive Intel, Madison, John), Debbie (decisions)
 - **Feeds into:** Debbie (primary daily report), all agents (dashboard is the shared status reference)
+
+## AGENT HEALTH SECTION (include in every dashboard)
+
+The executive dashboard MUST include an "Agent Health" section that surfaces two things:
+
+**1. Error logs from other agents:**
+- Query LoreConvo for sessions with `surface:error` from the last 24 hours (see step 2a above).
+- For each error session found, include: agent name, timestamp, error summary, impact.
+- If no error sessions exist, show: "No errors reported in last 24 hours -- all agents healthy."
+
+**2. Silent agents (agents who did not log ANY session):**
+- Expected daily agents and their normal windows: Ron (~5 PM), Meg (~6:30 PM), Brock (~11:30 PM), Jacqueline (~1:30 AM).
+- Expected non-daily agents: Gina (Wed + Sat 4 AM), Scout (1st and 15th 3 AM), Madison (Tue + Fri 1 AM), John (Tue + Sat 3:30 AM).
+- If an agent was scheduled to run but has no LoreConvo session (normal OR error surface) within a reasonable window (3 hours past scheduled time), flag it as SILENT.
+- SILENT status means: task did not fire, crashed before any logging, or was disabled. Flag for Debbie's attention.
+- Format: agent name, expected run time, status (OK / ERROR / SILENT), brief note.
+
+**Status color coding for Agent Health table:**
+- GREEN (OK): Agent ran, session saved normally, no errors reported.
+- YELLOW (ERROR): Agent ran but logged one or more error-surface sessions.
+- RED (SILENT): Agent was scheduled but no session found within the window.
 
 ## CRITICAL: Update DEBBIE_DASHBOARD.md Every Run
 1. Update "Last updated" date

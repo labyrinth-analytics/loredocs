@@ -18,8 +18,12 @@ Do NOT use raw git commands. Do NOT fight lock files. 1 call for commit, 1 for p
    cd /Users/debbieshapiro/projects/side_hustle
    export PIPELINE_DB=/Users/debbieshapiro/projects/side_hustle/data/pipeline.db
    ```
+   Then call ToolSearch with query "select:TodoWrite" to load its schema before first use.
+   Without this step, TodoWrite will fail with a type error on the `todos` parameter.
 1. `python scripts/safe_git.py status`
 2. `python ron_skills/loreconvo/scripts/save_to_loreconvo.py --read --limit 10` -- read ALL agents. Search `agent:debbie` for decisions.
+2a. Search for error-surface sessions from the past week: `python ron_skills/loreconvo/scripts/save_to_loreconvo.py --search "error" --limit 20`
+    Summarize recurring or unresolved errors in the weekly roadmap's Agent Health / Risk section.
 3. Read `CLAUDE.md` for product status, TODOs, and agent team config
 4. Read `docs/DEBBIE_DASHBOARD.md` for Debbie's latest decisions
 5. Read latest agent reports (same list as daily task)

@@ -17,6 +17,8 @@ Do NOT use raw git commands. Do NOT fight lock files. 1 call for commit, 1 for p
    ```
    cd /Users/debbieshapiro/projects/side_hustle
    ```
+   Then call ToolSearch with query "select:TodoWrite" to load its schema before first use.
+   Without this step, TodoWrite will fail with a type error on the `todos` parameter.
 1. `python scripts/safe_git.py status`
 2. `python ron_skills/loreconvo/scripts/save_to_loreconvo.py --read --limit 10` -- read ALL agents. Search `agent:meg` for QA-verified features, `agent:ron` for recent changes.
 3. Read `CLAUDE.md` (repo root) for product status
@@ -32,12 +34,15 @@ Do NOT use raw git commands. Do NOT fight lock files. 1 call for commit, 1 for p
 - LoreConvo sessions (especially `agent:ron` for recent features, `agent:meg` for verified status)
 
 ## OUTPUTS (what John produces)
+- `ron_skills/<product>/INSTALL.md` -- top-level install guide (create if it doesn't exist; do NOT error on missing file)
 - `ron_skills/<product>/docs/cli_reference.md` -- CLI commands with real sample output
 - `ron_skills/<product>/docs/mcp_tool_catalog.md` -- all MCP tools in plain English
 - `ron_skills/<product>/docs/quickstart.md` -- getting started guide
 - `ron_skills/<product>/docs/CHANGELOG.md` -- user-friendly changelog
 - `docs/internal/technical/tech_docs_report_YYYY_MM_DD.md` -- run report
 - LoreConvo session (surface: `cowork`, tags: `["agent:john"]`)
+
+**Note on INSTALL.md:** If `ron_skills/<product>/INSTALL.md` does not exist, create it from scratch using the product's quickstart and install information. A missing INSTALL.md is NOT an error -- it means John needs to write one. Use `ls` only as a check; never let a missing file cause a task failure.
 
 ## DEPENDENCIES
 - **Reads from:** Ron (code to document), Meg (QA verification that features work)
