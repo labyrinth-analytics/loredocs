@@ -1,6 +1,6 @@
 # LoreDocs MCP Tool Catalog
 
-LoreDocs provides 34 MCP tools that Claude calls during your sessions. You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
+LoreDocs provides 35 MCP tools that Claude calls during your sessions. You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
 
 This catalog explains what each tool does and when Claude uses it. Tools are grouped by function.
 
@@ -394,3 +394,4 @@ Activate a tier (free or pro) for LoreDocs. Pro tier requires a valid license ke
 | 32 | `vault_export_manifest` | Export vault manifest |
 | 33 | `vault_tier_status` | Check tier and usage |
 | 34 | `vault_set_tier` | Activate a tier |
+| 35 | `get_license_tier` | Check current tier and license key status |

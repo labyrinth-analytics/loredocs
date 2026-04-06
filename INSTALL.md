@@ -262,7 +262,7 @@ rm -rf ~/.loredocs
 
 | Platform | Support | Notes |
 |---|---|---|
-| **Claude Code** | Full | All 34 MCP tools available |
+| **Claude Code** | Full | All 35 MCP tools available |
 | **Cowork** | Full | Use vault_inject_summary at session start for automatic context |
 | **Chat (web)** | Partial | Use vault_export_manifest and paste output into Chat |
 

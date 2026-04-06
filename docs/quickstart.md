@@ -154,6 +154,6 @@ LoreDocs is free for up to 3 vaults. If you need more, upgrade to Pro with a lic
 
 ## Next Steps
 
-- Read the [MCP Tool Catalog](mcp_tool_catalog.md) for a full list of all 34 tools
+- Read the [MCP Tool Catalog](mcp_tool_catalog.md) for a full list of all 35 tools
 - Read the [INSTALL Guide](../INSTALL.md) for detailed installation options
 - Read the [Changelog](CHANGELOG.md) for recent updates
