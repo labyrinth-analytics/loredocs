@@ -33,7 +33,7 @@ Or inside an existing session:
 /plugin add /path/to/loredocs
 ```
 
-Once loaded, Claude has access to all 34 LoreDocs MCP tools automatically. Ask Claude to "create a vault for this project" or "find the architecture doc" and it uses the tools on its own.
+Once loaded, Claude has access to all 35 LoreDocs MCP tools automatically. Ask Claude to "create a vault for this project" or "find the architecture doc" and it uses the tools on its own.
 
 ### Cowork (Desktop App)
 
@@ -107,7 +107,7 @@ At session end:
 
 ## MCP Tools
 
-LoreDocs provides 34 MCP tools organized by function:
+LoreDocs provides 35 MCP tools organized by function:
 
 ### Vault Management (6 tools)
 | Tool | What it does |
@@ -174,6 +174,7 @@ LoreDocs provides 34 MCP tools organized by function:
 |------|-------------|
 | `vault_tier_status` | Check current tier limits and usage |
 | `vault_set_tier` | Set the active tier (free, pro, team) |
+| `get_license_tier` | Check current tier and license key status |
 
 ## Works With LoreConvo
 

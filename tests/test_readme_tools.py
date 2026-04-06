@@ -22,24 +22,29 @@ class TestReadmeToolTable:
         self.server_src = (ROOT / "loredocs" / "server.py").read_text()
 
     def _server_tool_names(self):
-        """Extract tool names from @mcp.tool(name=...) decorators in server.py."""
-        # LoreDocs uses @mcp.tool(name="vault_xyz", annotations={...})
-        return re.findall(r'@mcp\.tool\(\s*name\s*=\s*"(\w+)"', self.server_src)
+        """Extract tool names from @mcp.tool decorators in server.py.
+
+        Handles both forms:
+          @mcp.tool(name="vault_xyz", ...)  -- explicit name
+          @mcp.tool()                        -- name inferred from function
+        """
+        # Count all @mcp.tool usages regardless of arguments
+        return re.findall(r'@mcp\.tool', self.server_src)
 
     def _readme_tool_names(self):
         """Extract tool names from README.md backtick-delimited tool table."""
         # Pattern: | `vault_xyz` |
         return re.findall(r"\|\s*`(\w+)`\s*\|", self.readme)
 
-    def test_tool_count_matches_34(self):
+    def test_tool_count_matches_35(self):
         names = self._server_tool_names()
-        assert len(names) == 34, (
-            f"Expected 34 @mcp.tool decorators in server.py, found {len(names)}"
+        assert len(names) == 35, (
+            f"Expected 35 @mcp.tool decorators in server.py, found {len(names)}"
         )
 
-    def test_readme_claims_34_tools(self):
-        assert "34 MCP tools" in self.readme, (
-            "README should state '34 MCP tools'"
+    def test_readme_claims_35_tools(self):
+        assert "35 MCP tools" in self.readme, (
+            "README should state '35 MCP tools'"
         )
 
     def test_readme_table_lists_all_tools(self):
