@@ -1,5 +1,5 @@
 #!/bin/bash
-# LoreConvo - One-command installation
+# LoreDocs - One-command installation
 # Usage: bash install.sh
 
 set -e
@@ -8,8 +8,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/.venv"
 
 echo "============================================"
-echo "  LoreConvo Installer"
-echo "  Vault your Claude conversations."
+echo "  LoreDocs Installer"
+echo "  Your AI project knowledge vault."
 echo "============================================"
 echo ""
 
@@ -41,30 +41,28 @@ else
 fi
 
 # Install package and dependencies
-echo "[..] Installing LoreConvo package..."
+echo "[..] Installing LoreDocs package..."
 "$VENV_DIR/bin/pip3" install -q "$SCRIPT_DIR"
-echo "[OK] LoreConvo package installed (entry point: $VENV_DIR/bin/loreconvo)"
+echo "[OK] LoreDocs package installed (entry point: $VENV_DIR/bin/loredocs)"
 
 # Create database directory
-mkdir -p "$HOME/.loreconvo"
-echo "[OK] Database directory ready at ~/.loreconvo/"
+mkdir -p "$HOME/.loredocs"
+echo "[OK] Database directory ready at ~/.loredocs/"
 
 # Verify entry point was created
-if [ ! -f "$VENV_DIR/bin/loreconvo" ]; then
-    echo "[ERROR] Entry point not created at $VENV_DIR/bin/loreconvo"
+if [ ! -f "$VENV_DIR/bin/loredocs" ]; then
+    echo "[ERROR] Entry point not created at $VENV_DIR/bin/loredocs"
     echo "        Try: $VENV_DIR/bin/pip3 install $SCRIPT_DIR"
     exit 1
 fi
-echo "[OK] Entry point verified at $VENV_DIR/bin/loreconvo"
+echo "[OK] Entry point verified at $VENV_DIR/bin/loredocs"
 
 # Verify server starts
 echo "[..] Testing MCP server import..."
 "$VENV_DIR/bin/python3" -c "
-from loreconvo.core.database import SessionDatabase
-from loreconvo.core.config import Config
-db = SessionDatabase(Config())
-print(f'[OK] Database initialized at {Config().db_path}')
-print(f'[OK] {db.session_count()} sessions in vault')
+from loredocs.storage import VaultStorage
+from loredocs.tiers import TierEnforcer
+print('[OK] LoreDocs modules imported successfully')
 "
 
 echo ""
@@ -75,9 +73,8 @@ echo ""
 echo "  To use with Claude Code:"
 echo "    claude --plugin-dir $SCRIPT_DIR"
 echo ""
-echo "  To use the CLI:"
-echo "    $VENV_DIR/bin/loreconvo-cli stats"
+echo "  To use the CLI (coming soon):"
+echo "    $VENV_DIR/bin/loredocs --help"
 echo ""
-echo "  To export last session for Chat:"
-echo "    bash $SCRIPT_DIR/export-to-chat.sh"
+echo "  Vault data is stored at: ~/.loredocs/"
 echo ""
