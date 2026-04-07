@@ -90,30 +90,32 @@ License key generation: Debbie needs to save the private signing key from the 20
 11. [ ] Build CSV/Excel Data Transformer skill + FastMCP backend
 
 ## Product Research Scout (Scheduled Task)
-- **Task:** `weekly-product-scout` — runs every Monday at 3 AM
+- **Task:** `weekly-product-scout` — runs on the 1st and 15th of each month at 3:00 AM
 - **Purpose:** Scans all AI platforms and developer ecosystems for niche product opportunities (picks and shovels)
 - **Output:** Timestamped HTML report + markdown summary saved to `docs/internal/opportunities/`. ALSO saves a stable copy to `ocs/internal/opportunities/LATEST_SCOUT_REPORT.html` (overwritten each run — Debbie's bookmarked path).
 - **Report format:** Each opportunity row includes: ID, Name, Description, Effort, MRR (M12), Debbie Fit, Status (default: New), Action Needed.
 - **Triage statuses:** New (default) | Approve | Needs Info | Defer | Reject. See `docs/PIPELINE_AGENT_GUIDE.md` for status mappings.
 - **Scope:** All AI platforms (Claude, OpenAI, Cursor, Copilot, LangChain, etc.), developer forums, GitHub trending
 - **Criteria:** Lightweight builds (weekend project or one-week sprint), monetizable, complements Lore ecosystem
-- **Review:** Debbie opens LATEST_SCOUT_REPORT.html Monday, triages opportunities. Jacqueline's daily dashboard shows untriaged count.
+- **Review:** Debbie opens LATEST_SCOUT_REPORT.html on the 1st and 15th after Scout runs. Jacqueline's daily dashboard shows untriaged count.
 
 ## Agent Team
 
 | Agent | Role | Task ID | Schedule | Reports To |
 |-------|------|---------|----------|------------|
-| Ron | Builder | `ron-daily` | Daily 12:00 AM | docs/COMPLETED.md, LoreConvo |
-| Meg | QA Engineer | `meg-qa-daily` | Daily 2:00 AM | docs/internal/qa/, LoreConvo |
-| Brock | Cybersecurity Expert | `brock-security-daily` | Daily 3:00 AM | docs/internal/security/, LoreConvo |
-| Scout | Product Research | `weekly-product-scout` | Monday 3:00 AM | docs/internal/opportunities/, LoreConvo |
+| Ron | Builder | `ron-daily` | Daily 5:05 PM | docs/COMPLETED.md, LoreConvo |
+| Meg | QA Engineer | `meg-qa-daily` | Daily 6:33 PM | docs/internal/qa/, LoreConvo |
+| Brock | Cybersecurity Expert | `brock-security-daily` | Daily 11:38 PM | docs/internal/security/, LoreConvo |
+| Scout | Product Research | `weekly-product-scout` | 1st + 15th of month, 3:00 AM | docs/internal/opportunities/, LoreConvo |
+| Competitive Intel | Competitive Intelligence | `competitive-intel` | Mon + Thu 3:01 PM | docs/internal/competitive/, LoreConvo |
 | Gina | Enterprise Architect | `enterprise-architect-gina` | Wed + Sat 4:00 AM | docs/internal/architecture/, Opportunities/LATEST_ARCHITECTURE_REVIEW.html, LoreConvo |
-| Jacqueline | Project Manager | `pm-jacqueline-daily` + `pm-jacqueline-roadmap` | Daily 4:30 AM + Sat 5:00 AM | docs/internal/pm/, LoreConvo |
-| Madison | Content Marketer | `madison-marketing-agent` | Tue + Fri 1:00 AM | docs/internal/marketing/, LoreConvo |
-| John | Technical Documentation | `john-tech-docs` | Tue + Sat 3:30 AM | ron_skills/*/docs/, LoreConvo |
+| Gina | Product Reviewer | `gina-product-review` | Mon + Wed + Fri 4:00 AM | docs/internal/architecture/, LoreConvo |
+| Jacqueline | Project Manager | `pm-jacqueline-daily` + `pm-jacqueline-roadmap` | Daily 1:38 AM + Sat 5:05 AM | docs/internal/pm/, LoreConvo |
+| Madison | Content Marketer | `madison-marketing-agent` | Tue + Fri 12:31 AM | docs/internal/marketing/, LoreConvo |
+| John | Technical Documentation | `john-tech-docs` | Tue + Sat 3:38 AM | ron_skills/*/docs/, LoreConvo |
 
 ### Meg - QA Engineer (Scheduled Task)
-- **Task:** `meg-qa-daily` -- runs daily at 2:00 AM (after Ron)
+- **Task:** `meg-qa-daily` -- runs daily at 6:33 PM (after Ron)
 - **Purpose:** Full QA review of Ron's code: runs tests, writes new test cases, code walkthrough for logic errors, edge case analysis, verifies docs match behavior
 - **Output:** Dated QA report in `docs/internal/qa/qa_report_YYYY_MM_DD.md` + LoreConvo session (surface='qa')
 - **Scope:** All products in ron_skills/ -- focuses on recently changed files
@@ -121,7 +123,7 @@ License key generation: Debbie needs to save the private signing key from the 20
 - **Rule:** Meg does NOT modify Ron's source code -- only adds test files and reports
 
 ### Brock - Cybersecurity Expert (Scheduled Task)
-- **Task:** `brock-security-daily` -- runs daily at 3:00 AM (after Meg)
+- **Task:** `brock-security-daily` -- runs daily at 11:38 PM (after Meg)
 - **Purpose:** Full security review covering TWO dimensions: (1) vulnerability scanning (secrets, dependency audit, OWASP, API security) and (2) security architecture evaluation of product design choices (transport security, data-at-rest, access patterns, tier enforcement bypass, trust boundaries, cloud sync readiness)
 - **Output:** Dated security report in `docs/internal/security/security_report_YYYY_MM_DD.md` + LoreConvo session (surface='security')
 - **Scope:** Entire repo -- code, dependencies, configs, git history. Security architecture review focuses on recently changed product code in ron_skills/.
@@ -144,7 +146,7 @@ License key generation: Debbie needs to save the private signing key from the 20
 - **Rule:** Gina does NOT modify source code -- only produces reviews, proposals, and reports
 
 ### Jacqueline - Project Manager (Scheduled Tasks)
-- **Daily task:** `pm-jacqueline-daily` -- runs daily at 4:30 AM (after Brock)
+- **Daily task:** `pm-jacqueline-daily` -- runs daily at 1:38 AM (after Brock)
 - **Weekly task:** `pm-jacqueline-roadmap` -- runs every Saturday at 5:00 AM (after Gina)
 - **Daily purpose:** Synthesizes all overnight agent outputs into a single interactive HTML executive dashboard ("Labyrinth Analytics -- Executive Dashboard"). Cross-validates agent findings, tracks pipeline status, monitors TODO progress, and flags items needing Debbie's attention.
 - **Weekly purpose:** Generates the "Labyrinth Analytics -- Product Roadmap" with KPI cards, product details, feature status, revenue projections, risk register, timeline, and Debbie action items.
@@ -157,7 +159,7 @@ License key generation: Debbie needs to save the private signing key from the 20
 - **Rule:** Jacqueline does NOT modify source code, TODOs, or other agents' reports -- only produces dashboards and roadmaps
 
 ### Madison - Marketing Content Creator (Scheduled Task)
-- **Task:** `madison-marketing-agent` -- runs twice weekly at 1:00 AM (Tuesday, Friday)
+- **Task:** `madison-marketing-agent` -- runs twice weekly at 12:30 AM (Tuesday, Friday)
 - **Purpose:** Create blog post drafts, promotional copy, and marketing content for Labyrinth Analytics Consulting and the Lore product family. Promotes LoreConvo, LoreDocs, LorePrompts, and LoreScope through educational content, thought leadership, and product announcements.
 - **Output:** Dated blog post drafts in `docs/internal/marketing/blog_drafts/` + promo copy in `docs/internal/marketing/promo/` + LoreConvo session (surface='marketing')
 - **Scope:** Blog posts (800-2000 words) targeting data engineers and AI practitioners. Topics: data pipeline design, Claude plugins, AI productivity, Lore suite features.
