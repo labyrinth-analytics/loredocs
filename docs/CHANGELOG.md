@@ -4,6 +4,18 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## 2026-04-06
+
+### Bug Fixes
+
+- **`cryptography` package is now a listed dependency.** Pro license key validation requires the `cryptography` package. Previously it was accidentally missing from the dependency list, which meant a fresh `pip install` could fail to validate your license key with a "module not found" error. This is now fixed -- the package installs automatically. The workaround noted in the 2026-04-03 known issues section is no longer needed.
+
+- **License validation hardened against edge case.** An edge case was fixed where the developer bypass could theoretically be triggered when the `LOREDOCS_PRO` environment variable was set but empty. Free-tier users were not affected. Pro users are not affected. This only closed a gap in internal test environments.
+
+- **Hook scripts now work after a fresh install.** Same fix as LoreConvo: the install script now sets correct execute permissions on the SessionStart and SessionEnd hook scripts. Auto-save and auto-load now work correctly after cloning and running `install.sh`.
+
+---
+
 ## 2026-04-03
 
 ### New Features
@@ -16,7 +28,7 @@ What changed in each release, written for users (not developers).
 
 ### Known Issues
 
-- **SEC-014:** The `cryptography` package (needed for license key validation) is not yet listed in pyproject.toml dependencies. If you install LoreDocs via `pip install` or `uvx` (once published), Pro license validation may fail with a missing module error. Workaround: manually install `cryptography` with `pip install cryptography>=42.0.0`. This will be fixed in the next release.
+- **SEC-014 (resolved in 2026-04-06):** The `cryptography` package was missing from pyproject.toml dependencies, which could cause Pro license validation to fail on fresh installs. Fixed. No workaround needed -- reinstall with `bash install.sh` to get the corrected dependencies.
 
 ---
 
