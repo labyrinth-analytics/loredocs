@@ -1,32 +1,39 @@
 # Debbie's Action Dashboard
 
 Single source of truth for everything that needs Debbie's attention.
-Updated by Jacqueline (daily) or manually. Last updated: 2026-04-05 (manual update: license key saved, marketplace email confirmed).
+Updated by Jacqueline (daily) or manually. Last updated: 2026-04-06 (Jacqueline daily run).
 
 ---
 
-## TODAY -- 2026-04-05 (Sunday)
+## TODAY -- 2026-04-06 (Sunday)
 
-### Major Progress: License Key System Complete
+### MILESTONE: Stability Mandate COMPLETE
 
-Ron completed the Ed25519 offline-verifiable license key system for both products on Apr 3.
-The Pro tier is now properly secured -- external users cannot unlock Pro by setting env vars alone.
-The /lore-onboard guided setup skill was also shipped. MEG-037 is RESOLVED.
+Debbie confirmed end-to-end on 2026-04-05 that the plugin install flow is fixed.
+LoreConvo AND LoreDocs are now working in Cowork -- MCP tools callable, sessions persisting.
+This is the Stability Mandate definition of done. The feature freeze is LIFTED.
 
-**Overnight summary:**
-- Ron: 9 commits (license key system, /lore-onboard skill, MEG-037 fix, SEC-012/013 fixes)
-- Meg (Apr 4): YELLOW -- 338 tests pass (+34). 3 new advisory findings (MEG-038/039/040), all LOW/ADVISORY (see `docs/internal/qa/`)
-- Brock: No Apr 4 report (last: Apr 3 Run B, NEEDS ATTENTION -- SEC-014 and SEC-015 are new)
-- Scout: 5 new opportunities (OPP-017 to OPP-021) -- AI observability and data quality theme
-- Gina: RAN -- 3 architecture proposals (OPP-013, OPP-015, OPP-016) + product review (2 MEDIUM findings)
-- John: FIRST RUN -- baseline documentation created for LoreConvo and LoreDocs
-- Madison: Friday promo email drafted (companion to Blog #1)
+Ron also completed on April 5:
+- GINA-001/SEC-017 FIXED: vault_set_tier now validates license before setting Pro tier
+- GINA-002/MEG-041 FIXED: lore-onboard skill now packaged in .plugin bundle
+- MEG-043 (partial): test path fixes for generate_license_key and test_migrate_lore
+- install_dev_plugins.sh built for developer workflow
 
-**NOTE:** Agent reports now live in `docs/internal/` subdirectories (qa/, security/, architecture/, pm/, marketing/, technical/). Public-facing product docs remain in product directories.
+Brock confirmed Stability Mandate code quality: NEEDS ATTENTION (no blockers, 0 CVEs).
 
-### DONE: License Key System Complete (2026-04-05)
+**Overnight summary (agents for Apr 6):**
+- Ron, Meg, Brock: SILENT -- no Apr 6 LoreConvo sessions found. May be related to scheduled task path issues. Debbie fixed the cd path bug on Apr 5 but verify it applied to all task prompts.
+- Gina: Ran Sunday Apr 5 product review (YELLOW -- GINA-001/002 flagged but both since fixed by Ron)
+- Jacqueline: Running now (Apr 6)
 
-Debbie has generated Pro license keys for both LoreConvo and LoreDocs and saved the private signing key to her password vault. Environment variables updated. This item is closed.
+### IMMEDIATE ACTION: Apply 7 Pending Commits
+
+7 agent commits are stuck in pending_commits.json (git push blocked from Cowork VM).
+Run from your Mac: `python scripts/safe_git.py apply`
+
+### DONE (2026-04-05): Stability Mandate Complete
+
+Debbie fixed plugin install flow. LoreConvo + LoreDocs confirmed working on Cowork. Feature freeze lifted.
 
 ---
 
@@ -108,6 +115,19 @@ Meg's test scripts are being tracked in git and would be included in subtree pus
 
 ### TOP PRIORITY
 
+#### [NEW] Apply 7 pending git commits
+Run from your Mac: `python scripts/safe_git.py apply`
+Includes Ron's MEG-043/044/045 fixes, Gina Apr 5 review, Jacqueline dashboards.
+
+#### Investigate 3 Silent Agents (Ron, Meg, Brock)
+These agents show no LoreConvo sessions for April 6. Verify the scheduled task prompts
+received the cd path fix from your April 5 session (you fixed 11 agent prompt .md files --
+confirm the 12 Cowork task definitions also use the correct working directory path).
+
+#### Triage 2 remaining Scout opportunities (OPP-017, OPP-018)
+OPP-019 (FinNorm), OPP-020 (LoreCheck), OPP-021 (Chain Lens) already pre-approved.
+Still need your decision on:
+
 #### Triage 5 new Scout opportunities (OPP-017 to OPP-021)
 Scout surfaced these on Friday Apr 3. Decide: Approve / Needs Info / Defer / Reject for each.
 
@@ -144,10 +164,19 @@ Where tracked: `CLAUDE.md` Debbie TODO #3
 - What's needed: business verification, bank account for payouts, EIN for Labyrinth Analytics
 Where tracked: `CLAUDE.md` Debbie TODO #5
 
-#### Publish Madison blog post #2
+#### Publish Madison blog post #2 -- BLOCKED: Needs rewrite
 - "Building a Reference Library for AI Projects: How LoreDocs Vault Architecture Works"
 - File: `docs/internal/marketing/blog_drafts/blog_loredocs_vault_architecture_2026_04_03.md`
 - Blog #1 published successfully on Apr 2
+- **STATUS: Returned to Madison for rewrite (2026-04-05)**
+- **MADISON ACTION REQUIRED:** Rewrite this draft before it can be published. Key issues:
+  1. Reads like a product spec, not a blog post -- too many bullet-list sections. Rewrite "Why Not Confluence/Notion/Shared Drive?", "What LoreDocs Is (And Is Not)", and "Current Status: Alpha" as prose.
+  2. Missing the "name the cost" beat -- the opening scenario is good but pivots to explanation too fast. Reader needs to feel the pain before the solution lands.
+  3. **VERIFY FEATURES BEFORE REWRITING:** The draft claims "automatic cross-linking," a "knowledge graph," and version comparison ("what changed between v1 and v2?"). Check with Ron or inspect the LoreDocs v0.1.0 source to confirm which of these are actually shipped. Do not include any feature claim that is not live. Use "coming soon" for anything unreleased.
+  4. Frontmatter is missing the required `slug` field. The CTA link must use relative path `/tools`, not the full URL.
+  5. Brand voice is flat -- no Labyrinth personality. Add one or two guide/labyrinth metaphor references per the blog publishing skill.
+  6. Title second half ("How LoreDocs Vault Architecture Works") is weak -- rewrite for benefit orientation.
+  - Keep: the opening scenario, the episodic vs. semantic distinction, the onboarding before/after example.
 
 ### ON HOLD
 
