@@ -25,11 +25,24 @@ class TestReadmeToolTable:
         """Extract tool names from @mcp.tool decorators in server.py.
 
         Handles both forms:
-          @mcp.tool(name="vault_xyz", ...)  -- explicit name
-          @mcp.tool()                        -- name inferred from function
+          @mcp.tool(name="vault_xyz", ...)  -- explicit name extracted from name= arg
+          @mcp.tool()                        -- implicit name extracted from function def
         """
-        # Count all @mcp.tool usages regardless of arguments
-        return re.findall(r'@mcp\.tool', self.server_src)
+        names = []
+        # Explicit names: @mcp.tool( ... name="tool_name" ... ) multi-line decorator
+        explicit = re.findall(
+            r'@mcp\.tool\b.*?name\s*=\s*"(\w+)"',
+            self.server_src,
+            re.DOTALL,
+        )
+        names.extend(explicit)
+        # Implicit names: @mcp.tool() immediately followed by def/async def func_name(
+        implicit = re.findall(
+            r'@mcp\.tool\(\)\s*\n(?:async\s+)?def\s+(\w+)\s*\(',
+            self.server_src,
+        )
+        names.extend(implicit)
+        return names
 
     def _readme_tool_names(self):
         """Extract tool names from README.md backtick-delimited tool table."""
