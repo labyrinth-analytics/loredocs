@@ -166,7 +166,7 @@ def is_pro_licensed(env_value: Optional[str] = None) -> bool:
     # Dev bypass for internal agents only.
     # LAB_DEV_MODE=1 must ALSO be set -- it is not included in public .mcp.json files.
     dev_mode = os.environ.get("LAB_DEV_MODE", "").strip() == "1"
-    if dev_mode and not env_value.startswith(_KEY_PREFIX):
+    if dev_mode and env_value and not env_value.startswith(_KEY_PREFIX):
         return True
 
     # Validate as a real license key
@@ -195,7 +195,7 @@ def get_license_status(env_value: Optional[str] = None) -> dict:
         return {"is_pro": False, "mode": "free"}
 
     dev_mode = os.environ.get("LAB_DEV_MODE", "").strip() == "1"
-    if dev_mode and not env_value.startswith(_KEY_PREFIX):
+    if dev_mode and env_value and not env_value.startswith(_KEY_PREFIX):
         return {"is_pro": True, "mode": "dev_bypass"}
 
     try:
