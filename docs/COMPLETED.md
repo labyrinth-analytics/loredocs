@@ -3,6 +3,10 @@
 Historical log of completed items. Ron appends here when finishing TODOs.
 For full details, see git log.
 
+## Stability Mandate -- 2026-04-07
+
+- [x] **Fix fallback script DB discovery** (2026-04-07, Ron, commit fbfdd11). Fixed `_find_loreconvo_db()` in `ron_skills/loreconvo/scripts/save_to_loreconvo.py` and `_find_loredocs_db()` in `ron_skills/loredocs/scripts/query_loredocs.py`. Both functions now check `/sessions/*/mnt/.<product>/` mounted paths FIRST, before `~` VM home. In Cowork VMs, `~` resolves to an ephemeral VM path that is lost on session end -- this fix ensures all fallback script writes go to Debbie's Mac-backed mounted DB. Verified: both scripts resolve to `/sessions/trusting-amazing-darwin/mnt/` paths when mounted. Stability Mandate TODO #2 DONE -- pending Debbie's end-to-end Cowork confirmation.
+
 ## Debbie Actions -- 2026-04-05
 
 - [x] **License signing private key saved to password vault** (2026-04-05, Debbie). Ed25519 private key for Labyrinth Analytics license system saved to password manager. Pro license keys generated for both LoreConvo and LoreDocs. Environment variables updated. SEC-015 also resolved: marketplace.json owner.email confirmed as info@labyrinthanalyticsconsulting.com (not personal Gmail).

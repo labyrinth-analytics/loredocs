@@ -36,21 +36,9 @@ Current state (confirmed 2026-04-04):
 
 Action items (Ron's ONLY work until these are done, in order):
 
-2. [ ] Fix fallback script DB discovery to write to Debbie's Mac database, not the VM-local database.
-   - **Root cause:** `_find_loreconvo_db()` in `ron_skills/loreconvo/scripts/save_to_loreconvo.py` checks
-     `~/.loreconvo/sessions.db` FIRST. In the Cowork VM, `~` resolves to the VM home (e.g.
-     `/sessions/sharp-adoring-dijkstra/`), not Debbie's Mac. So all fallback script writes go to an
-     ephemeral VM-local database that is lost when the session ends.
-   - **The fix is a one-line reorder:** check mounted paths BEFORE the VM home path:
-     ```python
-     candidates = sorted(glob.glob("/sessions/*/mnt/.loreconvo/sessions.db"))  # mounted FIRST
-     candidates += [os.path.expanduser("~/.loreconvo/sessions.db")]             # VM local fallback
-     ```
-   - Debbie has `.loreconvo` mounted as a workspace folder, so `/sessions/*/mnt/.loreconvo/sessions.db`
-     correctly resolves to her Mac's `~/.loreconvo/sessions.db` via the mount.
-   - Apply the same fix to `query_loredocs.py` if it has an equivalent DB discovery function.
-   - Verify fix by running the fallback script and confirming the printed path is the mounted path,
-     not a `/sessions/.../` VM-local path.
+<!-- 2. DONE 2026-04-07 (Ron, commit fbfdd11): Fixed _find_loreconvo_db() and _find_loredocs_db()
+     to check /sessions/*/mnt/ mounted paths FIRST before VM ~ home. Both scripts now resolve
+     to Debbie's Mac-backed mount in Cowork. Pending Debbie's Cowork end-to-end confirmation. -->
 
 1. [ ] Fix the .plugin install flow end-to-end.
    - Root cause identified (2026-04-05): Both products have broken user-facing install scripts
