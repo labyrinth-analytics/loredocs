@@ -4,6 +4,14 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## 2026-04-08
+
+### Bug Fixes
+
+- **Vault queries now work reliably in Cowork.** Previously, when running inside a Cowork VM, the fallback query script (`query_loredocs.py`) could look for your vault database in a temporary directory that disappears when the VM ends -- meaning queries returned no results even though your vaults existed on your Mac. The script now checks your persistent mounted data path first and only falls back to the local VM directory if no persistent path is found. If you have been running agents in Cowork and queries seemed to return nothing, update to this version to resolve it.
+
+---
+
 ## 2026-04-06
 
 ### Bug Fixes
