@@ -9,11 +9,11 @@ Updated by Jacqueline (daily) or manually. Last updated: 2026-04-08 (Jacqueline 
 
 ### STABILITY MANDATE: IN PROGRESS -- Feature Freeze STILL IN EFFECT
 
-CLAUDE.md has 1 remaining open TODO for the Stability Mandate:
-1. Fix plugin install.sh -- LoreConvo must run `pip install .` (not just requirements.txt); LoreDocs needs install.sh added from scratch. Ron's next session priority.
+Ron has completed ALL Stability Mandate action items. Awaiting Debbie's Cowork end-to-end confirmation.
+1. ~~Fix plugin install.sh~~ -- DONE by Ron (0ecaaee, Apr 5). LoreConvo runs `pip install .`; LoreDocs install.sh created. **Awaiting Debbie's Cowork end-to-end confirmation.**
 2. ~~Fix fallback script DB discovery~~ -- DONE by Ron (fbfdd11, Apr 7). Meg verified correct. Brock confirmed security-positive. **Awaiting Debbie's Cowork end-to-end confirmation.**
 
-Nothing ships until TODO #1 is complete AND Debbie confirms Cowork MCP tools are callable and sessions persist.
+Nothing ships until Debbie confirms Cowork MCP tools are callable and sessions persist.
 
 **Overnight summary (agents for Apr 7-8):**
 - Ron: Ran Apr 7 5:08 PM. Fixed Stability Mandate TODO #2 -- DB discovery now checks mounted paths first (fbfdd11). Meg + Brock verified.

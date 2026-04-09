@@ -36,28 +36,18 @@ Current state (confirmed 2026-04-04):
 
 Action items (Ron's ONLY work until these are done, in order):
 
+<!-- 1. DONE 2026-04-05 (Ron, commit 0ecaaee): Fixed .plugin install flow for both products.
+     LoreConvo install.sh now runs `pip install .` (non-editable) -- entry point + package installed correctly.
+     LoreDocs install.sh created from scratch, also runs `pip install .`.
+     Both INSTALL.md files describe correct install path.
+     Pending Debbie's Cowork end-to-end confirmation. -->
+
 <!-- 2. DONE 2026-04-07 (Ron, commit fbfdd11): Fixed _find_loreconvo_db() and _find_loredocs_db()
      to check /sessions/*/mnt/ mounted paths FIRST before VM ~ home. Both scripts now resolve
      to Debbie's Mac-backed mount in Cowork. Pending Debbie's Cowork end-to-end confirmation. -->
 
-1. [ ] Fix the .plugin install flow end-to-end.
-   - Root cause identified (2026-04-05): Both products have broken user-facing install scripts
-     that do NOT run `pip install .`, so the MCP server binary/package is never properly installed.
-   - **LoreConvo** (CRITICAL): `install.sh` only runs `pip install -r requirements.txt` -- it never
-     installs the `loreconvo` package itself. The binary at `.venv/bin/loreconvo` only exists
-     because Ron ran `pip install -e .` during development. Additionally, the editable install's
-     auto-generated MAPPING is broken: it maps `src` -> src/ but NOT `loreconvo` -> src/, so
-     `from loreconvo.server import main` fails with ModuleNotFoundError even when the binary exists.
-     Fix: change `install.sh` to run `pip install .` (non-editable) instead of
-     `pip install -r requirements.txt`. This installs the package + entry point correctly.
-   - **LoreDocs** (MODERATE): No `install.sh` exists at all -- there is no user-facing install
-     mechanism. The editable install MAPPING is correct (loredocs -> loredocs/ dir works), but a
-     fresh user has no way to create the venv or install the package.
-     Fix: add `install.sh` that runs `pip install .` (same pattern as LoreConvo's fix).
-   - After fixing both install scripts, verify on Cowork AND Claude Code
-   - Update INSTALL.md with confirmed working install path for both products
-
-For each item: reproduce, root-cause, fix, verify on both platforms, document.
+Ron has completed all action items. Feature freeze remains until Debbie confirms
+Cowork end-to-end: install .plugin, call MCP tools, sessions persist and are retrievable.
 
 Definition of done for this mandate: Debbie can install LoreConvo AND LoreDocs as
 plugins in Cowork, MCP tools are callable in Cowork sessions, and sessions persist

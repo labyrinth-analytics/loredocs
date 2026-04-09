@@ -244,3 +244,16 @@ Save the key to a password manager as "Labyrinth Analytics License Signing Key".
   - Usage: bash scripts/install_dev_plugins.sh
   - Output: dev-plugins/loreconvo-dev.plugin + dev-plugins/loredocs-dev.plugin
   - After running: /plugin install /path/to/dev-plugins/loreconvo-dev.plugin
+
+## Stability Mandate TODO #1: .plugin install flow (2026-04-05, Ron daily)
+
+- [x] Fix LoreConvo install.sh -- changed from `pip install -r requirements.txt` to `pip install .` (non-editable)
+  - Entry point (.venv/bin/loreconvo) now created correctly on fresh install
+  - Package module resolution no longer depends on editable install MAPPING
+  - Verified entry point creation + MCP server import in install.sh
+- [x] Create LoreDocs install.sh from scratch -- runs `pip install .` (same pattern)
+  - LoreDocs had no user-facing install mechanism before this
+  - Verified entry point creation + module import in install.sh
+- [x] Both INSTALL.md files already describe correct install path (pip install .)
+- Commit: 0ecaaee (fix: Stability Mandate install scripts + MEG-043b/046 test regressions)
+- Ron's portion: DONE. Awaiting Debbie's Cowork end-to-end confirmation to close mandate.
