@@ -1,33 +1,35 @@
 # Debbie's Action Dashboard
 
 Single source of truth for everything that needs Debbie's attention.
-Updated by Jacqueline (daily) or manually. Last updated: 2026-04-08 (Jacqueline daily run).
+Updated by Jacqueline (daily) or manually. Last updated: 2026-04-09 (Jacqueline daily run).
 
 ---
 
-## TODAY -- 2026-04-08 (Wednesday)
+## TODAY -- 2026-04-09 (Thursday)
 
 ### STABILITY MANDATE: IN PROGRESS -- Feature Freeze STILL IN EFFECT
 
-Ron has completed ALL Stability Mandate action items. Awaiting Debbie's Cowork end-to-end confirmation.
-1. ~~Fix plugin install.sh~~ -- DONE by Ron (0ecaaee, Apr 5). LoreConvo runs `pip install .`; LoreDocs install.sh created. **Awaiting Debbie's Cowork end-to-end confirmation.**
-2. ~~Fix fallback script DB discovery~~ -- DONE by Ron (fbfdd11, Apr 7). Meg verified correct. Brock confirmed security-positive. **Awaiting Debbie's Cowork end-to-end confirmation.**
+Ron's completed code work is done. One remaining Ron item: build local-testing .plugin files (TODO #1).
+1. ~~Fix plugin install.sh~~ -- DONE by Ron (0ecaaee, Apr 5). Closed in CLAUDE.md Apr 8 (f46527c).
+2. ~~Fix fallback script DB discovery~~ -- DONE by Ron (fbfdd11). Verified by Meg + Brock.
+3. [ ] **Build local-testing .plugin files** -- Ron TODO #1. .mcp.json must use absolute venv binary paths. Not started yet.
 
 Nothing ships until Debbie confirms Cowork MCP tools are callable and sessions persist.
 
-**Overnight summary (agents for Apr 7-8):**
-- Ron: Ran Apr 7 5:08 PM. Fixed Stability Mandate TODO #2 -- DB discovery now checks mounted paths first (fbfdd11). Meg + Brock verified.
-- Meg: Ran Apr 7 6:36 PM. YELLOW. 359 tests pass. MEG-052 (combined pytest) open. MEG-053 (glob sort advisory, INFO).
-- Brock: Ran Apr 8 12:39 AM. NEEDS ATTENTION (stable). 0 CVEs. SEC-023 (INFO, same glob sort edge case). pip-audit clean.
-- Competitive Intel: Debbie ran Cowork session Apr 7. MemPalace (ChromaDB vector + SQLite temporal KG, multi-LLM) added as HIGH threat.
-- John: Ran Apr 7 4:47 AM. Created missing LoreConvo INSTALL.md.
-- Madison: Ran Apr 7 12:40 AM. Fixed blog #2 (all 3 Debbie feedback items applied, ready for review). Created blog #3 draft.
-- Jacqueline: Running now (Apr 8 1:38 AM)
+**Overnight summary (agents for Apr 8-9):**
+- Ron: Ran Apr 8 6:51 PM. Closed Stability Mandate TODO #1 in CLAUDE.md. Migrated 6 agents to local cron (9e71d95). Added local-testing .plugin TODO (f2fd8a0).
+- Meg: Ran Apr 8 6:35 PM. YELLOW stable. 359 tests pass. MEG-055 ADVISORY (no timeout in run_agent_code.sh).
+- Brock: GRACE WINDOW. Scheduled Apr 8 11:38 PM -- no log or report found. ~2 hrs past schedule. Within 3-hr grace window. Last report: NEEDS ATTENTION stable, 0 CVEs.
+- Gina: Ran Apr 8. GREEN product review. 3 new proposals: PKA implementation, get_context_for_agent bridge tool, updated agent architecture.
+- Madison: Ran Apr 8 (manually triggered). New blog #4 draft: "LoreConvo vs claude-mem" (competitive response). Social posts created.
+- John: Ran Apr 8 (3 Debbie-triggered runs). Fixed INSTALL.md hook names, tool counts. MEG-047 RESOLVED.
+- Competitive Intel: Next run TODAY (Thu Apr 9 3:01 PM). Last scan Apr 6: claude-mem HIGH threat.
+- Jacqueline: Running now (Apr 9 1:38 AM)
 
-### IMMEDIATE ACTION: Apply 8 Pending Commits
+### IMMEDIATE ACTION: Confirm pending_commits.json state
 
-8 agent commits are stuck in pending_commits.json (git push blocked from Cowork VM).
-Run from your Mac: `python scripts/safe_git.py apply`
+Commit 21e20ad says "mark all pending_commits resolved" but file still contains Apr 4 entries.
+Run from your Mac: `python scripts/safe_git.py apply` to confirm or clear.
 
 ---
 
@@ -109,13 +111,9 @@ Meg's test scripts are being tracked in git and would be included in subtree pus
 
 ### TOP PRIORITY
 
-#### Apply 8 Pending Git Commits
+#### Check/Apply pending_commits.json (apr 4 entries still present)
 Run from your Mac: `python scripts/safe_git.py apply`
-Includes Ron's DB discovery fix (fbfdd11), Meg QA Apr 7, Brock security Apr 7, John INSTALL.md, Gina product review Apr 5, Madison blog fixes, governance updates.
-
-#### [DONE] Silent Agent Investigation -- Resolved
-Ron, Meg, and Brock all ran successfully on Apr 7 with sessions logged. The cd path fix
-from your April 5 session is confirmed working. Remove this item -- no longer a concern.
+Commit 21e20ad says "mark all pending_commits resolved" but file still has Apr 4 entries (safe_git.py + CLAUDE.md governance commit). Verify state.
 
 #### Triage 2 remaining Scout opportunities (OPP-017, OPP-018)
 OPP-019 (FinNorm), OPP-020 (LoreCheck), OPP-021 (Chain Lens) already pre-approved.
@@ -174,6 +172,11 @@ Where tracked: `CLAUDE.md` Debbie TODO #5
 - File: `docs/internal/marketing/blog_drafts/blog_knowledge_stack_venn_2026_04_07.md`
 - Created by Madison Apr 7. Positions LoreDocs alongside complementary tools (Obsidian, NotebookLM). Not competing, complementing.
 
+#### New blog post #4 -- DRAFT READY FOR REVIEW
+- "LoreConvo vs claude-mem" -- competitive response to claude-mem (21.5k GitHub stars, HIGH threat)
+- File: `docs/internal/marketing/blog_drafts/` (commit 4797ff2, Madison Apr 8)
+- Also includes social media posts. Timely response to the biggest competitive threat discovered.
+
 ### ON HOLD
 
 #### File USPTO trademarks for LoreConvo & LoreDocs
@@ -187,24 +190,24 @@ Where tracked: `CLAUDE.md` Debbie TODOs #1 and #2
 
 ### TOP PRIORITY for next Ron session
 
-1. **Fix SEC-014:** Add `cryptography>=42.0.0` to [project.dependencies] in both
-   `ron_skills/loreconvo/pyproject.toml` and `ron_skills/loredocs/pyproject.toml`.
-   Without this, Pro license validation fails with ModuleNotFoundError on fresh installs.
+1. **ONLY OPEN WORK (Stability Mandate):** Build local-testing .plugin files.
+   - Create `marketplace/claude-plugins/plugins/loreconvo-test.plugin` and `loredocs-test.plugin`
+   - .mcp.json must use absolute paths to venv binaries (no ~ expansion)
+     - LoreConvo: `ron_skills/loreconvo/.venv/bin/loreconvo`
+     - LoreDocs: `ron_skills/loredocs/.venv/bin/loredocs`
+   - Update `marketplace/claude-plugins/.claude-plugin/marketplace.json` with path-source test entries
+   - Document test install commands in INSTALL.md under "Testing locally"
+   - Definition of done: Debbie can run `/plugin install /path/to/dev-plugins/loreconvo-test.plugin` and MCP tools are callable
 
-2. **Clean stale git locks (first):** `find .git -name "*.lock" -mmin +30 -delete`
-   Then commit untracked files:
-   - `scripts/generate_license_key.py`
-   - `scripts/test_generate_license_key.py`
-   - `docs/internal/security/security_report_2026_04_03_b.md`
+### AFTER STABILITY MANDATE RESOLVES (FROZEN)
 
-3. **LoreConvo CLI entry point (TODO #1):** Add `ron_skills/loreconvo/src/cli/` with
-   save-session, list-sessions, search commands. Migrate logic from scripts/save_to_loreconvo.py.
-
-4. **Fix GINA-001 (MEDIUM):** Fix `vault_set_tier` bypass in LoreDocs -- get_tier() reads config.json fallback before license check. Must be fixed before marketplace publish.
-
-5. **Fix GINA-002 (MEDIUM):** Rebuild LoreConvo .plugin bundle to include the `/lore-onboard` skill. Users installing from marketplace won't get the onboarding command without this fix.
-
-6. **Fix MEG-038 (LOW):** Remove unused import (Encoding, PublicFormat) in `ron_skills/loreconvo/src/core/license.py`.
+2. **LoreConvo CLI entry point (FROZEN TODO #2):** Add `ron_skills/loreconvo/src/cli/`
+3. **LoreDocs CLI entry point (FROZEN TODO #3)**
+4. **Slim down agent prompts (FROZEN TODO #4)**
+5. **Fix SEC-014 (FROZEN):** Add `cryptography>=42.0.0` to pyproject.toml for both products
+6. **Fix GINA-001 (FROZEN):** vault_set_tier bypass in LoreDocs
+7. **Fix GINA-002 (FROZEN):** Rebuild LoreConvo .plugin bundle to include lore-onboard skill
+8. **MEG-055 (FROZEN):** Add timeout to run_agent_code.sh claude invocation
 
 ### AFTER CLI ENTRY POINTS
 
@@ -239,22 +242,28 @@ John created baseline documentation for both products:
 - SEC-014 noted in LoreDocs CHANGELOG as known issue
 - Full report: `docs/internal/technical/tech_docs_report_2026_04_04.md`
 
-### Meg QA -- 2026-04-07 (YELLOW)
-359 tests pass (204 LoreConvo + 39 LoreDocs + 116 internal).
-- **MEG-052 (YELLOW):** Combined pytest still fails -- duplicate test_license.py basenames. Run suites separately.
-- **MEG-053 (INFO/ADVISORY):** Glob sort ambiguity in DB discovery (same as SEC-023). Low risk.
-- **DB discovery fix (fbfdd11) VERIFIED CORRECT** by Meg -- Stability Mandate TODO #2 logic confirmed.
-- Full report: `docs/internal/qa/qa_report_2026_04_07.md`
+### Meg QA -- 2026-04-08 (YELLOW, stable)
+359 tests pass (204 LoreConvo + 39 LoreDocs + 116 internal). No product code changes since Apr 7.
+- **MEG-055 (ADVISORY):** No timeout on claude invocation in run_agent_code.sh. FROZEN.
+- **MEG-052 (YELLOW):** Combined pytest still fails (namespace clash). Run suites separately.
+- Full report: `docs/internal/qa/qa_report_2026_04_08.md`
 
-### Brock Security -- 2026-04-07/08 (NEEDS ATTENTION, stable)
-- **SEC-023 (INFO):** Glob sort ambiguity in DB discovery. Data routing edge case, not a vulnerability.
-- **SEC-014 (MEDIUM, open):** cryptography still missing from pyproject.toml -- RON-005. Frozen.
-- **DB discovery fix SECURITY-POSITIVE:** fbfdd11 routes writes to Mac-backed mount. Confirmed.
+### Gina Architecture + Product Review -- 2026-04-08 (GREEN)
+- **GREEN product review** -- no new critical/high findings on LoreConvo/LoreDocs
+- **3 GINA-REVIEW items** from prior cycles dispositioned
+- **MemPalace threat** added: ChromaDB vector + SQLite temporal KG, multi-LLM support -- HIGH threat
+- **New proposals (committed):** PKA implementation (fafd2de/6f4ff70), get_context_for_agent bridge tool (b829a17), agent architecture update (416219a)
+- Full reports: `docs/internal/architecture/`
+
+### Brock Security -- 2026-04-07 (NEEDS ATTENTION, stable) -- No Apr 8 report yet
+- **SEC-023 (INFO):** Glob sort ambiguity in DB discovery. Not a vulnerability.
+- **SEC-014 (MEDIUM, open, FROZEN):** cryptography missing from pyproject.toml.
 - 0 CVEs. pip-audit clean on both products.
 - Full report: `docs/internal/security/security_report_2026_04_07.md`
+- NOTE: Brock was scheduled to run Apr 8 11:38 PM. No report found. Check cron if absent by morning.
 
-### Jacqueline PM -- 2026-04-08 (Today)
-- Daily dashboard: `docs/internal/pm/executive_dashboard_2026_04_08.html`
+### Jacqueline PM -- 2026-04-09 (Today)
+- Daily dashboard: `docs/internal/pm/executive_dashboard_2026_04_09.html`
 
 ---
 

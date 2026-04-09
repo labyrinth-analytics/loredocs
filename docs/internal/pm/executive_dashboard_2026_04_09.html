@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Labyrinth Analytics Executive Dashboard - 2026-04-09</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Raleway:wght@300;400;500;600&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #1a1a2e;
+  --card: #2d2d44;
+  --border: rgba(154,148,148,0.2);
+  --text: #e8e0d4;
+  --muted: #9a9494;
+  --accent: #7b2d8e;
+  --accent-hover: #b794c7;
+  --gold: #d4a843;
+  --green: #22c55e;
+  --yellow: #eab308;
+  --red: #ef4444;
+  --orange: #f97316;
+  --blue: #3b82f6;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Raleway', system-ui, sans-serif; font-size: 14px; line-height: 1.6; }
+h1, h2, h3, .section-title { font-family: 'Cinzel', serif; }
+.container { max-width: 1400px; margin: 0 auto; padding: 24px 16px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+.card-full { grid-column: 1 / -1; }
+.card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; cursor: pointer; user-select: none; }
+.section-title { font-size: 15px; color: var(--gold); text-transform: uppercase; letter-spacing: 0.08em; }
+.toggle-arrow { color: var(--muted); font-size: 12px; transition: transform 0.2s; }
+.collapsible { overflow: hidden; transition: max-height 0.3s ease; }
+
+/* Header */
+.dashboard-header { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 24px 28px; margin-bottom: 20px; display: flex; align-items: flex-start; justify-content: space-between; }
+.dashboard-header h1 { font-size: 22px; color: var(--gold); margin-bottom: 6px; }
+.dashboard-subtitle { color: var(--muted); font-size: 13px; }
+.posture-badge { border: 2px solid var(--yellow); color: var(--yellow); border-radius: 6px; padding: 8px 16px; font-family: 'Cinzel', serif; font-size: 13px; font-weight: 600; white-space: nowrap; }
+.posture-badge.action { border-color: var(--red); color: var(--red); }
+.posture-badge.clear { border-color: var(--green); color: var(--green); }
+
+/* Badges */
+.badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-family: 'Raleway', sans-serif; }
+.badge-red { background: rgba(239,68,68,0.15); color: var(--red); }
+.badge-orange { background: rgba(249,115,22,0.15); color: var(--orange); }
+.badge-yellow { background: rgba(234,179,8,0.15); color: var(--yellow); }
+.badge-green { background: rgba(34,197,94,0.15); color: var(--green); }
+.badge-blue { background: rgba(59,130,246,0.15); color: var(--blue); }
+.badge-muted { background: rgba(136,136,160,0.15); color: var(--muted); }
+.badge-purple { background: rgba(123,45,142,0.2); color: var(--accent-hover); }
+
+/* Attention items */
+.attention-item { border-left: 3px solid; border-radius: 4px; padding: 10px 14px; margin-bottom: 10px; font-size: 13px; }
+.attention-high { border-color: var(--red); background: rgba(239,68,68,0.06); }
+.attention-medium { border-color: var(--yellow); background: rgba(234,179,8,0.06); }
+.attention-info { border-color: var(--blue); background: rgba(59,130,246,0.06); }
+.attention-label { font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }
+.attention-high .attention-label { color: var(--red); }
+.attention-medium .attention-label { color: var(--yellow); }
+.attention-info .attention-label { color: var(--blue); }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.06em; padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+td { padding: 8px 10px; border-bottom: 1px solid rgba(154,148,148,0.1); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,255,255,0.02); }
+code { font-family: 'Fira Code', monospace; font-size: 12px; color: var(--accent-hover); background: rgba(123,45,142,0.12); padding: 1px 5px; border-radius: 3px; }
+
+/* Stat row */
+.stat-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.stat-card { background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 6px; padding: 14px; text-align: center; }
+.stat-value { font-family: 'Cinzel', serif; font-size: 24px; font-weight: 600; color: var(--gold); }
+.stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 3px; }
+
+/* Pipeline stat row (4 cols) */
+.pipeline-stat-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 16px; }
+
+/* Marketing timeline */
+.timeline-item { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(154,148,148,0.08); }
+.timeline-item:last-child { border-bottom: none; }
+.timeline-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+.dot-done { background: var(--green); }
+.dot-wip { background: var(--orange); }
+.dot-planned { background: var(--muted); }
+
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } .stat-row, .pipeline-stat-row { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- 1. HEADER -->
+<div class="dashboard-header">
+  <div>
+    <h1>Labyrinth Analytics -- Executive Dashboard</h1>
+    <div class="dashboard-subtitle">Thursday, April 9, 2026 | Generated by Jacqueline (PM Agent)</div>
+  </div>
+  <div class="posture-badge">REVIEW NEEDED</div>
+</div>
+
+<!-- 2. ATTENTION NEEDED -->
+<div class="grid">
+<div class="card card-full">
+  <div class="card-header" onclick="toggleSection('attention')">
+    <span class="section-title">Attention Needed</span>
+    <span class="toggle-arrow" id="arrow-attention">&#9660;</span>
+  </div>
+  <div class="collapsible" id="attention">
+
+    <div class="attention-item attention-high">
+      <div class="attention-label">HIGH -- Stability Mandate: Awaiting Debbie Cowork Test</div>
+      Ron has completed ALL code work for the Stability Mandate (install.sh fixed, DB discovery fixed, local-testing .plugin files TODO added). Feature freeze is STILL IN EFFECT until Debbie confirms Cowork MCP tools are callable and sessions persist end-to-end. Run <code>bash scripts/install_dev_plugins.sh</code> in Claude Code, then install the dev plugin in a Cowork session and verify LoreConvo MCP tools work.
+    </div>
+
+    <div class="attention-item attention-high">
+      <div class="attention-label">HIGH -- Ron TODO #1: Build local-testing .plugin files</div>
+      CLAUDE.md open TODO #1: Ron needs to build <code>marketplace/claude-plugins/plugins/loreconvo-test.plugin</code> and <code>loredocs-test.plugin</code> with .mcp.json pointing to local venv binaries. This is the ONLY work Ron should do until Stability Mandate resolves. Commit f2fd8a0 added this to CLAUDE.md -- confirm Ron picks it up in his next session.
+    </div>
+
+    <div class="attention-item attention-medium">
+      <div class="attention-label">MEDIUM -- Brock: No New Security Report (Grace Window)</div>
+      Brock was scheduled to run Apr 8 at 11:38 PM. As of 1:38 AM Apr 9 (~2 hrs past schedule), no security report for Apr 8 exists and no cron log found. Within 3-hour grace window -- not yet SILENT. If no report exists by morning, investigate cron status for brock-security-daily.
+    </div>
+
+    <div class="attention-item attention-medium">
+      <div class="attention-label">MEDIUM -- 3 New Gina Architecture Proposals Awaiting Review</div>
+      Gina produced new proposals since the last dashboard: PKA implementation, get_context_for_agent bridge tool, and updated agent architecture (commits fafd2de, b829a17, 416219a). These join the 3 previously pending architecture-proposed items. Review in <code>docs/internal/architecture/</code>.
+    </div>
+
+    <div class="attention-item attention-medium">
+      <div class="attention-label">MEDIUM -- 2 Pipeline Opportunities Still Need Triage (OPP-017, OPP-018)</div>
+      OPP-017 (LoreEval) and OPP-018 (LangGraph Workflow Inspector) remain untriaged/New. OPP-019, OPP-020, OPP-021 are pre-approved per Decisions Made. Decide: Approve / Needs Info / Defer / Reject for each.
+    </div>
+
+    <div class="attention-item attention-medium">
+      <div class="attention-label">MEDIUM -- Create GitHub repo + Push Marketplace</div>
+      Create <code>labyrinth-analytics/claude-plugins</code> on GitHub and push <code>marketplace/</code> contents. Required to unblock marketplace distribution. CLAUDE.md Debbie TODO #6.
+    </div>
+
+    <div class="attention-item attention-medium">
+      <div class="attention-label">MEDIUM -- Review Madison Blog #2 (Ready) + Blog #3 (Draft)</div>
+      Blog #2 ("Building a Reference Library for AI Projects") has all 3 Debbie feedback items applied as of Apr 7. Ready to publish. Blog #3 ("Your AI's Knowledge Stack: Why LoreDocs, Obsidian, and NotebookLM Complement Each Other") draft ready for review. Madison also created new blog draft: "LoreConvo vs claude-mem" targeting the HIGH-threat competitor.
+    </div>
+
+    <div class="attention-item attention-info">
+      <div class="attention-label">INFO -- MEG-055: Advisory -- No Timeout on run_agent_code.sh</div>
+      Meg flagged that the <code>claude --print</code> invocation in <code>scripts/run_agent_code.sh</code> has no timeout guard. Runaway sessions could block cron reruns and accumulate API charges. Remediation: wrap with <code>timeout 1800</code>. FROZEN per Stability Mandate -- add to Ron's post-freeze queue.
+    </div>
+
+    <div class="attention-item attention-info">
+      <div class="attention-label">INFO -- Pending Commits in pending_commits.json (Apr 4 entries)</div>
+      pending_commits.json still contains entries from Apr 4 (safe_git.py and CLAUDE.md governance commit). Commit 21e20ad says "mark all pending_commits resolved" but the file still has content. Debbie should run <code>python scripts/safe_git.py apply</code> from her Mac to confirm state.
+    </div>
+
+  </div>
+</div>
+
+<!-- 3. OVERNIGHT AGENT SUMMARY -->
+<div class="card card-full">
+  <div class="card-header" onclick="toggleSection('agents')">
+    <span class="section-title">Overnight Agent Summary (Apr 8 -- Apr 9)</span>
+    <span class="toggle-arrow" id="arrow-agents">&#9660;</span>
+  </div>
+  <div class="collapsible" id="agents">
+    <div class="stat-row">
+      <div class="stat-card">
+        <div class="stat-value">13</div>
+        <div class="stat-label">New Commits (48h)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">359</div>
+        <div class="stat-label">Tests Passing</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">0</div>
+        <div class="stat-label">Brock CVEs</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">2</div>
+        <div class="stat-label">Madison Drafts (new)</div>
+      </div>
+    </div>
+    <table>
+      <thead><tr><th>Agent</th><th>Role</th><th>Last Run</th><th>Status</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Ron</strong></td><td>Builder</td><td>Apr 8 6:51 PM</td>
+          <td><span class="badge badge-green">OK</span></td>
+          <td>Closed Stability Mandate TODO #1 (install.sh fix). Migrated 6 agents to local cron (9e71d95). Added local-testing .plugin TODO (f2fd8a0).</td>
+        </tr>
+        <tr>
+          <td><strong>Meg</strong></td><td>QA Engineer</td><td>Apr 8 6:35 PM</td>
+          <td><span class="badge badge-yellow">YELLOW</span></td>
+          <td>359 tests pass. MEG-055 ADVISORY: no timeout in run_agent_code.sh. MEG-052 (combined pytest) open. No product code changes reviewed.</td>
+        </tr>
+        <tr>
+          <td><strong>Brock</strong></td><td>Security</td><td>Apr 7 (last report)</td>
+          <td><span class="badge badge-yellow">GRACE WINDOW</span></td>
+          <td>Scheduled Apr 8 11:38 PM. No report or log found for Apr 8. ~2 hrs past scheduled -- within 3-hr grace. Last posture: NEEDS ATTENTION (stable, 0 CVEs).</td>
+        </tr>
+        <tr>
+          <td><strong>Gina</strong></td><td>Architect + Product Review</td><td>Apr 8</td>
+          <td><span class="badge badge-green">OK</span></td>
+          <td>GREEN product review (c3655b1). New proposals: PKA implementation, get_context_for_agent bridge tool, updated agent architecture. MemPalace threat analyzed.</td>
+        </tr>
+        <tr>
+          <td><strong>Madison</strong></td><td>Marketing</td><td>Apr 8</td>
+          <td><span class="badge badge-green">OK</span></td>
+          <td>New blog draft: "LoreConvo vs claude-mem" targeting HIGH threat competitor. Social posts created. Scheduled Tue+Fri; Apr 8 run appears manually triggered.</td>
+        </tr>
+        <tr>
+          <td><strong>John</strong></td><td>Tech Docs</td><td>Apr 8 (3 runs)</td>
+          <td><span class="badge badge-green">OK</span></td>
+          <td>3 runs Apr 8 (Wednesday -- outside Tue+Sat schedule, likely Debbie-triggered debugging). Fixed INSTALL.md hook names, tool counts, MEG-047 RESOLVED. LoreConvo INSTALL.md created.</td>
+        </tr>
+        <tr>
+          <td><strong>Competitive Intel</strong></td><td>Intel</td><td>Apr 6 (Monday)</td>
+          <td><span class="badge badge-muted">NO RUN NEEDED</span></td>
+          <td>Next scheduled: Thu Apr 9 3:01 PM (later today). Last scan: claude-mem 21.5k stars HIGH threat, Hindsight upgraded to HIGH, Mem0 MCP active.</td>
+        </tr>
+        <tr>
+          <td><strong>Scout</strong></td><td>Product Research</td><td>Apr 1 (1st of month)</td>
+          <td><span class="badge badge-muted">NO RUN NEEDED</span></td>
+          <td>Next run: Apr 15 (15th of month). No new scan expected until then.</td>
+        </tr>
+        <tr>
+          <td><strong>Jacqueline</strong></td><td>PM (daily)</td><td>Running now</td>
+          <td><span class="badge badge-green">OK</span></td>
+          <td>Daily dashboard generation -- this report.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 4. DEVELOPMENT TODO TRACKER -->
+<div class="card card-full">
+  <div class="card-header" onclick="toggleSection('todos')">
+    <span class="section-title">Development TODO Tracker</span>
+    <span class="toggle-arrow" id="arrow-todos">&#9660;</span>
+  </div>
+  <div class="collapsible" id="todos">
+    <h3 style="font-size:13px; color:var(--accent-hover); margin-bottom:10px; font-family:'Raleway',sans-serif;">Ron TODOs (in priority order)</h3>
+    <table style="margin-bottom:20px;">
+      <thead><tr><th>#</th><th>Task</th><th>Status</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>01</code></td>
+          <td>Build local-testing .plugin files for LoreConvo and LoreDocs</td>
+          <td><span class="badge badge-red">OPEN</span></td>
+          <td>ONLY work until Stability Mandate resolves. .mcp.json must use absolute venv binary paths. Update marketplace.json with path-source entries.</td>
+        </tr>
+        <tr>
+          <td><code>02</code></td>
+          <td>LoreConvo CLI entry point (save-session, list-sessions, search)</td>
+          <td><span class="badge badge-muted">FROZEN</span></td>
+          <td>Blocked by Stability Mandate. After freeze lifts.</td>
+        </tr>
+        <tr>
+          <td><code>03</code></td>
+          <td>LoreDocs CLI entry point</td>
+          <td><span class="badge badge-muted">FROZEN</span></td>
+          <td>Blocked by Stability Mandate.</td>
+        </tr>
+        <tr>
+          <td><code>04</code></td>
+          <td>Slim down agent prompts to reference CLIs</td>
+          <td><span class="badge badge-muted">FROZEN</span></td>
+          <td>After CLI entry points complete.</td>
+        </tr>
+        <tr>
+          <td><code>05</code></td>
+          <td>Fix SEC-014: add cryptography to pyproject.toml dependencies</td>
+          <td><span class="badge badge-muted">FROZEN</span></td>
+          <td>FROZEN per Stability Mandate. MEDIUM severity.</td>
+        </tr>
+        <tr>
+          <td><code>06</code></td>
+          <td>Fix GINA-001: vault_set_tier bypasses license validation in LoreDocs</td>
+          <td><span class="badge badge-muted">FROZEN</span></td>
+          <td>FROZEN. Required before marketplace publish.</td>
+        </tr>
+        <tr>
+          <td><code>07</code></td>
+          <td>Fix GINA-002: lore-onboard skill missing from .plugin bundle</td>
+          <td><span class="badge badge-muted">FROZEN</span></td>
+          <td>FROZEN. Required before marketplace publish.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 style="font-size:13px; color:var(--accent-hover); margin-bottom:10px; font-family:'Raleway',sans-serif;">Debbie TODOs</h3>
+    <table>
+      <thead><tr><th>#</th><th>Task</th><th>Priority</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>01</code></td>
+          <td>Test Cowork end-to-end: run install_dev_plugins.sh, install dev .plugin, verify MCP tools callable</td>
+          <td><span class="badge badge-red">CRITICAL</span></td>
+          <td><span class="badge badge-red">OPEN</span></td>
+        </tr>
+        <tr>
+          <td><code>02</code></td>
+          <td>Apply pending git commits: <code>python scripts/safe_git.py apply</code> from Mac</td>
+          <td><span class="badge badge-orange">HIGH</span></td>
+          <td><span class="badge badge-yellow">PENDING</span></td>
+        </tr>
+        <tr>
+          <td><code>03</code></td>
+          <td>Review rebuilt .plugin files (all fixes applied Apr 3)</td>
+          <td><span class="badge badge-yellow">MEDIUM</span></td>
+          <td><span class="badge badge-red">OPEN</span></td>
+        </tr>
+        <tr>
+          <td><code>04</code></td>
+          <td>Create GitHub repo labyrinth-analytics/claude-plugins + push marketplace/</td>
+          <td><span class="badge badge-yellow">MEDIUM</span></td>
+          <td><span class="badge badge-red">OPEN</span></td>
+        </tr>
+        <tr>
+          <td><code>05</code></td>
+          <td>Activate live Stripe account (bank account, business verification, EIN)</td>
+          <td><span class="badge badge-yellow">MEDIUM</span></td>
+          <td><span class="badge badge-red">OPEN</span></td>
+        </tr>
+        <tr>
+          <td><code>06</code></td>
+          <td>Triage OPP-017 (LoreEval) and OPP-018 (LangGraph Inspector)</td>
+          <td><span class="badge badge-yellow">MEDIUM</span></td>
+          <td><span class="badge badge-red">OPEN</span></td>
+        </tr>
+        <tr>
+          <td><code>07</code></td>
+          <td>Review Gina's new architecture proposals (PKA, get_context_for_agent, agent architecture)</td>
+          <td><span class="badge badge-yellow">MEDIUM</span></td>
+          <td><span class="badge badge-red">OPEN</span></td>
+        </tr>
+        <tr>
+          <td><code>08</code></td>
+          <td>Review + publish Madison Blog #2 (all feedback applied, ready)</td>
+          <td><span class="badge badge-blue">LOW</span></td>
+          <td><span class="badge badge-yellow">READY FOR REVIEW</span></td>
+        </tr>
+        <tr>
+          <td><code>09</code></td>
+          <td>File USPTO trademarks for LoreConvo + LoreDocs (Class 009, $350 each)</td>
+          <td><span class="badge badge-muted">ON HOLD</span></td>
+          <td><span class="badge badge-muted">WAIT FOR TRACTION</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 5. PIPELINE STATUS -->
+<div class="card card-full">
+  <div class="card-header" onclick="toggleSection('pipeline')">
+    <span class="section-title">Pipeline Status (2 Awaiting Triage)</span>
+    <span class="toggle-arrow" id="arrow-pipeline">&#9660;</span>
+  </div>
+  <div class="collapsible" id="pipeline">
+    <div class="pipeline-stat-row">
+      <div class="stat-card"><div class="stat-value" style="color:var(--red)">2</div><div class="stat-label">Awaiting Triage</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--yellow)">3</div><div class="stat-label">Architecture Review</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--green)">3</div><div class="stat-label">Approved</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--muted)">4</div><div class="stat-label">On Hold</div></div>
+      <div class="stat-card"><div class="stat-value" style="color:var(--blue)">3</div><div class="stat-label">Pre-Approved</div></div>
+    </div>
+    <table>
+      <thead><tr><th>ID</th><th>Name</th><th>Description</th><th>Triage Status</th><th>Effort</th><th>MRR M12</th><th>Assigned</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>OPP-017</code></td><td>LoreEval</td><td>pytest-style AI agent test runner</td>
+          <td><span class="badge badge-red">NEW</span></td><td>3</td><td>~$900</td><td>Scout</td>
+        </tr>
+        <tr>
+          <td><code>OPP-018</code></td><td>LangGraph Inspector</td><td>Debug LangGraph state machines</td>
+          <td><span class="badge badge-red">NEW</span></td><td>5</td><td>~$700</td><td>Scout</td>
+        </tr>
+        <tr>
+          <td><code>OPP-019</code></td><td>FinNorm</td><td>Brokerage CSV normalizer (Schwab/YNAB/Buildium)</td>
+          <td><span class="badge badge-green">PRE-APPROVED</span></td><td>3</td><td>~$600</td><td>Ron (frozen)</td>
+        </tr>
+        <tr>
+          <td><code>OPP-020</code></td><td>LoreCheck</td><td>Data quality CLI (Great Expectations alt)</td>
+          <td><span class="badge badge-green">PRE-APPROVED</span></td><td>5</td><td>~$1,200</td><td>Ron (frozen)</td>
+        </tr>
+        <tr>
+          <td><code>OPP-021</code></td><td>Chain Lens</td><td>Prompt chain observability for multi-step LLMs</td>
+          <td><span class="badge badge-green">PRE-APPROVED</span></td><td>5</td><td>~$800</td><td>Ron (frozen)</td>
+        </tr>
+        <tr>
+          <td><code>OPP-015</code></td><td>Data Catalog Lite</td><td>Lightweight data catalog MCP (P1)</td>
+          <td><span class="badge badge-yellow">ARCH REVIEW</span></td><td>--</td><td>$10/mo Pro</td><td>Gina -- recommend APPROVE</td>
+        </tr>
+        <tr>
+          <td><code>OPP-013</code></td><td>Data Pipeline Test Harness</td><td>Pipeline testing MCP (P2)</td>
+          <td><span class="badge badge-yellow">ARCH REVIEW</span></td><td>--</td><td>$15/mo Pro</td><td>Gina -- review carefully</td>
+        </tr>
+        <tr>
+          <td><code>OPP-016</code></td><td>ETL Pattern Library</td><td>ETL patterns (P3, scope TBD)</td>
+          <td><span class="badge badge-yellow">ARCH REVIEW</span></td><td>--</td><td>--</td><td>Gina -- needs scope decision</td>
+        </tr>
+        <tr>
+          <td><code>OPP-003</code></td><td>LorePrompts</td><td>Prompt template management, $10/mo</td>
+          <td><span class="badge badge-green">APPROVED</span></td><td>--</td><td>$10/mo</td><td>Ron (frozen)</td>
+        </tr>
+        <tr>
+          <td><code>OPP-004</code></td><td>LoreScope</td><td>AI workflow analytics dashboard</td>
+          <td><span class="badge badge-green">APPROVED</span></td><td>--</td><td>--</td><td>Ron (frozen)</td>
+        </tr>
+        <tr>
+          <td><code>OPP-002</code></td><td>AI Cost Attribution</td><td>LLM cost tracking MCP</td>
+          <td><span class="badge badge-green">APPROVED</span></td><td>--</td><td>--</td><td>Gina (review scheduled)</td>
+        </tr>
+        <tr>
+          <td><code>OPP-001</code></td><td>SQL Optimizer</td><td>SQL Server query optimizer</td>
+          <td><span class="badge badge-muted">ON HOLD</span></td><td>--</td><td>--</td><td>No local SQL Server</td>
+        </tr>
+        <tr>
+          <td><code>OPP-005</code></td><td>SSIS Packager</td><td>SSIS package analyzer</td>
+          <td><span class="badge badge-muted">ON HOLD</span></td><td>--</td><td>--</td><td>No local SQL Server</td>
+        </tr>
+        <tr>
+          <td><code>OPP-008</code></td><td>Schema Diff MCP</td><td>Schema migration tool</td>
+          <td><span class="badge badge-muted">ON HOLD</span></td><td>--</td><td>--</td><td>No local SQL Server</td>
+        </tr>
+        <tr>
+          <td><code>OPP-012</code></td><td>LiteLLM Supply Chain</td><td>Incident -- resolved</td>
+          <td><span class="badge badge-muted">ON HOLD</span></td><td>--</td><td>--</td><td>Monitored</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 6. ARCHITECTURE PROPOSALS -->
+<div class="card card-full">
+  <div class="card-header" onclick="toggleSection('arch')">
+    <span class="section-title">Architecture Proposals Awaiting Review (3 existing + 3 new)</span>
+    <span class="toggle-arrow" id="arrow-arch">&#9660;</span>
+  </div>
+  <div class="collapsible" id="arch">
+    <p style="color:var(--muted);font-size:12px;margin-bottom:12px;">Gina produced 3 new proposals on Apr 8 in addition to 3 previously pending. Review all in <code>docs/internal/architecture/</code>.</p>
+    <table>
+      <thead><tr><th>Item</th><th>Name</th><th>Summary</th><th>Gina Rec.</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr style="background:rgba(123,45,142,0.06);">
+          <td><span class="badge badge-purple">NEW</span> <code>--</code></td>
+          <td>PKA Implementation</td>
+          <td>Public Key Architecture proposal for licensing/auth. fafd2de, 6f4ff70</td>
+          <td><span class="badge badge-yellow">REVIEW</span></td>
+          <td><span class="badge badge-yellow">AWAITING DEBBIE</span></td>
+        </tr>
+        <tr style="background:rgba(123,45,142,0.06);">
+          <td><span class="badge badge-purple">NEW</span> <code>--</code></td>
+          <td>get_context_for_agent Bridge Tool</td>
+          <td>Bridge tool proposal enabling agents to retrieve context cross-surface. b829a17</td>
+          <td><span class="badge badge-yellow">REVIEW</span></td>
+          <td><span class="badge badge-yellow">AWAITING DEBBIE</span></td>
+        </tr>
+        <tr style="background:rgba(123,45,142,0.06);">
+          <td><span class="badge badge-purple">NEW</span> <code>--</code></td>
+          <td>Agent Architecture Update</td>
+          <td>Updated agent architecture documentation and design. 416219a</td>
+          <td><span class="badge badge-yellow">REVIEW</span></td>
+          <td><span class="badge badge-yellow">AWAITING DEBBIE</span></td>
+        </tr>
+        <tr>
+          <td><code>OPP-015</code></td>
+          <td>Data Catalog Lite (P1)</td>
+          <td>HIGH compatibility. Reuses TierEnforcer pattern. $10/mo Pro.</td>
+          <td><span class="badge badge-green">APPROVE</span></td>
+          <td><span class="badge badge-yellow">AWAITING DEBBIE</span></td>
+        </tr>
+        <tr>
+          <td><code>OPP-013</code></td>
+          <td>Data Pipeline Test Harness (P2)</td>
+          <td>MODERATE compatibility. New dual-DB pattern. $15/mo Pro. Review carefully.</td>
+          <td><span class="badge badge-yellow">REVIEW</span></td>
+          <td><span class="badge badge-yellow">AWAITING DEBBIE</span></td>
+        </tr>
+        <tr>
+          <td><code>OPP-016</code></td>
+          <td>ETL Pattern Library (P3)</td>
+          <td>Scope rethink needed. SQL-Server-only too narrow. Gina recommends T-SQL+Python or pure Python.</td>
+          <td><span class="badge badge-orange">RETHINK</span></td>
+          <td><span class="badge badge-yellow">NEEDS SCOPE DECISION</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 7. CROSS-AGENT FINDINGS + PRODUCT STATUS -->
+<div class="grid">
+<div class="card">
+  <div class="card-header" onclick="toggleSection('cross')">
+    <span class="section-title">Cross-Agent Findings</span>
+    <span class="toggle-arrow" id="arrow-cross">&#9660;</span>
+  </div>
+  <div class="collapsible" id="cross">
+    <div class="attention-item attention-info">
+      <div class="attention-label">INFO -- MEG-047 RESOLVED by John (Apr 8)</div>
+      LoreDocs README Administration section count was 2, should be 3 (get_license_tier was missing from count). Fixed in 7830e41. MEG-047 closed.
+    </div>
+    <div class="attention-item attention-info">
+      <div class="attention-label">INFO -- Gina Product Review GREEN (Apr 8)</div>
+      c3655b1: Gina reviewed LoreConvo and LoreDocs, no new critical/high findings. 3 GINA-REVIEW items from prior cycles were dispositioned. MemPalace (ChromaDB + SQLite temporal KG) added as HIGH threat requiring Brock security review.
+    </div>
+    <div class="attention-item attention-medium">
+      <div class="attention-label">MEDIUM -- SEC-014 Still Open (Frozen)</div>
+      cryptography not in pyproject.toml. Pro license validation can fail on fresh installs (ModuleNotFoundError). FROZEN per mandate. Ron must fix after freeze lifts -- this blocks marketplace publish.
+    </div>
+    <div class="attention-item attention-info">
+      <div class="attention-label">INFO -- 6 Agents Migrated to Local Cron (9e71d95)</div>
+      Ron migrated Ron, Meg, Brock, Competitive Intel, Scout, and Gina from Cowork scheduled tasks to local cron via scripts/run_agent_code.sh. Jacqueline, Madison, and John remain on Cowork. This explains why brock log is expected in logs/ -- but Brock has no log for Apr 8 yet.
+    </div>
+    <div class="attention-item attention-info">
+      <div class="attention-label">INFO -- NotebookLM External Skill Added</div>
+      c6ab73f added external_skills/notebooklm-skill and docs/integrations/. Untracked files. Meg did not review in depth (vendor content). Deferred to Brock's next security review.
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header" onclick="toggleSection('products')">
+    <span class="section-title">Product Status</span>
+    <span class="toggle-arrow" id="arrow-products">&#9660;</span>
+  </div>
+  <div class="collapsible" id="products">
+    <table>
+      <thead><tr><th>Product</th><th>Version</th><th>Status</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>LoreConvo</strong></td><td>v0.3.0</td>
+          <td><span class="badge badge-green">PRODUCTION</span></td>
+          <td>Works in Claude Code CLI. BROKEN in Cowork (plugin install flow not fixed -- local-testing .plugin TODO #1 open).</td>
+        </tr>
+        <tr>
+          <td><strong>LoreDocs</strong></td><td>v0.1.0</td>
+          <td><span class="badge badge-purple">ALPHA</span></td>
+          <td>Same status as LoreConvo -- Code CLI works, Cowork plugin broken. Bypass scripts are workarounds only.</td>
+        </tr>
+        <tr>
+          <td><strong>SQL Optimizer</strong></td><td>v0.1.0</td>
+          <td><span class="badge badge-muted">ON HOLD</span></td>
+          <td>No local SQL Server. No test suite exists (Meg confirmed).</td>
+        </tr>
+        <tr>
+          <td><strong>LorePrompts</strong></td><td>--</td>
+          <td><span class="badge badge-muted">PLANNED</span></td>
+          <td>Approved (OPP-003). FROZEN. $10/mo. Competitors: claude-prompts, mcp-prompts (MEDIUM threat).</td>
+        </tr>
+        <tr>
+          <td><strong>LoreScope</strong></td><td>--</td>
+          <td><span class="badge badge-muted">PLANNED</span></td>
+          <td>Approved (OPP-004). FROZEN. White space opportunity -- no established competitors.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 8. MARKETING CONTENT -->
+<div class="card card-full">
+  <div class="card-header" onclick="toggleSection('marketing')">
+    <span class="section-title">Marketing Content</span>
+    <span class="toggle-arrow" id="arrow-marketing">&#9660;</span>
+  </div>
+  <div class="collapsible" id="marketing">
+    <div class="timeline-item">
+      <div class="timeline-dot dot-done"></div>
+      <div>
+        <strong>Blog #1 Published (Apr 2)</strong><br>
+        <span style="color:var(--muted);font-size:12px;">Published on labyrinthanalyticsconsulting.com. First post live.</span>
+      </div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-dot dot-wip"></div>
+      <div>
+        <strong>Blog #2 -- Ready for Debbie Review</strong><br>
+        <span style="color:var(--muted);font-size:12px;">"Building a Reference Library for AI Projects: A Vault Blueprint for Reliable AI Development" -- All 3 Debbie feedback items applied Apr 7. <code>docs/internal/marketing/blog_drafts/blog_loredocs_vault_architecture_2026_04_03.md</code></span>
+      </div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-dot dot-wip"></div>
+      <div>
+        <strong>Blog #3 -- Draft Ready for Debbie Review</strong><br>
+        <span style="color:var(--muted);font-size:12px;">"Your AI's Knowledge Stack: Why LoreDocs, Obsidian, and NotebookLM Complement Each Other" -- Created Apr 7. <code>docs/internal/marketing/blog_drafts/blog_knowledge_stack_venn_2026_04_07.md</code></span>
+      </div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-dot dot-wip"></div>
+      <div>
+        <strong>Blog #4 NEW -- LoreConvo vs claude-mem (Apr 8)</strong><br>
+        <span style="color:var(--muted);font-size:12px;">Madison created competitive response blog targeting claude-mem (21.5k stars, HIGH threat). Also created social media posts. <code>docs/internal/marketing/blog_drafts/</code> (commit 4797ff2).</span>
+      </div>
+    </div>
+    <div class="timeline-item">
+      <div class="timeline-dot dot-planned"></div>
+      <div>
+        <strong>Madison Next Run: Fri Apr 10 12:31 AM</strong><br>
+        <span style="color:var(--muted);font-size:12px;">Content calendar in <code>docs/internal/marketing/content_calendar_madison.md</code>. 3 drafts pending Debbie review.</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 9. SCHEDULE AND AGENT HEALTH SUMMARY -->
+<div class="card card-full">
+  <div class="card-header" onclick="toggleSection('schedule')">
+    <span class="section-title">Schedule and Agent Health Summary</span>
+    <span class="toggle-arrow" id="arrow-schedule">&#9660;</span>
+  </div>
+  <div class="collapsible" id="schedule">
+    <table>
+      <thead><tr><th>Agent</th><th>Schedule</th><th>Last Run</th><th>Status</th><th>Next Run</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Ron</strong></td><td>Daily 5:05 PM</td><td>Apr 8 6:51 PM</td>
+          <td><span class="badge badge-green">OK</span></td>
+          <td>Apr 9 5:05 PM</td>
+          <td>Cron (local). 1 new commit. TODO #1 (local-testing .plugin) is only open work.</td>
+        </tr>
+        <tr>
+          <td><strong>Meg</strong></td><td>Daily 6:33 PM</td><td>Apr 8 6:35 PM</td>
+          <td><span class="badge badge-yellow">YELLOW</span></td>
+          <td>Apr 9 6:33 PM</td>
+          <td>Cron (local). 359 tests pass. MEG-055 advisory (run_agent_code.sh no timeout).</td>
+        </tr>
+        <tr>
+          <td><strong>Brock</strong></td><td>Daily 11:38 PM</td><td>Apr 7 (report)</td>
+          <td><span class="badge badge-yellow">GRACE WINDOW</span></td>
+          <td>Apr 9 11:38 PM</td>
+          <td>Cron (local). No log/report for Apr 8 11:38 PM run. ~2 hrs past schedule. Check cron if absent by morning.</td>
+        </tr>
+        <tr>
+          <td><strong>Jacqueline (daily)</strong></td><td>Daily 1:38 AM</td><td>Running now</td>
+          <td><span class="badge badge-green">OK</span></td>
+          <td>Apr 10 1:38 AM</td>
+          <td>Cowork. This report.</td>
+        </tr>
+        <tr>
+          <td><strong>Competitive Intel</strong></td><td>Mon + Thu 3:01 PM</td><td>Apr 6 (Monday)</td>
+          <td><span class="badge badge-muted">NO RUN NEEDED</span></td>
+          <td>Apr 9 3:01 PM (today)</td>
+          <td>Next run is later today (Thursday). claude-mem alert from last scan pending.</td>
+        </tr>
+        <tr>
+          <td><strong>Scout</strong></td><td>1st + 15th, 3:00 AM</td><td>Apr 1</td>
+          <td><span class="badge badge-muted">NO RUN NEEDED</span></td>
+          <td>Apr 15 3:00 AM</td>
+          <td>Cron (local). Next run in 6 days.</td>
+        </tr>
+        <tr>
+          <td><strong>Gina (Arch)</strong></td><td>Wed + Sat 4:00 AM</td><td>Apr 8</td>
+          <td><span class="badge badge-green">OK</span></td>
+          <td>Apr 11 (Sat) 4:00 AM</td>
+          <td>Cron (local). 3 new proposals committed Apr 8. GREEN product review.</td>
+        </tr>
+        <tr>
+          <td><strong>Gina (Product Review)</strong></td><td>Mon + Wed + Fri 4:00 AM</td><td>Apr 8 (Wed)</td>
+          <td><span class="badge badge-green">OK</span></td>
+          <td>Apr 10 (Fri) 4:00 AM</td>
+          <td>Cron (local). GREEN review -- no new critical findings.</td>
+        </tr>
+        <tr>
+          <td><strong>Madison</strong></td><td>Tue + Fri 12:31 AM</td><td>Apr 8 (Wed, triggered)</td>
+          <td><span class="badge badge-green">OK</span></td>
+          <td>Apr 10 (Fri) 12:31 AM</td>
+          <td>Cowork. Apr 8 run appears manually triggered (outside Tue+Fri schedule). New blog draft created.</td>
+        </tr>
+        <tr>
+          <td><strong>John</strong></td><td>Tue + Sat 3:38 AM</td><td>Apr 8 (3 runs, manually triggered)</td>
+          <td><span class="badge badge-green">OK</span></td>
+          <td>Apr 11 (Sat) 3:38 AM</td>
+          <td>Cowork. Apr 8 runs were Debbie-triggered debugging (outside schedule). INSTALL.md fixes applied, MEG-047 resolved.</td>
+        </tr>
+        <tr>
+          <td><strong>Jacqueline (roadmap)</strong></td><td>Sat 5:05 AM</td><td>Not tracked</td>
+          <td><span class="badge badge-muted">WEEKLY</span></td>
+          <td>Apr 11 (Sat) 5:05 AM</td>
+          <td>Cowork. Weekly product roadmap -- next run Saturday.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 10. SECURITY POSTURE -->
+<div class="card card-full">
+  <div class="card-header" onclick="toggleSection('security')">
+    <span class="section-title">Security Posture -- Brock (Last Report: Apr 7)</span>
+    <span class="toggle-arrow" id="arrow-security">&#9660;</span>
+  </div>
+  <div class="collapsible" id="security">
+    <div style="margin-bottom:14px;">
+      <span class="badge badge-yellow" style="font-size:13px;padding:4px 12px;">NEEDS ATTENTION (stable)</span>
+      <span style="color:var(--muted);font-size:12px;margin-left:10px;">0 CVEs | pip-audit clean (LoreConvo + LoreDocs) | No new report for Apr 8 yet (grace window)</span>
+    </div>
+    <table>
+      <thead><tr><th>ID</th><th>Severity</th><th>Description</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>SEC-014</code></td>
+          <td><span class="badge badge-yellow">MEDIUM</span></td>
+          <td>cryptography not in pyproject.toml dependencies; Pro license validation fails on fresh installs</td>
+          <td><span class="badge badge-muted">FROZEN</span></td>
+        </tr>
+        <tr>
+          <td><code>SEC-023</code></td>
+          <td><span class="badge badge-blue">INFO</span></td>
+          <td>Glob sort ambiguity in DB discovery path ordering. Low risk in single-user context. Same finding as MEG-053.</td>
+          <td><span class="badge badge-blue">NOTED</span></td>
+        </tr>
+        <tr>
+          <td><code>SEC-001</code></td>
+          <td><span class="badge badge-blue">INFO</span></td>
+          <td>.env in sql_query_optimizer/api/ -- not tracked in git, single-user Mac, no remote access.</td>
+          <td><span class="badge badge-blue">MONITORING</span></td>
+        </tr>
+        <tr>
+          <td><code>GINA-001</code></td>
+          <td><span class="badge badge-yellow">MEDIUM</span></td>
+          <td>LoreDocs vault_set_tier bypasses license validation. Must fix before marketplace publish.</td>
+          <td><span class="badge badge-muted">FROZEN</span></td>
+        </tr>
+        <tr>
+          <td><code>GINA-002</code></td>
+          <td><span class="badge badge-yellow">MEDIUM</span></td>
+          <td>lore-onboard skill not in .plugin bundle. Users won't get onboarding from marketplace install.</td>
+          <td><span class="badge badge-muted">FROZEN</span></td>
+        </tr>
+        <tr>
+          <td><code>MEG-055</code></td>
+          <td><span class="badge badge-blue">ADVISORY</span></td>
+          <td>No timeout guard on claude invocation in run_agent_code.sh. Runaway sessions possible.</td>
+          <td><span class="badge badge-muted">FROZEN</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div><!-- end grid -->
+
+<!-- FOOTER -->
+<div style="text-align:center;color:var(--muted);font-size:12px;margin-top:24px;padding:16px 0;border-top:1px solid var(--border);">
+  Generated by Jacqueline (PM Agent) | Thursday, April 9, 2026 | Labyrinth Analytics
+</div>
+
+</div><!-- end container -->
+
+<script>
+function toggleSection(id) {
+  var el = document.getElementById(id);
+  var arrow = document.getElementById('arrow-' + id);
+  if (!el) return;
+  if (el.style.maxHeight && el.style.maxHeight !== '0px') {
+    el.style.maxHeight = '0px';
+    if (arrow) arrow.style.transform = 'rotate(-90deg)';
+  } else {
+    el.style.maxHeight = el.scrollHeight + 'px';
+    if (arrow) arrow.style.transform = '';
+  }
+}
+document.querySelectorAll('.collapsible').forEach(function(el) {
+  el.style.maxHeight = el.scrollHeight + 'px';
+});
+</script>
+</body>
+</html>
