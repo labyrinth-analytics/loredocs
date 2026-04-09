@@ -68,7 +68,7 @@
       "scripts/config/preprocess_templates.yaml"
     ],
     "agent": "unknown",
-    "applied": false
+    "applied": true
   },
   {
     "timestamp": "2026-04-05T03:37:32.631817+00:00",
@@ -77,7 +77,7 @@
       "scripts/local_model_preprocess.py"
     ],
     "agent": "unknown",
-    "applied": false
+    "applied": true
   },
   {
     "timestamp": "2026-04-05T11:01:58.721027+00:00",
@@ -96,7 +96,7 @@
       "docs/internal/architecture/product_review_2026_04_05.md"
     ],
     "agent": "gina",
-    "applied": false
+    "applied": true
   },
   {
     "timestamp": "2026-04-05T18:59:47.833181+00:00",
@@ -133,7 +133,7 @@
       ".claude/skills/tech-docs-john/SKILL.md"
     ],
     "agent": "debbie-cowork",
-    "applied": false
+    "applied": true
   },
   {
     "timestamp": "2026-04-06T00:09:22.564800+00:00",
@@ -153,7 +153,7 @@
       "marketplace/claude-plugins/README.md"
     ],
     "agent": "ron",
-    "applied": false
+    "applied": true
   },
   {
     "timestamp": "2026-04-06T11:41:26.587837+00:00",
@@ -253,6 +253,120 @@
       "docs/DEBBIE_DASHBOARD.md"
     ],
     "agent": "jacqueline",
+    "applied": true
+  },
+  {
+    "timestamp": "2026-04-08T00:08:02.284900+00:00",
+    "message": "docs: mark Stability Mandate TODO #2 complete (DB discovery fix)",
+    "files": [
+      "docs/COMPLETED.md",
+      "CLAUDE.md"
+    ],
+    "agent": "ron",
+    "applied": true
+  },
+  {
+    "timestamp": "2026-04-08T01:36:10.696880+00:00",
+    "message": "qa: Meg daily report 2026-04-07 -- YELLOW, fbfdd11 verified, MEG-053/054 new",
+    "files": [
+      "docs/internal/qa/qa_report_2026_04_07.md"
+    ],
+    "agent": "meg",
+    "applied": true
+  },
+  {
+    "timestamp": "2026-04-08T07:39:17.480157+00:00",
+    "message": "security: Brock daily report 2026-04-07 -- NEEDS ATTENTION stable, SEC-023 INFO added",
+    "files": [
+      "docs/internal/security/security_report_2026_04_07.md"
+    ],
+    "agent": "brock",
+    "applied": true
+  },
+  {
+    "timestamp": "2026-04-08T11:41:19.580471+00:00",
+    "message": "gina: product review 2026-04-08 -- GREEN, 3 GINA-REVIEW items dispositioned, MemPalace threat analysis",
+    "files": [
+      "docs/internal/architecture/product_review_2026_04_08.md",
+      "Opportunities/LATEST_ARCHITECTURE_REVIEW.html"
+    ],
+    "agent": "gina",
+    "applied": true
+  },
+  {
+    "timestamp": "2026-04-08T11:41:59.808537+00:00",
+    "message": "gina: product review 2026-04-08 -- YELLOW stable, 3 competitive gap items queued",
+    "files": [
+      "docs/internal/architecture/product_review_2026_04_08.md"
+    ],
+    "agent": "gina",
+    "applied": true
+  },
+  {
+    "timestamp": "2026-04-08T12:51:02.580456+00:00",
+    "message": "Madison: draft LoreConvo vs claude-mem blog + social posts",
+    "files": [
+      "docs/marketing/blog_drafts/blog_loreconvo_vs_claude_mem_2026_04_08.md",
+      "docs/marketing/blog_drafts/social_loreconvo_vs_claude_mem_2026_04_08.md"
+    ],
+    "agent": "madison",
+    "applied": true
+  },
+  {
+    "timestamp": "2026-04-08T12:51:40.069428+00:00",
+    "message": "Gina proposal: get_context_for_agent bridge tool (2026-04-08)",
+    "files": [
+      "docs/architecture/proposals/get_context_for_agent_2026_04_08.md"
+    ],
+    "agent": "gina",
+    "applied": true
+  },
+  {
+    "timestamp": "2026-04-08T12:53:38.412511+00:00",
+    "message": "pm: Jacqueline executive dashboard 2026-04-08 + DEBBIE_DASHBOARD update",
+    "files": [
+      "docs/internal/pm/executive_dashboard_2026_04_08.html",
+      "docs/DEBBIE_DASHBOARD.md"
+    ],
+    "agent": "jacqueline",
+    "applied": true
+  },
+  {
+    "timestamp": "2026-04-08T14:18:47.984938+00:00",
+    "message": "docs(competitive): add Perplexity analysis stub + intake log",
+    "files": [
+      "docs/competitive/perplexity_competitive_analysis_2026_04_08.md",
+      "docs/competitive/INTAKE.md"
+    ],
+    "agent": "ron",
+    "applied": true
+  },
+  {
+    "timestamp": "2026-04-08T15:18:39.570796+00:00",
+    "message": "Add NotebookLM skill (external) and onboarding doc",
+    "files": [
+      "external_skills/notebooklm-skill",
+      "docs/integrations/notebooklm_setup_2026_04_08.md"
+    ],
+    "agent": "ron",
+    "applied": false
+  },
+  {
+    "timestamp": "2026-04-08T15:19:42.835934+00:00",
+    "message": "Add PKA implementation plan proposal (Gina)",
+    "files": [
+      "docs/architecture/proposals/pka_implementation_plan_2026_04_08.md"
+    ],
+    "agent": "gina",
+    "applied": true
+  },
+  {
+    "timestamp": "2026-04-08T15:19:48.062051+00:00",
+    "message": "Gina: PKA implementation proposal",
+    "files": [
+      "docs/architecture/proposals/pka_implementation_2026_04_08.md"
+    ],
+    "agent": "gina",
     "applied": true
   }
 ]

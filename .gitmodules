@@ -1,0 +1,3 @@
+[submodule "external_skills/notebooklm-skill"]
+	path = external_skills/notebooklm-skill
+	url = https://github.com/robonuggets/notebooklm-skill.git
