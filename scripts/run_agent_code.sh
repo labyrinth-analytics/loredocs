@@ -64,12 +64,32 @@ fi
 
 cd "$PROJECT_DIR"
 
-timeout 3600 "$CLAUDE_BIN" \
-    --print \
-    --permission-mode bypassPermissions \
-    --output-format text \
-    < "$SKILL_FILE" \
-    >> "$LOG_FILE" 2>&1
+# macOS does not ship GNU timeout; Homebrew coreutils provides gtimeout.
+# Detect whichever is available; run without time limit if neither is found.
+TIMEOUT_CMD=""
+if command -v timeout &>/dev/null; then
+    TIMEOUT_CMD="timeout"
+elif command -v gtimeout &>/dev/null; then
+    TIMEOUT_CMD="gtimeout"
+else
+    echo "WARNING: timeout/gtimeout not found -- running without time limit (brew install coreutils to fix)" >> "$LOG_FILE"
+fi
+
+if [ -n "$TIMEOUT_CMD" ]; then
+    "$TIMEOUT_CMD" 3600 "$CLAUDE_BIN" \
+        --print \
+        --permission-mode bypassPermissions \
+        --output-format text \
+        < "$SKILL_FILE" \
+        >> "$LOG_FILE" 2>&1
+else
+    "$CLAUDE_BIN" \
+        --print \
+        --permission-mode bypassPermissions \
+        --output-format text \
+        < "$SKILL_FILE" \
+        >> "$LOG_FILE" 2>&1
+fi
 
 EXIT_CODE=$?
 if [ $EXIT_CODE -eq 124 ]; then
