@@ -66,17 +66,40 @@ After installation, add LoreDocs to your `~/.claude/settings.json`:
 {
   "mcpServers": {
     "loredocs": {
-      "command": "/absolute/path/to/loredocs/.venv/bin/loredocs",
-      "args": []
+      "command": "/Users/YOUR_USERNAME/projects/loredocs/.venv/bin/loredocs",
+      "env": {
+        "LOREDOCS_PRO": "your-pro-license-key-here"
+      }
     }
   }
 }
 ```
 
-Replace `/absolute/path/to/loredocs/` with the full path to your cloned directory
-(e.g., `/Users/yourname/projects/loredocs`).
+Replace `YOUR_USERNAME` with your Mac username. To find it, open a terminal and run:
 
-Then restart Claude Code. Run `/mcp` to verify LoreDocs is connected.
+```bash
+whoami
+```
+
+> **Important:** Do not use `$HOME` or `~` in `settings.json`. Claude Code does not
+> expand shell variables in this file. Use the full absolute path with your actual
+> username instead.
+
+The `env` block is optional -- remove it if you are using the free tier and do not
+have a Pro license key. Without it, LoreDocs runs on the free tier.
+
+### Environment variables
+
+| Variable | What it is for | Where to find the value |
+|----------|---------------|------------------------|
+| `LOREDOCS_PRO` | Your Pro license key (optional) | Provided when you purchase a Pro license |
+
+If `LOREDOCS_PRO` is not set, LoreDocs runs on the free tier (limited vaults and documents).
+
+### Restart Claude Code
+
+After editing `settings.json`, restart Claude Code. Run the `/mcp` command to verify
+LoreDocs is connected. You should see `loredocs` listed with a green status.
 
 ---
 
@@ -93,13 +116,56 @@ Install via the `.plugin` file in the cloned directory:
 
 ## Verifying the Installation
 
-Test that LoreDocs is working by calling a tool in Claude:
+After connecting LoreDocs to Claude Code, verify it is working:
+
+**In Claude Code**, run:
 
 ```
-vault_list
+/mcp
 ```
 
-You should see an empty vault list (or your existing vaults if you have used LoreDocs before).
+You should see `loredocs` listed. Then ask Claude:
+
+```
+Call the vault_list tool
+```
+
+If LoreDocs is working, Claude will respond with a list of your vaults (or an empty
+list if this is your first time). A successful empty response looks like:
+
+```
+Vaults (0):
+(no vaults yet)
+```
+
+If you see an error, check the Troubleshooting section below.
+
+---
+
+## Troubleshooting
+
+**"Module not found" or "command not found" error**
+
+This means the install did not complete correctly. Delete the `.venv/` folder and
+reinstall:
+
+```bash
+cd /path/to/loredocs
+rm -rf .venv
+bash install.sh
+```
+
+**`$HOME` or `~` not expanding in settings.json**
+
+Claude Code does not expand shell variables in `settings.json`. Replace any `~` or
+`$HOME` with the full absolute path to your home directory
+(e.g., `/Users/yourname` instead of `~`).
+
+**Free tier limit reached**
+
+The free tier limits the number of vaults and documents. When you reach the limit,
+tools return a message explaining how to upgrade. Contact Labyrinth Analytics for a
+Pro license key, then set it as `LOREDOCS_PRO` in your `settings.json` env block.
 
 ---
 
@@ -120,3 +186,11 @@ bash install.sh
 ```
 
 The installer detects the existing venv and updates it in place.
+
+---
+
+## More Documentation
+
+- [Quickstart Guide](docs/quickstart.md) -- get up and running in 5 minutes
+- [MCP Tool Catalog](docs/mcp_tool_catalog.md) -- all 34 tools explained in plain English
+- [Changelog](docs/CHANGELOG.md) -- what changed in each release
