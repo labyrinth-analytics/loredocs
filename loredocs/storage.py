@@ -796,11 +796,20 @@ class VaultStorage:
 
     @staticmethod
     def _sanitize_fts_query(query: str) -> str:
-        """OPP-010: Wrap user query in double quotes to force FTS5 phrase matching.
-        Prevents FTS5 operators (AND, OR, NOT, NEAR, column:) from being interpreted
-        as syntax, while still allowing meaningful full-text search."""
-        safe = query.strip().replace('"', ' ')
-        return f'"{safe}"'
+        """OPP-010: Sanitize user input for FTS5 MATCH without changing search semantics.
+
+        Strategy: quote each individual token so hyphens, colons, and other
+        FTS5 operators inside a token are treated as literals, but multiple
+        tokens are implicitly ANDed (the FTS5 default). This preserves the
+        expected behavior where "data warehouse migration" matches documents
+        containing all three words anywhere, not just as a consecutive phrase.
+        """
+        safe = query.strip()
+        if not safe:
+            return '""'
+        tokens = safe.split()
+        quoted = ['"' + t.replace('"', '') + '"' for t in tokens if t.replace('"', '')]
+        return ' '.join(quoted) if quoted else '""'
 
     def search(self, query: str, vault_id: Optional[str] = None,
                limit: int = 20, offset: int = 0) -> Dict[str, Any]:
