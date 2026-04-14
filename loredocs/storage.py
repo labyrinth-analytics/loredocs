@@ -200,6 +200,7 @@ def _init_db(db_path: Path) -> None:
         CREATE INDEX IF NOT EXISTS idx_documents_vault ON documents(vault_id);
         CREATE INDEX IF NOT EXISTS idx_documents_deleted ON documents(deleted);
         CREATE INDEX IF NOT EXISTS idx_documents_category ON documents(category);
+        CREATE INDEX IF NOT EXISTS idx_doc_links_target ON doc_links(target_doc_id);
     """)
 
     conn.commit()
@@ -946,11 +947,40 @@ class VaultStorage:
 
     def bulk_tag(self, doc_ids: List[str], add_tags: Optional[List[str]] = None,
                  remove_tags: Optional[List[str]] = None) -> int:
-        """Apply tag changes to multiple documents. Returns count of modified docs."""
-        count = 0
-        for doc_id in doc_ids:
-            result = self.tag_document(doc_id, add_tags=add_tags, remove_tags=remove_tags)
-            if result is not None:
+        """Apply tag changes to multiple documents in a single transaction. Returns count of modified docs."""
+        if not doc_ids:
+            return 0
+        with self._db() as conn:
+            placeholders = ','.join('?' * len(doc_ids))
+            rows = conn.execute(
+                f"SELECT id, tags FROM documents WHERE id IN ({placeholders}) AND deleted = 0",
+                doc_ids
+            ).fetchall()
+            count = 0
+            now = self._now()
+            for row in rows:
+                current_tags = set(json.loads(row["tags"]))
+                if add_tags:
+                    current_tags.update(add_tags)
+                if remove_tags:
+                    current_tags -= set(remove_tags)
+                final_tags = sorted(current_tags)
+                conn.execute(
+                    "UPDATE documents SET tags = ?, updated_at = ? WHERE id = ?",
+                    (json.dumps(final_tags), now, row["id"])
+                )
+                fts_row = conn.execute(
+                    "SELECT name, content, notes FROM doc_fts WHERE doc_id = ?", (row["id"],)
+                ).fetchone()
+                if fts_row:
+                    conn.execute("DELETE FROM doc_fts WHERE doc_id = ?", (row["id"],))
+                    conn.execute(
+                        """INSERT INTO doc_fts (doc_id, vault_id, name, content, tags, notes)
+                           VALUES (?, (SELECT vault_id FROM documents WHERE id = ?),
+                                   ?, ?, ?, ?)""",
+                        (row["id"], row["id"], fts_row["name"], fts_row["content"],
+                         " ".join(final_tags), fts_row["notes"])
+                    )
                 count += 1
         return count
 
