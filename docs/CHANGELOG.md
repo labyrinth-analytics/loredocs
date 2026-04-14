@@ -4,6 +4,16 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## 2026-04-13
+
+### Improvements
+
+- **Bulk tagging is now faster and more reliable.** When you tag multiple documents at once using `vault_bulk_tag`, LoreDocs now applies all changes in a single database transaction instead of opening and committing one transaction per document. This makes bulk operations noticeably faster when tagging large sets of documents and ensures that all changes succeed or fail together -- no partial updates if something goes wrong mid-operation.
+
+- **Faster document link lookups.** A new database index speeds up queries that follow document-to-document links. If your vault has many linked documents, operations like `vault_find_related` now return faster.
+
+---
+
 ## 2026-04-08
 
 ### Bug Fixes
