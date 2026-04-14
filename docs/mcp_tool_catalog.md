@@ -334,7 +334,7 @@ Export a complete manifest of a vault's contents. Useful for sharing, versioning
 
 ---
 
-## Tier Management (2 tools)
+## Tier Management (3 tools)
 
 ### `vault_tier_status`
 
@@ -353,6 +353,16 @@ Activate a tier (free or pro) for LoreDocs. Pro tier requires a valid license ke
 **When Claude uses it:** When you say "upgrade to Pro" or "activate my license key."
 
 **Key parameters:** `tier` (required)
+
+---
+
+### `get_license_tier`
+
+Return the current license tier name and the raw license key status (present/absent/invalid). Use this to confirm which tier is active and whether a license key has been accepted.
+
+**When Claude uses it:** When you ask "what license tier am I on?" or "is my license key working?"
+
+**Key parameters:** none required
 
 ---
 
