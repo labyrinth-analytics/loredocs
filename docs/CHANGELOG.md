@@ -4,6 +4,28 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## 2026-04-18
+
+### Bug Fixes
+
+- **Vault and document info no longer crashes when tags contain commas.** If a vault or document was saved with tags in the older comma-separated format (for example, `"python,sqlite"` instead of a proper list), running `query_loredocs.py --info` would crash with a parse error. This is now fixed. Both the new JSON list format and the legacy comma-separated format are handled automatically.
+
+### New Features
+
+- **One-time tag migration utility for legacy data.** If you have vaults or documents with comma-separated tags from an older version of LoreDocs, you can now convert them to the current format in one step. Run the admin script with the `--migrate-tags` flag:
+
+  ```
+  python ron_skills/loredocs/scripts/query_loredocs.py --migrate-tags
+  ```
+
+  The script reports how many tags it converted. You only need to run this once if you used LoreDocs before the tag format was standardized. New installs are not affected.
+
+### Improvements
+
+- **Search index stays in sync when you update or delete documents.** Previously, if a document was updated or deleted outside of normal LoreDocs usage (for example, by a direct database write or a future sync tool), the internal search index could silently fall out of date -- meaning searches might return stale results or results for documents that no longer exist. LoreDocs now uses database-level triggers to keep the search index consistent whenever a document changes, matching the approach already used by LoreConvo. This is an internal reliability improvement and is transparent to all users.
+
+---
+
 ## 2026-04-13
 
 ### Improvements
