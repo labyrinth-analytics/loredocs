@@ -1,0 +1,82 @@
+// LoreDocs Data Model (loredocs.db)
+// AI project knowledge management -- durable vaults for specs, guides, reference docs
+// Product: LoreDocs v0.1.0
+// Generated: 2026-04-17
+
+Project LoreDocs {
+  database_type: 'SQLite'
+  Note: '''
+    Knowledge vault system for storing and retrieving project documents.
+    Each vault is a named container; documents belong to exactly one vault.
+    FTS5 full-text search across document metadata for fast discovery.
+  '''
+}
+
+Table vaults {
+  id              text [pk, note: 'UUID (truncated display in SQLite, full UUID stored)']
+  name            text [not null, note: 'Human-readable vault name, e.g. "Tax Reference 2025"']
+  description     text [default: '', note: 'What this vault contains and its purpose']
+  created_at      text [not null, note: 'ISO 8601 datetime with timezone']
+  updated_at      text [not null, note: 'ISO 8601 datetime, updated on any vault or child doc change']
+  archived        integer [default: 0, note: 'Soft archive flag: 0=active, 1=archived']
+  tags            text [default: '[]', note: 'JSON array of string tags']
+  linked_projects text [default: '[]', note: 'JSON array of project names this vault serves']
+
+  Note: '''
+    Top-level container. One vault per project or knowledge domain.
+    Convention: vault name matches project tag (e.g. "side_hustle").
+    Shared knowledge goes in named vaults like "cross_project_patterns".
+  '''
+}
+
+Table documents {
+  id                text [pk, note: 'UUID (truncated display in SQLite, full UUID stored)']
+  vault_id          text [not null, ref: > vaults.id, note: 'Parent vault FK (CASCADE delete)']
+  name              text [not null, note: 'Display name, e.g. "Depreciation Schedules"']
+  original_filename text [not null, note: 'Original file name with extension']
+  file_extension    text [default: '', note: 'Extracted extension, e.g. ".md", ".py"']
+  category          text [default: 'general', note: 'Document type: general, reference, spec, guide, etc.']
+  priority          text [default: 'normal', note: 'Priority level: low, normal, high, critical']
+  tags              text [default: '[]', note: 'JSON array of string tags for filtering']
+  notes             text [default: '', note: 'Free-text notes about this document']
+  created_at        text [not null, note: 'ISO 8601 datetime with timezone']
+  updated_at        text [not null, note: 'ISO 8601 datetime, updated on any change']
+  file_size_bytes   integer [default: 0, note: 'Size of stored content in bytes']
+  version_count     integer [default: 1, note: 'Number of versions stored for this document']
+  deleted           integer [default: 0, note: 'Soft delete flag: 0=active, 1=deleted']
+
+  indexes {
+    vault_id [name: 'idx_documents_vault']
+    category [name: 'idx_documents_category']
+    deleted [name: 'idx_documents_deleted']
+  }
+
+  Note: '''
+    Core document metadata. Actual content stored separately (file system or blob).
+    Soft-delete pattern: deleted=1 hides from normal queries but retains data.
+    Tags stored as JSON arrays for flexible categorization.
+  '''
+}
+
+Table doc_links {
+  id              text [pk, note: 'UUID']
+  source_vault_id text [not null, ref: > vaults.id]
+  source_doc_id   text [not null, ref: > documents.id]
+  target_vault_id text [not null, ref: > vaults.id]
+  target_doc_id   text [not null, ref: > documents.id]
+  label           text [default: 'related', note: 'Relationship type: related, supersedes, depends_on']
+  created_at      text [not null, note: 'ISO 8601 datetime']
+
+  indexes {
+    target_doc_id [name: 'idx_doc_links_target']
+  }
+
+  Note: '''
+    Cross-document and cross-vault linking.
+    Enables knowledge graphs between documents across different vaults.
+  '''
+}
+
+// Implicit: doc_fts (FTS5 virtual table)
+// Columns: doc_id, vault_id, name, content, tags, notes
+// No auto-sync triggers -- FTS updates managed by application code (server.py)
