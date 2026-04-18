@@ -90,6 +90,17 @@ def _fmt_size(size_bytes):
         return f"{size_bytes / (1024 * 1024):.1f} MB"
 
 
+def _parse_tags(s):
+    """Parse tags field: handles JSON array or legacy comma-separated string."""
+    if not s:
+        return []
+    try:
+        result = json.loads(s)
+        return result if isinstance(result, list) else []
+    except (json.JSONDecodeError, ValueError):
+        return [t.strip() for t in s.split(",") if t.strip()]
+
+
 def _resolve_vault(conn, vault_ref):
     """Resolve a vault by ID or name (case-insensitive). Returns row dict or None."""
     # Try exact ID match first
@@ -188,14 +199,14 @@ def cmd_info(args):
     print(f"\nDocuments: {stats['doc_count']} | Total size: {_fmt_size(stats['total_size'])}")
     print(f"Created: {vault['created_at'][:10]} | Updated: {vault['updated_at'][:10]}")
 
-    tags = json.loads(vault["tags"]) if vault["tags"] else []
+    tags = _parse_tags(vault["tags"])
     if tags:
         print(f"Tags: {', '.join(tags)}")
 
     if docs:
         print(f"\n## Documents ({len(docs)})\n")
         for d in docs:
-            dtags = json.loads(d["tags"]) if d["tags"] else []
+            dtags = _parse_tags(d["tags"])
             tag_str = f" [{', '.join(dtags)}]" if dtags else ""
             print(f"- **{d['name']}** ({d['category']}, {d['priority']}){tag_str}")
             print(f"  ID: {d['id']} | Size: {_fmt_size(d['file_size_bytes'])} | Updated: {d['updated_at'][:10]}")
@@ -246,7 +257,7 @@ def cmd_search(args):
 
     print(f"Found {len(rows)} document(s) matching '{args.search}':\n")
     for d in rows:
-        dtags = json.loads(d["tags"]) if d["tags"] else []
+        dtags = _parse_tags(d["tags"])
         tag_str = f" [{', '.join(dtags)}]" if dtags else ""
         print(f"- **{d['name']}** in vault '{d['vault_name']}'{tag_str}")
         print(f"  ID: {d['id']} | Category: {d['category']} | Size: {_fmt_size(d['file_size_bytes'])}")
@@ -378,6 +389,35 @@ def cmd_add_doc(args):
     print(f"  size: {_fmt_size(len(content))}")
 
 
+# -- migrate-tags --
+
+def cmd_migrate_tags(args):
+    """One-time migration: normalize legacy comma-separated tags to JSON arrays."""
+    conn, db_path = _connect(args.db_path)
+    migrated_vaults = 0
+    migrated_docs = 0
+
+    rows = conn.execute(
+        "SELECT id, tags FROM vaults WHERE tags IS NOT NULL AND tags != '' AND tags NOT LIKE '[%'"
+    ).fetchall()
+    for row in rows:
+        tags = [t.strip() for t in row["tags"].split(",") if t.strip()]
+        conn.execute("UPDATE vaults SET tags = ? WHERE id = ?", (json.dumps(tags), row["id"]))
+        migrated_vaults += 1
+
+    rows = conn.execute(
+        "SELECT id, tags FROM documents WHERE tags IS NOT NULL AND tags != '' AND tags NOT LIKE '[%'"
+    ).fetchall()
+    for row in rows:
+        tags = [t.strip() for t in row["tags"].split(",") if t.strip()]
+        conn.execute("UPDATE documents SET tags = ? WHERE id = ?", (json.dumps(tags), row["id"]))
+        migrated_docs += 1
+
+    conn.commit()
+    conn.close()
+    print(f"Migration complete: {migrated_vaults} vault(s), {migrated_docs} document(s) updated.")
+
+
 # -- CLI --
 
 def main():
@@ -391,6 +431,8 @@ def main():
     parser.add_argument("--info", type=str, help="Show vault details by name or ID (equivalent to vault_inject_summary)")
     parser.add_argument("--search", type=str, help="Search documents by keyword")
     parser.add_argument("--add-doc", action="store_true", dest="add_doc", help="Add a document to a vault")
+    parser.add_argument("--migrate-tags", action="store_true", dest="migrate_tags",
+                        help="One-time migration: normalize legacy comma-separated tags to JSON arrays")
     parser.add_argument("--include-archived", action="store_true", dest="include_archived",
                         help="Include archived vaults in --list")
 
@@ -409,7 +451,9 @@ def main():
 
     args = parser.parse_args()
 
-    if args.add_doc:
+    if args.migrate_tags:
+        cmd_migrate_tags(args)
+    elif args.add_doc:
         if not args.vault or not args.name:
             parser.error("--add-doc requires --vault and --name")
         cmd_add_doc(args)

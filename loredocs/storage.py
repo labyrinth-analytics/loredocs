@@ -201,6 +201,22 @@ def _init_db(db_path: Path) -> None:
         CREATE INDEX IF NOT EXISTS idx_documents_deleted ON documents(deleted);
         CREATE INDEX IF NOT EXISTS idx_documents_category ON documents(category);
         CREATE INDEX IF NOT EXISTS idx_doc_links_target ON doc_links(target_doc_id);
+
+        -- FTS sync triggers: keep doc_fts in sync with documents for UPDATE and DELETE.
+        -- INSERT sync is handled by application code (content column requires extracted
+        -- text from disk that is not available in the documents table row).
+        CREATE TRIGGER IF NOT EXISTS documents_au AFTER UPDATE ON documents BEGIN
+            UPDATE doc_fts SET
+                vault_id = new.vault_id,
+                name = new.name,
+                tags = new.tags,
+                notes = new.notes
+            WHERE doc_id = new.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS documents_ad AFTER DELETE ON documents BEGIN
+            DELETE FROM doc_fts WHERE doc_id = old.id;
+        END;
     """)
 
     conn.commit()
@@ -220,6 +236,22 @@ def _migrate_db(db_path: Path) -> None:
     existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(doc_links)")}
     if "label" not in existing_cols:
         conn.execute("ALTER TABLE doc_links ADD COLUMN label TEXT DEFAULT 'related'")
+
+    # v0.3: add FTS sync triggers for doc_fts (MEG-00073)
+    conn.executescript("""
+        CREATE TRIGGER IF NOT EXISTS documents_au AFTER UPDATE ON documents BEGIN
+            UPDATE doc_fts SET
+                vault_id = new.vault_id,
+                name = new.name,
+                tags = new.tags,
+                notes = new.notes
+            WHERE doc_id = new.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS documents_ad AFTER DELETE ON documents BEGIN
+            DELETE FROM doc_fts WHERE doc_id = old.id;
+        END;
+    """)
 
     conn.commit()
     conn.close()
