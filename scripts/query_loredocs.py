@@ -149,16 +149,10 @@ def cmd_list(args):
         if row["description"]:
             print(f"  {row['description']}")
         print(f"  - Documents: {stats['doc_count']} | Size: {_fmt_size(stats['total_size'])}")
-        try:
-            tags = json.loads(row["tags"]) if row["tags"] else []
-        except (json.JSONDecodeError, TypeError):
-            tags = []
+        tags = _parse_tags(row["tags"])
         if tags:
             print(f"  - Tags: {', '.join(tags)}")
-        try:
-            linked = json.loads(row["linked_projects"]) if row["linked_projects"] else []
-        except (json.JSONDecodeError, TypeError):
-            linked = []
+        linked = _parse_tags(row["linked_projects"])
         if linked:
             print(f"  - Linked projects: {', '.join(linked)}")
         print(f"  - Last updated: {row['updated_at'][:10]}")
