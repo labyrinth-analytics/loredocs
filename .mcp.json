@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "loredocs": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/.venv/bin/python3",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/loredocs/server.py"],
+      "env": {
+        "PYTHONPATH": "${CLAUDE_PLUGIN_ROOT}/loredocs"
+      }
+    }
+  }
+}
