@@ -197,5 +197,5 @@ The installer detects the existing venv and updates it in place.
 ## More Documentation
 
 - [Quickstart Guide](docs/quickstart.md) -- get up and running in 5 minutes
-- [MCP Tool Catalog](docs/mcp_tool_catalog.md) -- all 35 tools explained in plain English
+- [MCP Tool Catalog](docs/mcp_tool_catalog.md) -- all 36 tools explained in plain English
 - [Changelog](docs/CHANGELOG.md) -- what changed in each release
