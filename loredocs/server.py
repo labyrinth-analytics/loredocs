@@ -989,6 +989,29 @@ async def vault_inject_summary(params: InjectSummaryInput, ctx: Context) -> str:
     return await vault_info(VaultIdInput(vault=vault["id"]), ctx)
 
 
+class VaultPrimeInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    vault_name: str = Field(..., description="Vault name or ID to prime", min_length=1)
+    max_chars: Optional[int] = Field(default=None, description="Maximum characters to return (default: no limit)")
+
+
+@mcp.tool(
+    name="vault_prime",
+    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
+)
+async def vault_prime(params: VaultPrimeInput, ctx: Context) -> str:
+    """Pre-load vault context into current session.
+
+    Returns a summary overview of the vault's contents including all documents
+    with their categories, tags, priorities, and notes. Use at session start
+    to orient yourself on what knowledge is available in a vault.
+    """
+    result = await vault_inject_summary(InjectSummaryInput(vault=params.vault_name), ctx)
+    if params.max_chars and len(result) > params.max_chars:
+        return result[:params.max_chars] + "\n\n[Truncated to {} chars]".format(params.max_chars)
+    return result
+
+
 # ===================================================================
 # IMPORT / EXPORT TOOLS
 # ===================================================================
