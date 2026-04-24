@@ -1105,6 +1105,8 @@ class VaultStorage:
             return imported
 
         for file_path in sorted(dir_path.iterdir()):
+            if file_path.is_symlink():
+                continue
             if file_path.is_file() and not file_path.name.startswith("."):
                 if file_path.stat().st_size > MAX_FILE_SIZE:
                     continue
