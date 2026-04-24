@@ -1,4 +1,4 @@
-# LoreDocs
+# LoreDocs v0.1.0
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
