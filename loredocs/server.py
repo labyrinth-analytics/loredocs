@@ -1071,7 +1071,7 @@ class ExportInput(BaseModel):
 
 @mcp.tool(
     name="vault_export",
-    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
+    annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
 async def vault_export(params: ExportInput, ctx: Context) -> str:
     """Export all documents from a vault to a local directory.
