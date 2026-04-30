@@ -4,6 +4,8 @@ Your AI project's knowledge base. Organized, searchable, version-tracked.
 
 LoreDocs gives Claude persistent access to your project documentation -- specs, guides, architecture decisions, reference docs -- so it never loses context between sessions. Works with Claude Code and Cowork.
 
+> **Available on the Anthropic Marketplace.** Install directly from Claude, or via PyPI: `uvx loredocs`
+
 ## Quick Start
 
 **Prerequisites:** [uv](https://docs.astral.sh/uv/getting-started/installation/) (fast Python package manager).
