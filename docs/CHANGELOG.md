@@ -114,4 +114,4 @@ What changed in each release, written for users (not developers).
 
 ## Earlier Releases
 
-LoreDocs v0.1.0 established the core architecture: SQLite+FTS5 storage, 34 MCP tools for vault and document management, file import/export, full-text search, version history, tagging, and context injection.
+LoreDocs v0.1.0 established the core architecture: SQLite+FTS5 storage, 36 MCP tools for vault and document management, file import/export, full-text search, version history, tagging, and context injection.
