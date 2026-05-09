@@ -178,14 +178,18 @@ LoreDocs provides 36 MCP tools organized by function:
 | `vault_set_tier` | Set the active tier (free, pro, team) |
 | `get_license_tier` | Check current tier and license key status |
 
-## Works With LoreConvo
+## Portable Project Workspace
 
-LoreDocs is the knowledge base; [LoreConvo](https://github.com/labyrinth-analytics/loreconvo) is the session memory. Together they give Claude both long-term documentation and conversation history:
+LoreDocs and [LoreConvo](https://github.com/labyrinth-analytics/loreconvo) together form
+a portable project workspace for all of Claude -- session memory AND structured knowledge,
+entirely on your machine.
 
-- **LoreConvo** remembers what you discussed, decided, and left open
-- **LoreDocs** stores the reference docs, specs, and guides Claude needs
+- **LoreConvo** remembers what you discussed, decided, and left open (episodic + semantic memory)
+- **LoreDocs** stores the reference docs, specs, and guides Claude needs (durable knowledge)
 
-Both use local SQLite databases and work across Claude Code and Cowork.
+Where cloud AI workspaces tie you to one ecosystem, LoreConvo + LoreDocs works across
+every Claude surface you already use -- Code, Cowork, and Chat. Both store data locally in
+SQLite. Neither sends anything to an external server.
 
 ## Requirements
 
