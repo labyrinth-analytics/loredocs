@@ -66,45 +66,36 @@ python3 -m venv .venv
 
 ## Connecting to Claude Code
 
-After installation, add LoreDocs to your `~/.claude/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "loredocs": {
-      "command": "/Users/YOUR_USERNAME/projects/loredocs/.venv/bin/loredocs",
-      "env": {
-        "LOREDOCS_PRO": "your-pro-license-key-here"
-      }
-    }
-  }
-}
-```
-
-Replace `YOUR_USERNAME` with your Mac username. To find it, open a terminal and run:
+After installation, register LoreDocs with Claude Code using the `claude mcp add` command:
 
 ```bash
-whoami
+claude mcp add --scope user \
+  "--env=LOREDOCS_PRO=<your-license-key>" \
+  loredocs -- \
+  /path/to/loredocs/.venv/bin/python \
+  -m loredocs.server
 ```
 
-> **Important:** Do not use `$HOME` or `~` in `settings.json`. Claude Code does not
-> expand shell variables in this file. Use the full absolute path with your actual
-> username instead.
+Replace `/path/to/loredocs` with the actual path to your LoreDocs installation. To find it, run `pwd` from inside the loredocs directory.
 
-The `env` block is optional -- remove it if you are using the free tier and do not
-have a Pro license key. Without it, LoreDocs runs on the free tier.
+The `--env=LOREDOCS_PRO=<your-license-key>` flag is optional -- omit it if you are using the free tier. The `--scope user` flag registers LoreDocs for all Claude Code sessions (not just the current project).
+
+> **Why `claude mcp add` instead of editing settings.json?** Claude Code reads
+> user-level MCP servers from `~/.claude.json`, managed by `claude mcp add --scope user`.
+> Adding `mcpServers` entries to `~/.claude/settings.json` is silently ignored --
+> the server will not load. (GitHub issue #4976.)
 
 ### Environment variables
 
-| Variable | What it is for | Where to find the value |
-|----------|---------------|------------------------|
-| `LOREDOCS_PRO` | Your Pro license key (optional) | Provided when you purchase a Pro license |
+| Variable | What it is for | How to set it |
+|----------|---------------|--------------|
+| `LOREDOCS_PRO` | Your Pro license key (optional) | `--env=LOREDOCS_PRO=<key>` in the `claude mcp add` command |
 
 If `LOREDOCS_PRO` is not set, LoreDocs runs on the free tier (limited vaults and documents).
 
-### Restart Claude Code
+### Verify the connection
 
-After editing `settings.json`, restart Claude Code. Run the `/mcp` command to verify
+After running `claude mcp add`, restart Claude Code. Run the `/mcp` command to verify
 LoreDocs is connected. You should see `loredocs` listed with a green status.
 
 ---
@@ -171,7 +162,7 @@ Claude Code does not expand shell variables in `settings.json`. Replace any `~` 
 
 The free tier limits the number of vaults and documents. When you reach the limit,
 tools return a message explaining how to upgrade. Contact Labyrinth Analytics for a
-Pro license key, then set it as `LOREDOCS_PRO` in your `settings.json` env block.
+Pro license key, then re-run `claude mcp add --scope user` with `--env=LOREDOCS_PRO=<your-key>` included.
 
 ---
 
