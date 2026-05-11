@@ -139,6 +139,7 @@ class VaultCreateInput(BaseModel):
 
 
 @mcp.tool(
+    title="Create Vault",
     name="vault_create",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 )
@@ -184,6 +185,7 @@ class VaultListInput(BaseModel):
 
 
 @mcp.tool(
+    title="List Vaults",
     name="vault_list",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -228,6 +230,7 @@ class VaultIdInput(BaseModel):
 
 
 @mcp.tool(
+    title="Get Vault Info",
     name="vault_info",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -277,6 +280,7 @@ class VaultArchiveInput(BaseModel):
 
 
 @mcp.tool(
+    title="Archive Vault",
     name="vault_archive",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -298,6 +302,7 @@ class VaultDeleteInput(BaseModel):
 
 
 @mcp.tool(
+    title="Delete Vault",
     name="vault_delete",
     annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": False}
 )
@@ -327,6 +332,7 @@ class OnboardInput(BaseModel):
 
 
 @mcp.tool(
+    title="Onboard LoreDocs",
     name="loredocs_onboard",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -371,6 +377,7 @@ class VaultLinkProjectInput(BaseModel):
 
 
 @mcp.tool(
+    title="Link Project to Vault",
     name="vault_link_project",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -407,6 +414,7 @@ class DocAddInput(BaseModel):
 
 
 @mcp.tool(
+    title="Add Document",
     name="vault_add_doc",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 )
@@ -452,6 +460,7 @@ class DocUpdateInput(BaseModel):
 
 
 @mcp.tool(
+    title="Update Document",
     name="vault_update_doc",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 )
@@ -483,6 +492,7 @@ class DocIdInput(BaseModel):
 
 
 @mcp.tool(
+    title="Remove Document",
     name="vault_remove_doc",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -505,6 +515,7 @@ class DocGetInput(BaseModel):
 
 
 @mcp.tool(
+    title="Get Document",
     name="vault_get_doc",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -559,6 +570,7 @@ class DocListInput(BaseModel):
 
 
 @mcp.tool(
+    title="List Documents",
     name="vault_list_docs",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -635,6 +647,7 @@ class SearchInput(BaseModel):
 
 
 @mcp.tool(
+    title="Search Vault",
     name="vault_search",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -697,6 +710,7 @@ class SearchByTagInput(BaseModel):
 
 
 @mcp.tool(
+    title="Search by Tag",
     name="vault_search_by_tag",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -739,6 +753,7 @@ class TagDocInput(BaseModel):
 
 
 @mcp.tool(
+    title="Tag Document",
     name="vault_tag_doc",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -768,6 +783,7 @@ class BulkTagInput(BaseModel):
 
 
 @mcp.tool(
+    title="Bulk Tag Documents",
     name="vault_bulk_tag",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -792,6 +808,7 @@ class CategorizeInput(BaseModel):
 
 
 @mcp.tool(
+    title="Categorize Document",
     name="vault_categorize",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -811,6 +828,7 @@ class SetPriorityInput(BaseModel):
 
 
 @mcp.tool(
+    title="Set Document Priority",
     name="vault_set_priority",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -834,6 +852,7 @@ class AddNoteInput(BaseModel):
 
 
 @mcp.tool(
+    title="Add Document Note",
     name="vault_add_note",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -854,6 +873,7 @@ async def vault_add_note(params: AddNoteInput, ctx: Context) -> str:
 # ===================================================================
 
 @mcp.tool(
+    title="View Document History",
     name="vault_doc_history",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -886,6 +906,7 @@ class DocRestoreInput(BaseModel):
 
 
 @mcp.tool(
+    title="Restore Document Version",
     name="vault_doc_restore",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 )
@@ -930,6 +951,7 @@ class CopyDocInput(BaseModel):
 
 
 @mcp.tool(
+    title="Copy Document",
     name="vault_copy_doc",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 )
@@ -953,6 +975,7 @@ class MoveDocInput(BaseModel):
 
 
 @mcp.tool(
+    title="Move Document",
     name="vault_move_doc",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 )
@@ -979,6 +1002,7 @@ class InjectInput(BaseModel):
 
 
 @mcp.tool(
+    title="Inject Documents into Context",
     name="vault_inject",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -1018,6 +1042,7 @@ class InjectByTagInput(BaseModel):
 
 
 @mcp.tool(
+    title="Inject Documents by Tag",
     name="vault_inject_by_tag",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -1049,6 +1074,7 @@ class InjectSummaryInput(BaseModel):
 
 
 @mcp.tool(
+    title="Inject Vault Summary",
     name="vault_inject_summary",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -1074,6 +1100,7 @@ class VaultPrimeInput(BaseModel):
 
 
 @mcp.tool(
+    title="Prime Vault Context",
     name="vault_prime",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -1104,6 +1131,7 @@ class ImportDirInput(BaseModel):
 
 
 @mcp.tool(
+    title="Import Directory",
     name="vault_import_dir",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 )
@@ -1148,6 +1176,7 @@ class ExportInput(BaseModel):
 
 
 @mcp.tool(
+    title="Export Vault",
     name="vault_export",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -1183,6 +1212,7 @@ class LinkDocInput(BaseModel):
 
 
 @mcp.tool(
+    title="Link Documents",
     name="vault_link_doc",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -1219,6 +1249,7 @@ class UnlinkDocInput(BaseModel):
 
 
 @mcp.tool(
+    title="Unlink Documents",
     name="vault_unlink_doc",
     annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False}
 )
@@ -1244,6 +1275,7 @@ class FindRelatedInput(BaseModel):
 
 
 @mcp.tool(
+    title="Find Related Documents",
     name="vault_find_related",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -1287,6 +1319,7 @@ class VaultSuggestInput(BaseModel):
 
 
 @mcp.tool(
+    title="Get Document Suggestions",
     name="vault_suggest",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -1335,6 +1368,7 @@ class ExportManifestInput(BaseModel):
 
 
 @mcp.tool(
+    title="Export Vault Manifest",
     name="vault_export_manifest",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -1407,6 +1441,7 @@ class VaultTierStatusInput(BaseModel):
 
 
 @mcp.tool(
+    title="Get Tier Status",
     name="vault_tier_status",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -1486,6 +1521,7 @@ class VaultSetTierInput(BaseModel):
 
 
 @mcp.tool(
+    title="Set License Tier",
     name="vault_set_tier",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
@@ -1543,7 +1579,7 @@ async def vault_set_tier(params: VaultSetTierInput, ctx: Context) -> str:
 # License tier diagnostic
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@mcp.tool(title="Get License Tier")
 def get_license_tier() -> dict:
     """Return the current LoreDocs license tier and status.
 
