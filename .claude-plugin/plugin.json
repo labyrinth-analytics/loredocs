@@ -17,5 +17,8 @@
     "vault",
     "context"
   ],
-  "license": "BSL-1.1"
+  "license": "BSL-1.1",
+  "privacy_policies": [
+    "https://labyrinthanalyticsconsulting.com/privacy"
+  ]
 }
