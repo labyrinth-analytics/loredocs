@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .storage import VaultStorage
 from .tiers import TierLimitError, get_tier, set_tier, TIER_LIMITS
 from .license import get_license_status
+from .onboard_tool import run_onboard as _run_onboard
 
 
 # ---------------------------------------------------------------------------
@@ -39,7 +40,20 @@ async def app_lifespan(app):
     yield {"storage": storage}
 
 
-mcp = FastMCP("loredocs_mcp", lifespan=app_lifespan)
+mcp = FastMCP(
+    "loredocs_mcp",
+    lifespan=app_lifespan,
+    instructions=(
+        "LoreDocs organizes project knowledge in searchable vaults. "
+        "Use loredocs_onboard to set up your workspace on first install. "
+        "Use vault_create to create vaults, vault_add_doc to store documents. "
+        "Use vault_search to find documents by keyword (FTS5 syntax supported). "
+        "Use vault_inject or vault_inject_by_tag to load documents into context. "
+        "Categories: reference, report, template, config, archive, general. "
+        "Priority: authoritative (source of truth), normal, draft, outdated. "
+        "Tags are freeform strings for cross-vault retrieval."
+    )
+)
 
 
 def _get_storage(ctx: Context) -> VaultStorage:
@@ -147,6 +161,14 @@ async def vault_create(params: VaultCreateInput, ctx: Context) -> str:
         )
     except TierLimitError as exc:
         return f"Error: {exc}"
+    # Add setup_tip on first vault if Config vault doesn't already exist
+    vault_count = len(storage.list_vaults(include_archived=False))
+    config_exists = storage.find_vault_by_name("Config") is not None
+    if vault_count == 1 and not config_exists:
+        vault["setup_tip"] = (
+            "First vault created. Run loredocs_onboard() to add a Config vault "
+            "with a reference doc your AI assistant can query at session start."
+        )
     if params.response_format == ResponseFormat.MARKDOWN:
         return f"Vault '{vault['name']}' created. ID: {vault['id']}"
     return json.dumps(vault, indent=2)
@@ -171,7 +193,11 @@ async def vault_list(params: VaultListInput, ctx: Context) -> str:
     vaults = storage.list_vaults(include_archived=params.include_archived)
 
     if not vaults:
-        return "No vaults found. Create one with vault_create."
+        return (
+            "No vaults found. Create one with vault_create, or run "
+            "loredocs_onboard() to get a starter structure with a Config vault "
+            "and reference doc your AI assistant can query."
+        )
 
     if params.response_format == ResponseFormat.JSON:
         return json.dumps(vaults, indent=2)
@@ -287,6 +313,52 @@ async def vault_delete(params: VaultDeleteInput, ctx: Context) -> str:
     if storage.delete_vault(vault["id"]):
         return f"Vault '{name}' and all its documents have been permanently deleted."
     return "Error: Could not delete vault."
+
+
+class OnboardInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    name: Optional[str] = Field(default=None, description="Workspace or team name")
+    domains: Optional[List[str]] = Field(default=None, description="Work domains -- each becomes a vault (e.g. ['finance', 'research'])")
+    agents: Optional[List[str]] = Field(default=None, description="Agent names -- each gets a '[Name] Reports' vault")
+    tag_style: str = Field(default="simple", description="'simple' (status+priority) or 'detailed' (adds effort, agent tags)")
+
+
+@mcp.tool(
+    name="loredocs_onboard",
+    annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
+)
+async def loredocs_onboard(params: OnboardInput, ctx: Context) -> str:
+    """Set up or update your LoreDocs workspace configuration.
+
+    Call once after installing LoreDocs to get a recommended vault structure.
+    Call again to add new domains or agents -- existing data is never modified.
+
+    Creates:
+    - A Config vault with a 'My LoreDocs Setup' reference doc (tagged authoritative)
+    - One vault per domain in domains
+    - One '[Name] Reports' vault per agent in agents
+    - The reference doc is queryable: vault_search('my setup')
+
+    Args:
+        name: Workspace or team name
+        domains: Work areas, each becomes a vault (e.g. ['finance', 'research'])
+        agents: Agent names, each gets a '[Name] Reports' vault
+        tag_style: 'simple' (default) or 'detailed'
+
+    Vault tags: freeform strings on documents for cross-vault retrieval.
+    Categories: reference, report, template, config, archive, general.
+    Priority: authoritative, normal, draft, outdated.
+    """
+    if params.tag_style not in ("simple", "detailed"):
+        return "Error: tag_style must be 'simple' or 'detailed'"
+    storage = _get_storage(ctx)
+    return _run_onboard(
+        storage,
+        name=params.name,
+        domains=params.domains,
+        agents=params.agents,
+        tag_style=params.tag_style,
+    )
 
 
 class VaultLinkProjectInput(BaseModel):
