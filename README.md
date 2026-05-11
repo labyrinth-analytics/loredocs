@@ -198,9 +198,17 @@ SQLite. Neither sends anything to an external server.
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) package manager
 - `mcp` and `pydantic` (auto-installed by `uv sync`)
 
-## Data Storage
+## Data and Privacy
 
-Documents and metadata are stored locally in SQLite at `~/.loredocs/loredocs.db`. Document files live in `~/.loredocs/vaults/`. Override the database path with the `LOREDOCS_DB` environment variable.
+LoreDocs is **local-first**. All data lives in `~/.loredocs/` on your machine.
+
+- **Data collected:** Document names, content, tags, categories, and vault names you provide when storing documents. No telemetry, usage analytics, or identifiers are collected automatically.
+- **Storage:** SQLite database at `~/.loredocs/loredocs.db`; document files in `~/.loredocs/vaults/`. No cloud storage. Override the root directory with the `LOREDOCS_ROOT` environment variable.
+- **Third-party sharing:** None. Data never leaves your machine.
+- **Retention:** Data is retained until you delete it via `vault_remove_doc`, `vault_delete`, or remove the database files manually. No automatic expiry.
+- **Contact:** info@labyrinthanalyticsconsulting.com
+
+Full privacy policy: https://labyrinthanalyticsconsulting.com/privacy
 
 ## Troubleshooting
 
