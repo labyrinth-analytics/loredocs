@@ -170,7 +170,10 @@ async def vault_create(params: VaultCreateInput, ctx: Context) -> str:
             "with a reference doc your AI assistant can query at session start."
         )
     if params.response_format == ResponseFormat.MARKDOWN:
-        return f"Vault '{vault['name']}' created. ID: {vault['id']}"
+        result = f"Vault '{vault['name']}' created. ID: {vault['id']}"
+        if "setup_tip" in vault:
+            result += f"\n\n{vault['setup_tip']}"
+        return result
     return json.dumps(vault, indent=2)
 
 
