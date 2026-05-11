@@ -121,6 +121,7 @@ class VaultCreateInput(BaseModel):
     description: str = Field(default="", description="Description of what this vault contains", max_length=500)
     tags: Optional[List[str]] = Field(default=None, description="Tags for the vault itself (e.g., ['finance', '2025'])")
     linked_projects: Optional[List[str]] = Field(default=None, description="Claude Project names to associate with this vault")
+    response_format: ResponseFormat = Field(default=ResponseFormat.JSON, description="Output format: json (full vault dict) or markdown (brief summary)")
 
 
 @mcp.tool(
@@ -146,6 +147,8 @@ async def vault_create(params: VaultCreateInput, ctx: Context) -> str:
         )
     except TierLimitError as exc:
         return f"Error: {exc}"
+    if params.response_format == ResponseFormat.MARKDOWN:
+        return f"Vault '{vault['name']}' created. ID: {vault['id']}"
     return json.dumps(vault, indent=2)
 
 
