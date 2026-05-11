@@ -40,7 +40,20 @@ async def app_lifespan(app):
     yield {"storage": storage}
 
 
-mcp = FastMCP("loredocs_mcp", lifespan=app_lifespan)
+mcp = FastMCP(
+    "loredocs_mcp",
+    lifespan=app_lifespan,
+    instructions=(
+        "LoreDocs organizes project knowledge in searchable vaults. "
+        "Use loredocs_onboard to set up your workspace on first install. "
+        "Use vault_create to create vaults, vault_add_doc to store documents. "
+        "Use vault_search to find documents by keyword (FTS5 syntax supported). "
+        "Use vault_inject or vault_inject_by_tag to load documents into context. "
+        "Categories: reference, report, template, config, archive, general. "
+        "Priority: authoritative (source of truth), normal, draft, outdated. "
+        "Tags are freeform strings for cross-vault retrieval."
+    )
+)
 
 
 def _get_storage(ctx: Context) -> VaultStorage:
