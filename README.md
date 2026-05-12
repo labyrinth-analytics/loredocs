@@ -64,6 +64,10 @@ LoreDocs organizes knowledge into **vaults** -- named containers for related doc
 - **Full-text search** via SQLite FTS5 finds anything instantly
 - **Injection** loads vault content into Claude's context on demand
 
+## Your Data is Always Available
+
+LoreDocs works through MCP tools when they are available and falls back to bundled scripts automatically when they are not. Your vault documents are safe regardless of MCP status -- the same add, search, and retrieve operations work either way. You do not need to configure anything; the plugin skill handles the switch silently.
+
 ## Verify Installation
 
 After installing, verify LoreDocs is working by asking Claude:
