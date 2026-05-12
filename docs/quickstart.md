@@ -134,6 +134,14 @@ Your documents are plain files on disk. You can back them up, version them with 
 
 ---
 
+## Access Methods and Reliability
+
+LoreDocs works through MCP tools when they are available and falls back to bundled scripts
+automatically when they are not. Your vault documents are safe regardless of MCP status;
+you do not need to configure anything.
+
+---
+
 ## Troubleshooting
 
 **"No matching distribution found for loredocs"** -- LoreDocs is not published to PyPI yet. Use the developer install (Step 2 above).

@@ -172,6 +172,22 @@ All vault data is stored locally at `~/.loredocs/`. Nothing is sent to any cloud
 
 ---
 
+## How LoreDocs Accesses Your Data
+
+LoreDocs provides two ways to read and write your vault data:
+
+**MCP tools** are the primary method. Claude uses these automatically during sessions -- tools
+like `vault_add_doc`, `vault_search`, and `vault_inject` connect through the MCP server.
+
+**Bundled scripts** are the automatic fallback. If the MCP server is unavailable (for example,
+after a startup timeout or a rejected tool call), LoreDocs switches to these scripts silently.
+The plugin skill handles this; no action is needed on your part.
+
+Both methods read and write the same files at `~/.loredocs/`. Switching between them never
+causes data loss.
+
+---
+
 ## Upgrading
 
 To upgrade LoreDocs to the latest version:
