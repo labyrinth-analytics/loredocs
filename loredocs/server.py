@@ -1585,7 +1585,7 @@ async def vault_set_tier(params: VaultSetTierInput, ctx: Context) -> str:
 # License tier diagnostic
 # ---------------------------------------------------------------------------
 
-@mcp.tool(title="Get License Tier")
+@mcp.tool(title="Get License Tier", name="get_license_tier")
 def get_license_tier() -> dict:
     """Return the current LoreDocs license tier and status.
 
