@@ -1128,6 +1128,7 @@ class ImportDirInput(BaseModel):
     directory: str = Field(..., description="Absolute path to directory containing files to import")
     tags: Optional[List[str]] = Field(default=None, description="Tags to apply to all imported documents")
     category: DocCategory = Field(default=DocCategory.IMPORTED, description="Category for imported documents")
+    recursive: bool = Field(default=True, description="Traverse subdirectories recursively (default True). Set False for single-level import.")
 
 
 @mcp.tool(
@@ -1141,6 +1142,10 @@ async def vault_import_dir(params: ImportDirInput, ctx: Context) -> str:
     Imports text files, PDFs, Word docs, Excel files, PowerPoints, and more.
     Each file becomes a separate document with text extracted for search indexing.
     Files over 30MB are skipped. Hidden files (starting with .) are skipped.
+
+    Supports Obsidian vaults: subdirectories are traversed recursively by default
+    (set recursive=False for single-level import). Markdown files with YAML frontmatter
+    tags (tags: [a, b] or block-list style) have those tags merged into the document.
     """
     storage = _get_storage(ctx)
     vault = _resolve_vault(storage, params.vault)
@@ -1156,6 +1161,7 @@ async def vault_import_dir(params: ImportDirInput, ctx: Context) -> str:
         dir_path=dir_path,
         tags=params.tags,
         category=params.category.value,
+        recursive=params.recursive,
     )
 
     if not results:
