@@ -257,6 +257,37 @@ def _migrate_db(db_path: Path) -> None:
     conn.close()
 
 
+def _extract_frontmatter_tags(content: bytes) -> List[str]:
+    """Extract tags from YAML frontmatter in a markdown file (stdlib only, no PyYAML)."""
+    try:
+        text = content.decode("utf-8", errors="ignore")
+        if not text.startswith("---"):
+            return []
+        end = text.find("\n---", 3)
+        if end == -1:
+            return []
+        block = text[3:end]
+        in_tags = False
+        tags: List[str] = []
+        for line in block.splitlines():
+            if line.startswith("tags:"):
+                raw = line[5:].strip()
+                if raw.startswith("[") and raw.endswith("]"):
+                    return [t.strip().strip("'\"") for t in raw[1:-1].split(",") if t.strip()]
+                if raw:
+                    return [raw.strip()]
+                in_tags = True
+            elif in_tags:
+                stripped = line.strip()
+                if stripped.startswith("- "):
+                    tags.append(stripped[2:].strip().strip("'\""))
+                elif stripped and not stripped.startswith("#"):
+                    break
+        return tags
+    except Exception:
+        return []
+
+
 # ---------------------------------------------------------------------------
 # Storage class
 # ---------------------------------------------------------------------------
@@ -1098,13 +1129,15 @@ class VaultStorage:
 
     def import_directory(self, vault_id: str, dir_path: Path,
                          tags: Optional[List[str]] = None,
-                         category: str = "imported") -> List[Dict[str, Any]]:
+                         category: str = "imported",
+                         recursive: bool = True) -> List[Dict[str, Any]]:
         """Bulk import all supported files from a directory into a vault."""
         imported = []
         if not dir_path.is_dir():
             return imported
 
-        for file_path in sorted(dir_path.iterdir()):
+        iterator = sorted(dir_path.rglob("*")) if recursive else sorted(dir_path.iterdir())
+        for file_path in iterator:
             if file_path.is_symlink():
                 continue
             if file_path.is_file() and not file_path.name.startswith("."):
@@ -1113,9 +1146,17 @@ class VaultStorage:
                 try:
                     content = file_path.read_bytes()
                     doc_name = file_path.stem.replace("_", " ").replace("-", " ").title()
+                    doc_tags = list(tags) if tags else []
+                    if file_path.suffix.lower() == ".md":
+                        fm_tags = _extract_frontmatter_tags(content)
+                        for t in fm_tags:
+                            if t and t not in doc_tags:
+                                doc_tags.append(t)
                     result = self.add_document(
                         vault_id, name=doc_name, content=content,
-                        filename=file_path.name, tags=tags, category=category
+                        filename=file_path.name,
+                        tags=doc_tags if doc_tags else None,
+                        category=category
                     )
                     if result:
                         imported.append(result)
