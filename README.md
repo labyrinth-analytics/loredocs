@@ -155,12 +155,13 @@ LoreDocs provides 37 MCP tools organized by function:
 | `vault_set_priority` | Set document priority level |
 | `vault_add_note` | Add a note or annotation to a document |
 
-### Context Injection (3 tools)
+### Context Injection (4 tools)
 | Tool | What it does |
 |------|-------------|
 | `vault_inject` | Load specific documents into Claude's context |
 | `vault_inject_by_tag` | Load all documents matching a tag |
 | `vault_inject_summary` | Load a vault summary with doc titles and descriptions |
+| `vault_prime` | Pre-load vault context into current session (convenience wrapper for vault_inject_summary) |
 
 ### Import/Export (3 tools)
 | Tool | What it does |
@@ -175,12 +176,13 @@ LoreDocs provides 37 MCP tools organized by function:
 | `vault_link_doc` | Create a link between two documents |
 | `vault_unlink_doc` | Remove a link between documents |
 
-### Administration (3 tools)
+### Administration (4 tools)
 | Tool | What it does |
 |------|-------------|
 | `vault_tier_status` | Check current tier limits and usage |
 | `vault_set_tier` | Set the active tier (free, pro, team) |
 | `get_license_tier` | Check current tier and license key status |
+| `loredocs_onboard` | Set up workspace with starter vaults on first install |
 
 ## Portable Project Workspace
 
