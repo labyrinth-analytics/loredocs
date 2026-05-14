@@ -21,15 +21,48 @@ Storage is organized as:
 
 import json
 import os
+import re
 import shutil
 import sqlite3
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .tiers import TierEnforcer, TierLimitError  # noqa: F401 (re-exported for callers)
+
+_STOPWORDS = frozenset({
+    "a", "about", "after", "again", "ago", "all", "also", "an", "and",
+    "any", "are", "as", "at", "be", "been", "being", "but", "by", "can",
+    "could", "did", "do", "does", "done", "down", "during", "each",
+    "either", "every", "few", "for", "from", "get", "got", "had", "has",
+    "have", "he", "her", "here", "him", "his", "how", "i", "if", "in",
+    "into", "is", "it", "its", "just", "like", "may", "me", "more",
+    "most", "my", "neither", "new", "no", "nor", "not", "now", "of",
+    "off", "on", "once", "only", "or", "other", "our", "out", "over",
+    "own", "per", "run", "s", "set", "she", "so", "some", "such", "t",
+    "than", "that", "the", "their", "them", "then", "there", "these",
+    "they", "this", "those", "through", "to", "too", "under", "up",
+    "use", "used", "was", "we", "were", "what", "when", "where", "which",
+    "while", "who", "will", "with", "would", "yet", "you", "your",
+})
+
+
+def _extract_keywords(text: str, top_n: int = 30) -> List[Tuple[str, int]]:
+    """Extract top-N keywords from text using simple term frequency.
+
+    Returns list of (term, frequency) tuples sorted descending by frequency.
+    Only includes tokens of 3+ characters not in the stopword list.
+    """
+    if not text:
+        return []
+    tokens = re.findall(r'[a-z]{3,}', text.lower())
+    counts: Dict[str, int] = {}
+    for token in tokens:
+        if token not in _STOPWORDS:
+            counts[token] = counts.get(token, 0) + 1
+    return sorted(counts.items(), key=lambda x: x[1], reverse=True)[:top_n]
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +263,7 @@ def _init_db(db_path: Path) -> None:
 def _migrate_db(db_path: Path) -> None:
     """Apply incremental schema migrations that are safe to run repeatedly."""
     conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
 
     # v0.2: add label column to doc_links if missing
@@ -253,8 +287,138 @@ def _migrate_db(db_path: Path) -> None:
         END;
     """)
 
+    # v0.4: add doc_cooccurrences table for relationship layer (RON-00067)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS doc_cooccurrences (
+            term    TEXT NOT NULL,
+            doc_id  TEXT NOT NULL,
+            frequency INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (term, doc_id)
+        )
+    """)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_doc_cooccurrences_doc ON doc_cooccurrences(doc_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_doc_cooccurrences_term ON doc_cooccurrences(term)"
+    )
+
+    # Populate doc_cooccurrences for existing documents if table is empty
+    count = conn.execute("SELECT COUNT(*) FROM doc_cooccurrences").fetchone()[0]
+    if count == 0:
+        _reindex_all_docs(conn, db_path.parent / VAULTS_DIR)
+
     conn.commit()
     conn.close()
+
+
+def _insert_doc_cooccurrences(
+    conn: sqlite3.Connection,
+    doc_id: str,
+    name: str,
+    tags: List[str],
+    content: str,
+) -> None:
+    """(Re)index keyword co-occurrences for one document. Replaces prior index."""
+    conn.execute("DELETE FROM doc_cooccurrences WHERE doc_id = ?", (doc_id,))
+    text = " ".join(filter(None, [name, content]))
+    for term, freq in _extract_keywords(text):
+        conn.execute(
+            "INSERT OR REPLACE INTO doc_cooccurrences (term, doc_id, frequency) VALUES (?, ?, ?)",
+            (term, doc_id, freq)
+        )
+    # Boost tags as explicit terms
+    for tag in tags:
+        if isinstance(tag, str):
+            tag_term = re.sub(r'[^a-z]', '', tag.lower())
+            if len(tag_term) >= 3 and tag_term not in _STOPWORDS:
+                conn.execute(
+                    "INSERT OR REPLACE INTO doc_cooccurrences (term, doc_id, frequency) VALUES (?, ?, ?)",
+                    (tag_term, doc_id, 5)
+                )
+
+
+def _auto_link_doc_cooccurrences(
+    conn: sqlite3.Connection,
+    doc_id: str,
+    min_shared_terms: int = 3,
+) -> None:
+    """Create bidirectional auto-links in doc_links for docs sharing >= min_shared_terms terms.
+
+    Uses label='auto:cooccurrence'. INSERT OR IGNORE preserves manual links.
+    Caps at 20 new links per document.
+    """
+    src_row = conn.execute(
+        "SELECT vault_id FROM documents WHERE id = ?", (doc_id,)
+    ).fetchone()
+    if not src_row:
+        return
+    source_vault_id = src_row[0]
+
+    candidates = conn.execute(
+        """SELECT dc2.doc_id, COUNT(*) as shared_count
+           FROM doc_cooccurrences dc1
+           JOIN doc_cooccurrences dc2 ON dc1.term = dc2.term
+           WHERE dc1.doc_id = ?
+             AND dc2.doc_id != ?
+           GROUP BY dc2.doc_id
+           HAVING COUNT(*) >= ?
+           ORDER BY shared_count DESC
+           LIMIT 20""",
+        (doc_id, doc_id, min_shared_terms)
+    ).fetchall()
+
+    now = datetime.now(timezone.utc).isoformat()
+    for row in candidates:
+        other_doc_id = row[0]
+        tgt_row = conn.execute(
+            "SELECT vault_id FROM documents WHERE id = ? AND deleted = 0",
+            (other_doc_id,)
+        ).fetchone()
+        if not tgt_row:
+            continue
+        target_vault_id = tgt_row[0]
+        try:
+            conn.execute(
+                """INSERT OR IGNORE INTO doc_links
+                   (id, source_vault_id, source_doc_id, target_vault_id, target_doc_id,
+                    created_at, label)
+                   VALUES (?, ?, ?, ?, ?, ?, 'auto:cooccurrence')""",
+                (str(uuid.uuid4())[:12], source_vault_id, doc_id,
+                 target_vault_id, other_doc_id, now)
+            )
+            conn.execute(
+                """INSERT OR IGNORE INTO doc_links
+                   (id, source_vault_id, source_doc_id, target_vault_id, target_doc_id,
+                    created_at, label)
+                   VALUES (?, ?, ?, ?, ?, ?, 'auto:cooccurrence')""",
+                (str(uuid.uuid4())[:12], target_vault_id, other_doc_id,
+                 source_vault_id, doc_id, now)
+            )
+        except sqlite3.IntegrityError:
+            pass
+
+
+def _reindex_all_docs(conn: sqlite3.Connection, vaults_dir: Path) -> None:
+    """Populate doc_cooccurrences for all existing documents (first-run migration)."""
+    rows = conn.execute(
+        "SELECT id, vault_id, name, tags FROM documents WHERE deleted = 0"
+    ).fetchall()
+    for row in rows:
+        doc_id = row["id"]
+        vault_id = row["vault_id"]
+        name = row["name"]
+        tags = json.loads(row["tags"] or "[]")
+
+        extracted_path = vaults_dir / vault_id / "docs" / doc_id / "extracted.txt"
+        content = ""
+        if extracted_path.exists():
+            try:
+                content = extracted_path.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+        _insert_doc_cooccurrences(conn, doc_id, name, tags, content)
 
 
 def _extract_frontmatter_tags(content: bytes) -> List[str]:
@@ -616,6 +780,13 @@ class VaultStorage:
                 "UPDATE vaults SET updated_at = ? WHERE id = ?", (now, vault_id)
             )
 
+            # Index co-occurrences and auto-link related docs (best-effort)
+            try:
+                _insert_doc_cooccurrences(conn, doc_id, name, tags, extracted)
+                _auto_link_doc_cooccurrences(conn, doc_id)
+            except Exception:
+                pass
+
         return meta
 
     def add_document_from_text(self, vault_id: str, name: str, text_content: str,
@@ -728,6 +899,13 @@ class VaultStorage:
             conn.execute(
                 "UPDATE vaults SET updated_at = ? WHERE id = ?", (now, vault_id)
             )
+
+            # Re-index co-occurrences and auto-link (best-effort)
+            try:
+                _insert_doc_cooccurrences(conn, doc_id, final_name, final_tags, extracted)
+                _auto_link_doc_cooccurrences(conn, doc_id)
+            except Exception:
+                pass
 
         # Return fresh metadata
         return self.get_document(doc_id)
