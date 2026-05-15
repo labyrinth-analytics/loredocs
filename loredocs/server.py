@@ -48,6 +48,8 @@ mcp = FastMCP(
         "Use loredocs_onboard to set up your workspace on first install. "
         "Use vault_create to create vaults, vault_add_doc to store documents. "
         "Use vault_search to find documents by keyword (FTS5 syntax supported). "
+        "Use vault_search with semantic=true (Pro) for meaning-based retrieval. "
+        "Use vault_rebuild_index (Pro) to build the semantic index after install. "
         "Use vault_inject or vault_inject_by_tag to load documents into context. "
         "Categories: reference, report, template, config, archive, general. "
         "Priority: authoritative (source of truth), normal, draft, outdated. "
@@ -643,6 +645,7 @@ class SearchInput(BaseModel):
     vault: Optional[str] = Field(default=None, description="Vault ID or name to search within. Leave empty to search all vaults.")
     limit: int = Field(default=20, description="Max results", ge=1, le=100)
     offset: int = Field(default=0, description="Pagination offset", ge=0)
+    semantic: bool = Field(default=False, description="Use semantic (vector) search instead of keyword-only FTS5. Requires LoreDocs Pro and the Pro deps installed (pip install loredocs[pro]).")
     response_format: ResponseFormat = Field(default=ResponseFormat.MARKDOWN, description="Output format")
 
 
@@ -652,17 +655,19 @@ class SearchInput(BaseModel):
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
 async def vault_search(params: SearchInput, ctx: Context) -> str:
-    """Full-text search across document contents using SQLite FTS5.
+    """Full-text or semantic search across document contents.
 
-    Searches within a specific vault if vault is provided, or across ALL
-    vaults if omitted (cross-vault search).
-
-    Supports FTS5 query syntax:
+    Default (semantic=False): SQLite FTS5 keyword search. Supports FTS5 syntax:
     - Simple words: depreciation schedule
     - Phrases: "rental income"
     - Boolean: depreciation AND schedule
     - Negation: rental NOT commercial
     - Prefix: deprec*
+
+    Semantic (semantic=True, Pro only): hybrid vector + BM25 search via LanceDB.
+    Finds documents by meaning even when exact keywords differ. Requires
+    LoreDocs Pro and `pip install loredocs[pro]`. Falls back to FTS5 if the
+    semantic index has not been built yet (run vault_rebuild_index first).
     """
     storage = _get_storage(ctx)
     vault_id = None
@@ -674,6 +679,36 @@ async def vault_search(params: SearchInput, ctx: Context) -> str:
         vault_id = vault["id"]
         vault_name = vault["name"]
 
+    setup_tip = None
+    if params.semantic:
+        status = storage.enforcer.status_dict()
+        if not status.get("is_pro"):
+            setup_tip = (
+                "Semantic search requires LoreDocs Pro. "
+                "Returning keyword results instead. "
+                "Use vault_set_tier with tier='pro' to activate your license."
+            )
+        else:
+            result = storage.search_semantic(
+                query=params.query,
+                vault_id=vault_id,
+                limit=params.limit,
+            )
+            if params.response_format == ResponseFormat.JSON:
+                return json.dumps(result, indent=2)
+            scope = f"vault '{vault_name}'" if vault_name else "all vaults"
+            if not result["results"]:
+                return f"No semantic results found for '{params.query}' in {scope}. Try vault_rebuild_index if the index is empty."
+            lines = [f"# Semantic Search Results: '{params.query}'", ""]
+            lines.append(f"Found {result['count']} results in {scope} (semantic)")
+            lines.append("")
+            for r in result["results"]:
+                lines.append(f"- **{r['doc_name']}** (`{r['doc_id']}`) in *{r['vault_name']}*")
+                if r["snippet"]:
+                    lines.append(f"  {r['snippet']}...")
+                lines.append("")
+            return "\n".join(lines)
+
     result = storage.search(
         query=params.query,
         vault_id=vault_id,
@@ -682,14 +717,21 @@ async def vault_search(params: SearchInput, ctx: Context) -> str:
     )
 
     if params.response_format == ResponseFormat.JSON:
+        if setup_tip:
+            result["setup_tip"] = setup_tip
         return json.dumps(result, indent=2)
 
-    if not result["results"]:
-        scope = f"vault '{vault_name}'" if vault_name else "all vaults"
-        return f"No results found for '{params.query}' in {scope}."
-
     scope = f"vault '{vault_name}'" if vault_name else "all vaults"
-    lines = [f"# Search Results: '{params.query}'", ""]
+    lines = []
+    if setup_tip:
+        lines.append(f"*Note: {setup_tip}*")
+        lines.append("")
+
+    if not result["results"]:
+        return "\n".join(lines) + f"No results found for '{params.query}' in {scope}."
+
+    lines.append(f"# Search Results: '{params.query}'")
+    lines.append("")
     lines.append(f"Found {result['count']} results in {scope}")
     lines.append("")
 
@@ -699,6 +741,47 @@ async def vault_search(params: SearchInput, ctx: Context) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+class RebuildIndexInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    confirm: bool = Field(..., description="Set to true to confirm the rebuild. Rebuilding re-indexes all documents; large vaults may take several minutes.")
+
+
+@mcp.tool(
+    title="Rebuild Semantic Index",
+    name="vault_rebuild_index",
+    annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
+)
+async def vault_rebuild_index(params: RebuildIndexInput, ctx: Context) -> str:
+    """Rebuild the LanceDB semantic search index from all stored documents. Pro only.
+
+    Run this after first installing the Pro deps (pip install loredocs[pro]) or
+    after restoring from backup. The index is kept in sync automatically for
+    new documents added after install, but existing documents require a one-time
+    rebuild to become searchable semantically.
+    """
+    if not params.confirm:
+        return "Error: Set confirm=true to start the rebuild."
+
+    storage = _get_storage(ctx)
+    status = storage.enforcer.status_dict()
+    if not status.get("is_pro"):
+        return (
+            "Error: vault_rebuild_index requires LoreDocs Pro. "
+            "Use vault_set_tier with tier='pro' to activate your license."
+        )
+
+    try:
+        result = storage.rebuild_lance_index()
+    except Exception as exc:
+        return f"Error during index rebuild: {exc}"
+
+    return (
+        f"Semantic index rebuilt: {result['docs_indexed']} documents, "
+        f"{result['chunks_indexed']} chunks indexed."
+    )
 
 
 class SearchByTagInput(BaseModel):

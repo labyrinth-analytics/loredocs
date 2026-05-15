@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .tiers import TierEnforcer, TierLimitError  # noqa: F401 (re-exported for callers)
+from .tiers import TierEnforcer, TierLimitError, get_tier, TIER_PRO  # noqa: F401 (re-exported)
 
 _STOPWORDS = frozenset({
     "a", "about", "after", "again", "ago", "all", "also", "an", "and",
@@ -475,6 +475,9 @@ class VaultStorage:
         # Tier enforcer (reads config.json from root)
         self.enforcer = TierEnforcer(self.root)
 
+        # Lance index: lazy init, Pro only
+        self._lance_index = None
+
     @contextmanager
     def _db(self):
         """Context manager for database connections."""
@@ -493,6 +496,134 @@ class VaultStorage:
     def _now(self) -> str:
         """Current UTC timestamp as ISO string."""
         return datetime.now(timezone.utc).isoformat()
+
+    # -------------------------------------------------------------------
+    # LanceDB hybrid search (Pro tier)
+    # -------------------------------------------------------------------
+
+    def _get_lance_index(self):
+        """Return the DocLanceIndex instance, creating it lazily on first call."""
+        if self._lance_index is None:
+            from .semantic_search import DocLanceIndex
+            lance_dir = self.root / 'docs.lance'
+            self._lance_index = DocLanceIndex(lance_dir)
+        return self._lance_index
+
+    def _lance_write_safe(self, doc_id: str, vault_id: str, name: str, text: str) -> None:
+        """Index a document in Lance (Pro only). Errors are logged, never raised."""
+        if get_tier(self.root) != TIER_PRO:
+            return
+        try:
+            self._get_lance_index().index_document(doc_id, vault_id, name, text)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).error(
+                "Lance write failed for doc %s: %s", doc_id, exc
+            )
+
+    def _lance_delete_safe(self, doc_id: str) -> None:
+        """Remove a document's chunks from Lance (best-effort)."""
+        if get_tier(self.root) != TIER_PRO:
+            return
+        try:
+            self._get_lance_index().delete_document(doc_id)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).error(
+                "Lance delete failed for doc %s: %s", doc_id, exc
+            )
+
+    def search_semantic(
+        self,
+        query: str,
+        vault_id: Optional[str] = None,
+        limit: int = 20,
+    ) -> Dict[str, Any]:
+        """Hybrid semantic search via LanceDB (Pro only).
+
+        Returns the same dict structure as search(). Falls back to FTS5 if
+        the Lance index is unavailable (index not built or search error).
+        Callers must check tier before calling; this does not enforce tier.
+        """
+        doc_ids = self._get_lance_index().search(query, vault_id=vault_id, limit=limit)
+        if not doc_ids:
+            return self.search(query, vault_id=vault_id, limit=limit)
+
+        results = []
+        with self._db() as conn:
+            for doc_id in doc_ids:
+                row = conn.execute(
+                    """SELECT d.id, d.vault_id, d.name, d.file_size_bytes,
+                              v.name as vault_name
+                       FROM documents d
+                       JOIN vaults v ON d.vault_id = v.id
+                       WHERE d.id = ? AND d.deleted = 0""",
+                    (doc_id,)
+                ).fetchone()
+                if not row:
+                    continue
+                if vault_id and row["vault_id"] != vault_id:
+                    continue
+
+                # Read a snippet from extracted text
+                doc_dir = self.vaults_dir / row["vault_id"] / "docs" / doc_id
+                extracted_path = doc_dir / "extracted.txt"
+                snippet = ""
+                if extracted_path.exists():
+                    try:
+                        snippet = extracted_path.read_text(encoding="utf-8")[:200].strip()
+                    except Exception:
+                        pass
+
+                results.append({
+                    "doc_id": doc_id,
+                    "vault_id": row["vault_id"],
+                    "vault_name": row["vault_name"],
+                    "doc_name": row["name"],
+                    "snippet": snippet,
+                    "relevance_rank": None,
+                })
+
+        return {
+            "query": query,
+            "scope": vault_id or "all_vaults",
+            "count": len(results),
+            "results": results,
+            "semantic": True,
+        }
+
+    def rebuild_lance_index(self) -> Dict[str, Any]:
+        """Rebuild the LanceDB index from all non-deleted documents. Pro only.
+
+        Reads extracted.txt for each document. Returns a summary dict.
+        """
+        docs = []
+        with self._db() as conn:
+            rows = conn.execute(
+                "SELECT id, vault_id, name FROM documents WHERE deleted = 0"
+            ).fetchall()
+            for row in rows:
+                doc_dir = self.vaults_dir / row["vault_id"] / "docs" / row["id"]
+                extracted_path = doc_dir / "extracted.txt"
+                if not extracted_path.exists():
+                    continue
+                try:
+                    text = extracted_path.read_text(encoding="utf-8")
+                except Exception:
+                    continue
+                if text.strip():
+                    docs.append({
+                        "doc_id": row["id"],
+                        "vault_id": row["vault_id"],
+                        "name": row["name"],
+                        "text": text,
+                    })
+
+        chunk_count = self._get_lance_index().rebuild(docs)
+        return {
+            "docs_indexed": len(docs),
+            "chunks_indexed": chunk_count,
+        }
 
     # -------------------------------------------------------------------
     # Vault operations
@@ -787,6 +918,7 @@ class VaultStorage:
             except Exception:
                 pass
 
+        self._lance_write_safe(doc_id, vault_id, name, extracted)
         return meta
 
     def add_document_from_text(self, vault_id: str, name: str, text_content: str,
@@ -907,11 +1039,14 @@ class VaultStorage:
             except Exception:
                 pass
 
+        if content is not None or name is not None:
+            self._lance_write_safe(doc_id, vault_id, final_name, extracted)
         # Return fresh metadata
         return self.get_document(doc_id)
 
     def remove_document(self, doc_id: str) -> bool:
         """Soft-delete a document. Returns True if found."""
+        deleted = False
         with self._db() as conn:
             cursor = conn.execute(
                 "UPDATE documents SET deleted = 1, updated_at = ? WHERE id = ? AND deleted = 0",
@@ -919,8 +1054,10 @@ class VaultStorage:
             )
             if cursor.rowcount > 0:
                 conn.execute("DELETE FROM doc_fts WHERE doc_id = ?", (doc_id,))
-                return True
-            return False
+                deleted = True
+        if deleted:
+            self._lance_delete_safe(doc_id)
+        return deleted
 
     def get_document(self, doc_id: str) -> Optional[Dict[str, Any]]:
         """Get document metadata by ID."""
