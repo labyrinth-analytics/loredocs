@@ -1,4 +1,4 @@
-# LoreDocs v0.1.0 - Pinned direct dependencies
+# LoreDocs v0.1.2 - Pinned direct dependencies
 # Exact versions required for Anthropic marketplace compliance
 mcp[cli]==1.27.0
 pydantic==2.12.5
@@ -6,3 +6,8 @@ pdfplumber==0.11.9
 python-docx==1.2.0
 openpyxl==3.1.5
 python-pptx==1.0.2
+
+# Pro tier optional deps -- install with: pip install loredocs[pro]
+# lancedb==0.30.2
+# sentence-transformers==5.5.0
+# pyarrow==24.0.0
