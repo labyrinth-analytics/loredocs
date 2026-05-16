@@ -16,6 +16,7 @@ Usage:
     python scripts/backfill_doc_embeddings.py --root /tmp/test-loredocs
 """
 import argparse
+import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -29,7 +30,6 @@ def _find_root(override: Path = None) -> Path:
         return override
     env_root = None
     try:
-        import os
         env_root = os.environ.get("LOREDOCS_ROOT")
     except Exception:
         pass
@@ -54,8 +54,13 @@ def _load_docs(root: Path):
 
     docs = []
     vaults_dir = root / "vaults"
+    real_vaults = os.path.realpath(str(vaults_dir))
     for row in rows:
         extracted_path = vaults_dir / row["vault_id"] / "docs" / row["id"] / "extracted.txt"
+        real_path = os.path.realpath(str(extracted_path))
+        if not real_path.startswith(real_vaults + os.sep):
+            print(f"[WARN] Skipping suspicious path for doc {row['id']}", file=sys.stderr)
+            continue
         if not extracted_path.exists():
             continue
         try:
