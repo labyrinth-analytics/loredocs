@@ -172,6 +172,19 @@ All vault data is stored locally at `~/.loredocs/`. Nothing is sent to any cloud
 
 ---
 
+## Security note for Pro users
+
+When you enable the Pro tier and build the semantic index, LoreDocs creates a
+`docs.lance/` directory under your data root (default: `~/.loredocs/`). This
+directory stores vector representations (embeddings) of your document content.
+The directory is protected with mode 700 (owner-only access on POSIX systems).
+
+If you back up your data root, include this directory in your backup -- and treat
+the backup with the same sensitivity as the source data, since the vectors encode
+the semantic content of your documents.
+
+---
+
 ## How LoreDocs Accesses Your Data
 
 LoreDocs provides two ways to read and write your vault data:
