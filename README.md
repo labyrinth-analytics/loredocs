@@ -113,9 +113,9 @@ At session end:
 
 ## MCP Tools
 
-LoreDocs provides 38 MCP tools organized by function:
+LoreDocs provides 39 MCP tools organized by function:
 
-### Vault Management (6 tools)
+### Vault Management (7 tools)
 | Tool | What it does |
 |------|-------------|
 | `vault_create` | Create a new vault with name and description |
@@ -124,6 +124,7 @@ LoreDocs provides 38 MCP tools organized by function:
 | `vault_archive` | Archive a vault (preserves data, hides from listing) |
 | `vault_delete` | Permanently delete a vault and all its documents |
 | `vault_link_project` | Link a vault to a project directory |
+| `vault_open_workspace` | Open or create the vault scoped to a directory path |
 
 ### Document Operations (9 tools)
 | Tool | What it does |

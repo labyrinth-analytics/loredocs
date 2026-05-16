@@ -398,6 +398,73 @@ async def vault_link_project(params: VaultLinkProjectInput, ctx: Context) -> str
     return "Error: Could not link project."
 
 
+class VaultOpenWorkspaceInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    workspace_path: str = Field(
+        ...,
+        description="Absolute path to the workspace directory (e.g. '/Users/me/projects/myapp'). "
+                    "Tilde expansion is supported.",
+        min_length=1,
+    )
+    description: str = Field(
+        default="",
+        description="Description for the vault if it needs to be created.",
+        max_length=500,
+    )
+
+
+@mcp.tool(
+    title="Open Workspace Vault",
+    name="vault_open_workspace",
+    annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
+)
+async def vault_open_workspace(params: VaultOpenWorkspaceInput, ctx: Context) -> str:
+    """Open (or create) a vault scoped to a workspace directory.
+
+    If a vault is already linked to this directory path, returns it.
+    Otherwise, creates a new vault named after the directory and records
+    the workspace_path so future calls return the same vault.
+
+    This mirrors how MemClaw scopes memory to workspaces -- lower friction
+    than naming vaults manually. Named vaults remain available for users
+    who prefer explicit management.
+    """
+    storage = _get_storage(ctx)
+    resolved = str(Path(params.workspace_path).expanduser().resolve())
+
+    existing = storage.get_vault_by_workspace_path(resolved)
+    if existing:
+        return json.dumps({
+            "status": "found",
+            "vault": {
+                "id": existing["id"],
+                "name": existing["name"],
+                "workspace_path": existing["workspace_path"],
+                "doc_count": existing["doc_count"],
+            }
+        }, indent=2)
+
+    vault_name = Path(resolved).name or "Workspace"
+    try:
+        vault = storage.create_vault(
+            name=vault_name,
+            description=params.description or f"Workspace vault for {resolved}",
+            workspace_path=resolved,
+        )
+    except TierLimitError as exc:
+        return f"Error: {exc}"
+
+    return json.dumps({
+        "status": "created",
+        "vault": {
+            "id": vault["id"],
+            "name": vault["name"],
+            "workspace_path": vault["workspace_path"],
+            "doc_count": 0,
+        }
+    }, indent=2)
+
+
 # ===================================================================
 # DOCUMENT MANAGEMENT TOOLS
 # ===================================================================

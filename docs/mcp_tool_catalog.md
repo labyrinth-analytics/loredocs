@@ -1,12 +1,12 @@
 # LoreDocs MCP Tool Catalog
 
-LoreDocs provides 38 MCP tools that Claude calls during your sessions. You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
+LoreDocs provides 39 MCP tools that Claude calls during your sessions. You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
 
 This catalog explains what each tool does and when Claude uses it. Tools are grouped by function.
 
 ---
 
-## Vault Management (7 tools)
+## Vault Management (8 tools)
 
 ### `vault_create`
 
@@ -65,6 +65,16 @@ Associate a Claude Project name with a vault. This lets LoreDocs automatically s
 **When Claude uses it:** When you say "link this vault to my side_hustle project."
 
 **Key parameters:** `vault_id` (required), `project_name` (required)
+
+---
+
+### `vault_open_workspace`
+
+Open (or create) the vault scoped to a specific directory path. If a vault is already linked to that path, it is returned immediately. Otherwise, a new vault is created and associated with the directory — so future calls return the same vault automatically.
+
+**When Claude uses it:** When you say "open the vault for this project" or "use the vault for /Users/me/projects/myapp."
+
+**Key parameters:** `workspace_path` (required), `description` (optional, used only when creating a new vault)
 
 ---
 
@@ -406,35 +416,36 @@ Return the current license tier name and the raw license key status (present/abs
 | 4 | `vault_archive` | Soft-delete a vault |
 | 5 | `vault_delete` | Permanently delete a vault |
 | 6 | `vault_link_project` | Link a vault to a Claude Project |
-| 7 | `loredocs_onboard` | Set up workspace with recommended vaults |
-| 8 | `vault_add_doc` | Add a document to a vault |
-| 9 | `vault_get_doc` | Retrieve a document |
-| 10 | `vault_list_docs` | List documents in a vault |
-| 11 | `vault_update_doc` | Update document content or metadata |
-| 12 | `vault_remove_doc` | Soft-delete a document |
-| 13 | `vault_copy_doc` | Copy a document to another vault |
-| 14 | `vault_move_doc` | Move a document to another vault |
-| 15 | `vault_link_doc` | Link two documents |
-| 16 | `vault_unlink_doc` | Remove a link between documents |
-| 17 | `vault_find_related` | Find linked documents |
-| 18 | `vault_search` | Full-text search across vaults |
-| 19 | `vault_search_by_tag` | Search by tag |
-| 20 | `vault_rebuild_index` | Rebuild semantic search index (Pro) |
-| 21 | `vault_inject` | Load documents into conversation |
-| 22 | `vault_inject_by_tag` | Load tagged documents into conversation |
-| 23 | `vault_inject_summary` | Generate vault summary for context |
-| 24 | `vault_prime` | Pre-load vault context into session |
-| 25 | `vault_suggest` | Suggestions for documents needing attention |
-| 26 | `vault_tag_doc` | Add or remove tags |
-| 27 | `vault_bulk_tag` | Bulk tag multiple documents |
-| 28 | `vault_categorize` | Set document category |
-| 29 | `vault_set_priority` | Set document priority |
-| 30 | `vault_add_note` | Add a note to a document |
-| 31 | `vault_doc_history` | View version history |
-| 32 | `vault_doc_restore` | Restore a previous version |
-| 33 | `vault_import_dir` | Import files from a directory |
-| 34 | `vault_export` | Export vault to a directory |
-| 35 | `vault_export_manifest` | Export vault manifest |
-| 36 | `vault_tier_status` | Check tier and usage |
-| 37 | `vault_set_tier` | Activate a tier |
-| 38 | `get_license_tier` | Check current tier and license key status |
+| 7 | `vault_open_workspace` | Open or create vault scoped to a directory |
+| 8 | `loredocs_onboard` | Set up workspace with recommended vaults |
+| 9 | `vault_add_doc` | Add a document to a vault |
+| 10 | `vault_get_doc` | Retrieve a document |
+| 11 | `vault_list_docs` | List documents in a vault |
+| 12 | `vault_update_doc` | Update document content or metadata |
+| 13 | `vault_remove_doc` | Soft-delete a document |
+| 14 | `vault_copy_doc` | Copy a document to another vault |
+| 15 | `vault_move_doc` | Move a document to another vault |
+| 16 | `vault_link_doc` | Link two documents |
+| 17 | `vault_unlink_doc` | Remove a link between documents |
+| 18 | `vault_find_related` | Find linked documents |
+| 19 | `vault_search` | Full-text search across vaults |
+| 20 | `vault_search_by_tag` | Search by tag |
+| 21 | `vault_rebuild_index` | Rebuild semantic search index (Pro) |
+| 22 | `vault_inject` | Load documents into conversation |
+| 23 | `vault_inject_by_tag` | Load tagged documents into conversation |
+| 24 | `vault_inject_summary` | Generate vault summary for context |
+| 25 | `vault_prime` | Pre-load vault context into session |
+| 26 | `vault_suggest` | Suggestions for documents needing attention |
+| 27 | `vault_tag_doc` | Add or remove tags |
+| 28 | `vault_bulk_tag` | Bulk tag multiple documents |
+| 29 | `vault_categorize` | Set document category |
+| 30 | `vault_set_priority` | Set document priority |
+| 31 | `vault_add_note` | Add a note to a document |
+| 32 | `vault_doc_history` | View version history |
+| 33 | `vault_doc_restore` | Restore a previous version |
+| 34 | `vault_import_dir` | Import files from a directory |
+| 35 | `vault_export` | Export vault to a directory |
+| 36 | `vault_export_manifest` | Export vault manifest |
+| 37 | `vault_tier_status` | Check tier and usage |
+| 38 | `vault_set_tier` | Activate a tier |
+| 39 | `get_license_tier` | Check current tier and license key status |
