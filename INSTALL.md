@@ -192,11 +192,14 @@ LoreDocs provides two ways to read and write your vault data:
 **MCP tools** are the primary method. Claude uses these automatically during sessions -- tools
 like `vault_add_doc`, `vault_search`, and `vault_inject` connect through the MCP server.
 
+**CLI commands** let you manage vault documents from your terminal independent of any Claude session.
+After installation, run `loredocs-cli --help` to see available commands.
+
 **Bundled scripts** are the automatic fallback. If the MCP server is unavailable (for example,
 after a startup timeout or a rejected tool call), LoreDocs switches to these scripts silently.
 The plugin skill handles this; no action is needed on your part.
 
-Both methods read and write the same files at `~/.loredocs/`. Switching between them never
+All three methods read and write the same files at `~/.loredocs/`. Switching between them never
 causes data loss.
 
 ---
