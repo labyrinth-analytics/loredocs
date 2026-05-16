@@ -1,12 +1,12 @@
 # LoreDocs MCP Tool Catalog
 
-LoreDocs provides 36 MCP tools that Claude calls during your sessions. You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
+LoreDocs provides 38 MCP tools that Claude calls during your sessions. You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
 
 This catalog explains what each tool does and when Claude uses it. Tools are grouped by function.
 
 ---
 
-## Vault Management (6 tools)
+## Vault Management (7 tools)
 
 ### `vault_create`
 
@@ -65,6 +65,16 @@ Associate a Claude Project name with a vault. This lets LoreDocs automatically s
 **When Claude uses it:** When you say "link this vault to my side_hustle project."
 
 **Key parameters:** `vault_id` (required), `project_name` (required)
+
+---
+
+### `loredocs_onboard`
+
+Set up your LoreDocs workspace with recommended vaults. Call once after installing LoreDocs. Creates a Config vault with a setup reference document, one vault per domain you specify, and one reports vault per agent you specify. Existing data is never modified.
+
+**When Claude uses it:** When you first install LoreDocs and say "set up my workspace" or "configure LoreDocs for my projects."
+
+**Key parameters:** `name` (workspace name), `domains` (optional list), `agents` (optional list)
 
 ---
 
@@ -168,7 +178,7 @@ Find all documents linked to a given document. Shows linked documents from any v
 
 ---
 
-## Search and Context Injection (6 tools)
+## Search and Context Injection (8 tools)
 
 ### `vault_search`
 
@@ -187,6 +197,16 @@ Find all documents with a specific tag, across one vault or all vaults.
 **When Claude uses it:** When you say "find all documents tagged 'schedule-e'."
 
 **Key parameters:** `tag` (required), `vault_id` (optional)
+
+---
+
+### `vault_rebuild_index`
+
+Rebuild the LanceDB semantic search index from all stored documents. Pro only. Run this after first installing Pro dependencies (`pip install loredocs[pro]`) or after restoring from backup. New documents added after install are indexed automatically; existing documents need this one-time rebuild to become semantically searchable.
+
+**When Claude uses it:** When you say "rebuild the search index" or after upgrading to Pro and existing documents are not returning semantic results.
+
+**Key parameters:** none required
 
 ---
 
@@ -215,6 +235,16 @@ Load all documents matching a tag into the current conversation context.
 Generate a summary overview of a vault's contents for conversation orientation. This gives Claude a birds-eye view of what knowledge is available without loading every document.
 
 **When Claude uses it:** At session start, or when you say "give me an overview of this vault."
+
+**Key parameters:** `vault_id` (required)
+
+---
+
+### `vault_prime`
+
+Pre-load vault context into the current session. Returns a full summary of the vault's contents including document categories, tags, priorities, and notes. Use at session start to orient Claude on what knowledge is available. Equivalent to `vault_inject_summary` with a simpler name.
+
+**When Claude uses it:** At session start, or when you say "prime the context with this vault."
 
 **Key parameters:** `vault_id` (required)
 
@@ -376,32 +406,35 @@ Return the current license tier name and the raw license key status (present/abs
 | 4 | `vault_archive` | Soft-delete a vault |
 | 5 | `vault_delete` | Permanently delete a vault |
 | 6 | `vault_link_project` | Link a vault to a Claude Project |
-| 7 | `vault_add_doc` | Add a document to a vault |
-| 8 | `vault_get_doc` | Retrieve a document |
-| 9 | `vault_list_docs` | List documents in a vault |
-| 10 | `vault_update_doc` | Update document content or metadata |
-| 11 | `vault_remove_doc` | Soft-delete a document |
-| 12 | `vault_copy_doc` | Copy a document to another vault |
-| 13 | `vault_move_doc` | Move a document to another vault |
-| 14 | `vault_link_doc` | Link two documents |
-| 15 | `vault_unlink_doc` | Remove a link between documents |
-| 16 | `vault_find_related` | Find linked documents |
-| 17 | `vault_search` | Full-text search across vaults |
-| 18 | `vault_search_by_tag` | Search by tag |
-| 19 | `vault_inject` | Load documents into conversation |
-| 20 | `vault_inject_by_tag` | Load tagged documents into conversation |
-| 21 | `vault_inject_summary` | Generate vault summary for context |
-| 22 | `vault_suggest` | Suggestions for documents needing attention |
-| 23 | `vault_tag_doc` | Add or remove tags |
-| 24 | `vault_bulk_tag` | Bulk tag multiple documents |
-| 25 | `vault_categorize` | Set document category |
-| 26 | `vault_set_priority` | Set document priority |
-| 27 | `vault_add_note` | Add a note to a document |
-| 28 | `vault_doc_history` | View version history |
-| 29 | `vault_doc_restore` | Restore a previous version |
-| 30 | `vault_import_dir` | Import files from a directory |
-| 31 | `vault_export` | Export vault to a directory |
-| 32 | `vault_export_manifest` | Export vault manifest |
-| 33 | `vault_tier_status` | Check tier and usage |
-| 34 | `vault_set_tier` | Activate a tier |
-| 35 | `get_license_tier` | Check current tier and license key status |
+| 7 | `loredocs_onboard` | Set up workspace with recommended vaults |
+| 8 | `vault_add_doc` | Add a document to a vault |
+| 9 | `vault_get_doc` | Retrieve a document |
+| 10 | `vault_list_docs` | List documents in a vault |
+| 11 | `vault_update_doc` | Update document content or metadata |
+| 12 | `vault_remove_doc` | Soft-delete a document |
+| 13 | `vault_copy_doc` | Copy a document to another vault |
+| 14 | `vault_move_doc` | Move a document to another vault |
+| 15 | `vault_link_doc` | Link two documents |
+| 16 | `vault_unlink_doc` | Remove a link between documents |
+| 17 | `vault_find_related` | Find linked documents |
+| 18 | `vault_search` | Full-text search across vaults |
+| 19 | `vault_search_by_tag` | Search by tag |
+| 20 | `vault_rebuild_index` | Rebuild semantic search index (Pro) |
+| 21 | `vault_inject` | Load documents into conversation |
+| 22 | `vault_inject_by_tag` | Load tagged documents into conversation |
+| 23 | `vault_inject_summary` | Generate vault summary for context |
+| 24 | `vault_prime` | Pre-load vault context into session |
+| 25 | `vault_suggest` | Suggestions for documents needing attention |
+| 26 | `vault_tag_doc` | Add or remove tags |
+| 27 | `vault_bulk_tag` | Bulk tag multiple documents |
+| 28 | `vault_categorize` | Set document category |
+| 29 | `vault_set_priority` | Set document priority |
+| 30 | `vault_add_note` | Add a note to a document |
+| 31 | `vault_doc_history` | View version history |
+| 32 | `vault_doc_restore` | Restore a previous version |
+| 33 | `vault_import_dir` | Import files from a directory |
+| 34 | `vault_export` | Export vault to a directory |
+| 35 | `vault_export_manifest` | Export vault manifest |
+| 36 | `vault_tier_status` | Check tier and usage |
+| 37 | `vault_set_tier` | Activate a tier |
+| 38 | `get_license_tier` | Check current tier and license key status |
