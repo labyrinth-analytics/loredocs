@@ -54,6 +54,7 @@ of the `skills/` directory containing this file). The script auto-discovers the 
 Vaults group related documents by project or topic:
 
 - `loredocs_onboard(name="...", domains=[...], agents=[...])` - First-time setup: creates recommended vaults
+- `vault_open_workspace("/path/to/dir")` - Open or create vault scoped to a directory (idempotent)
 - `vault_create("My Project Docs", description="Architecture and specs for X")` - Create a vault
 - `vault_list()` - See all vaults with doc counts and sizes
 - `vault_info("vault-name")` - Get detailed vault information

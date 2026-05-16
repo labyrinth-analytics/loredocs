@@ -308,6 +308,14 @@ def _migrate_db(db_path: Path) -> None:
     if count == 0:
         _reindex_all_docs(conn, db_path.parent / VAULTS_DIR)
 
+    # v0.5: add workspace_path to vaults for directory-scoped auto-vault (GINA-00018)
+    vault_cols = {row[1] for row in conn.execute("PRAGMA table_info(vaults)")}
+    if "workspace_path" not in vault_cols:
+        conn.execute("ALTER TABLE vaults ADD COLUMN workspace_path TEXT DEFAULT NULL")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_vaults_workspace ON vaults(workspace_path)"
+    )
+
     conn.commit()
     conn.close()
 
@@ -639,7 +647,8 @@ class VaultStorage:
 
     def create_vault(self, name: str, description: str = "",
                      tags: Optional[List[str]] = None,
-                     linked_projects: Optional[List[str]] = None) -> Dict[str, Any]:
+                     linked_projects: Optional[List[str]] = None,
+                     workspace_path: Optional[str] = None) -> Dict[str, Any]:
         """Create a new vault. Returns vault metadata dict.
 
         Raises TierLimitError if the Free tier vault limit would be exceeded.
@@ -662,10 +671,11 @@ class VaultStorage:
 
         with self._db() as conn:
             conn.execute(
-                """INSERT INTO vaults (id, name, description, created_at, updated_at, tags, linked_projects)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO vaults
+                   (id, name, description, created_at, updated_at, tags, linked_projects, workspace_path)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (vault_id, name, description, now, now,
-                 json.dumps(tags), json.dumps(linked_projects))
+                 json.dumps(tags), json.dumps(linked_projects), workspace_path)
             )
 
         return {
@@ -676,6 +686,7 @@ class VaultStorage:
             "updated_at": now,
             "tags": tags,
             "linked_projects": linked_projects,
+            "workspace_path": workspace_path,
             "doc_count": 0,
             "total_size_bytes": 0,
         }
@@ -708,6 +719,7 @@ class VaultStorage:
                     "archived": bool(row["archived"]),
                     "tags": json.loads(row["tags"]),
                     "linked_projects": json.loads(row["linked_projects"]),
+                    "workspace_path": row["workspace_path"] if "workspace_path" in row.keys() else None,
                     "doc_count": stats["doc_count"],
                     "total_size_bytes": stats["total_size"],
                 })
@@ -742,6 +754,7 @@ class VaultStorage:
                 "archived": bool(row["archived"]),
                 "tags": json.loads(row["tags"]),
                 "linked_projects": json.loads(row["linked_projects"]),
+                "workspace_path": row["workspace_path"] if "workspace_path" in row.keys() else None,
                 "doc_count": stats["doc_count"],
                 "total_size_bytes": stats["total_size"],
                 "documents": [
@@ -763,6 +776,17 @@ class VaultStorage:
             row = conn.execute(
                 "SELECT id FROM vaults WHERE LOWER(name) = LOWER(?) AND archived = 0",
                 (name,)
+            ).fetchone()
+            if row:
+                return self.get_vault(row["id"])
+            return None
+
+    def get_vault_by_workspace_path(self, workspace_path: str) -> Optional[Dict[str, Any]]:
+        """Find a non-archived vault by its exact workspace_path. Returns None if not found."""
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT id FROM vaults WHERE workspace_path = ? AND archived = 0",
+                (workspace_path,)
             ).fetchone()
             if row:
                 return self.get_vault(row["id"])
