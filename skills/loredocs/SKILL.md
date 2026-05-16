@@ -53,6 +53,7 @@ of the `skills/` directory containing this file). The script auto-discovers the 
 
 Vaults group related documents by project or topic:
 
+- `loredocs_onboard(name="...", domains=[...], agents=[...])` - First-time setup: creates recommended vaults
 - `vault_create("My Project Docs", description="Architecture and specs for X")` - Create a vault
 - `vault_list()` - See all vaults with doc counts and sizes
 - `vault_info("vault-name")` - Get detailed vault information
@@ -80,6 +81,7 @@ Vaults group related documents by project or topic:
 - `vault_search_by_tag("tag-name")` - Find all docs with a specific tag
 - `vault_find_related(doc_id)` - Discover docs related to a given doc
 - `vault_suggest()` - Proactive suggestions for docs relevant to current context
+- `vault_rebuild_index()` - Rebuild semantic search index (Pro only; run after first Pro install)
 
 ## Organization
 
@@ -98,6 +100,7 @@ Load docs into Claude's context on demand:
 - `vault_inject(doc_ids=[...])` - Load specific documents by ID
 - `vault_inject_by_tag("tag-name")` - Load all docs matching a tag
 - `vault_inject_summary("vault-name")` - Load vault summary (titles + descriptions, no full content)
+- `vault_prime("vault-name")` - Pre-load vault context into session (alias for vault_inject_summary)
 
 At session start for a known project, call `vault_inject_summary` for the relevant vault(s)
 so Claude has a map of available docs without loading everything.
