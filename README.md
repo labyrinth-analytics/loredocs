@@ -35,7 +35,7 @@ Or inside an existing session:
 /plugin add /path/to/loredocs
 ```
 
-Once loaded, Claude has access to all 37 LoreDocs MCP tools automatically. Ask Claude to "create a vault for this project" or "find the architecture doc" and it uses the tools on its own.
+Once loaded, Claude has access to all 38 LoreDocs MCP tools automatically. Ask Claude to "create a vault for this project" or "find the architecture doc" and it uses the tools on its own.
 
 ### Cowork (Desktop App)
 
@@ -113,7 +113,7 @@ At session end:
 
 ## MCP Tools
 
-LoreDocs provides 37 MCP tools organized by function:
+LoreDocs provides 38 MCP tools organized by function:
 
 ### Vault Management (6 tools)
 | Tool | What it does |
@@ -138,13 +138,14 @@ LoreDocs provides 37 MCP tools organized by function:
 | `vault_doc_history` | View version history of a document |
 | `vault_doc_restore` | Restore a document to a previous version |
 
-### Search and Discovery (4 tools)
+### Search and Discovery (5 tools)
 | Tool | What it does |
 |------|-------------|
 | `vault_search` | Full-text search across all vaults |
 | `vault_search_by_tag` | Find documents by tag across all vaults |
 | `vault_find_related` | Discover documents related to a given doc |
 | `vault_suggest` | Proactive suggestions for relevant docs to load |
+| `vault_rebuild_index` | Rebuild the LanceDB semantic search index (Pro only; run once after installing Pro deps) |
 
 ### Organization (5 tools)
 | Tool | What it does |
