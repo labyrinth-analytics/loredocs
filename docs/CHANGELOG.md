@@ -4,6 +4,34 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## 2026-05-16 -- v0.1.4
+
+### New Features
+
+- **Open any project folder as a vault with `vault_open_workspace`.** You can now point LoreDocs at a directory on your filesystem and it will automatically create or locate the vault associated with that workspace. This makes it easier to work across multiple projects: instead of managing vault names manually, tell LoreDocs where your project lives and it handles the mapping. The workspace path is stored so future sessions in the same directory pick up the right vault automatically.
+
+---
+
+## 2026-05-15 -- v0.1.3
+
+### New Features
+
+- **Semantic search for Pro users.** LoreDocs Pro now supports hybrid semantic search: documents are indexed using BGE-small embeddings in a chunk-aware LanceDB index, and searched using a combination of vector similarity and BM25 full-text with RRF fusion. Documents are split at paragraph boundaries (up to 256 tokens per chunk) before indexing, so a query for a specific concept finds the right document even if that concept only appears in one section. If the semantic index is not available, search falls back to FTS5 automatically. Install with `pip install loredocs[pro]` to enable.
+
+- **`vault_rebuild_index` tool.** Build or rebuild the semantic search index on demand. Run this after installing the Pro dependencies for the first time, or after importing a large batch of documents that were added before Pro was enabled. Progress is logged so you can see which documents are being indexed.
+
+---
+
+## 2026-05-14 -- v0.1.2
+
+### New Features
+
+- **LoreDocs now automatically discovers related documents.** When you save or update a document, LoreDocs analyzes keyword co-occurrence across your vault to identify documents that are topically related. The `vault_find_related` tool surfaces these connections without any manual linking required -- useful for discovering relevant context you might have forgotten was there.
+
+- **`vault_import_dir` now imports entire directory trees recursively.** Previously, `vault_import_dir` only imported files directly inside the specified folder. It now traverses subdirectories, so you can point it at the root of a project and import your entire documentation tree in one operation. Files with YAML frontmatter (such as Obsidian notes or Jekyll posts) have their `tags` field extracted automatically and applied to the imported document.
+
+---
+
 ## 2026-04-18
 
 ### Bug Fixes
