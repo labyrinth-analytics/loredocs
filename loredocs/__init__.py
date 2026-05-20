@@ -1,3 +1,7 @@
 """LoreDocs - Knowledge management MCP server for AI projects."""
 
-__version__ = "0.1.4"
+from importlib.metadata import version as _v, PackageNotFoundError
+try:
+    __version__ = _v("loredocs")
+except PackageNotFoundError:
+    __version__ = "0.0.0-dev"
