@@ -464,6 +464,17 @@ def _extract_frontmatter_tags(content: bytes) -> List[str]:
 # Storage class
 # ---------------------------------------------------------------------------
 
+def _parse_json_list(value) -> list:
+    """Parse a JSON list field that may be None, empty string, or valid JSON."""
+    if not value:
+        return []
+    try:
+        result = json.loads(value)
+        return result if isinstance(result, list) else []
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
 class VaultStorage:
     """Manages the local filesystem and SQLite database for LoreDocs."""
 
@@ -717,8 +728,8 @@ class VaultStorage:
                     "created_at": row["created_at"],
                     "updated_at": row["updated_at"],
                     "archived": bool(row["archived"]),
-                    "tags": json.loads(row["tags"]),
-                    "linked_projects": json.loads(row["linked_projects"]),
+                    "tags": _parse_json_list(row["tags"]),
+                    "linked_projects": _parse_json_list(row["linked_projects"]),
                     "workspace_path": row["workspace_path"] if "workspace_path" in row.keys() else None,
                     "doc_count": stats["doc_count"],
                     "total_size_bytes": stats["total_size"],
@@ -752,8 +763,8 @@ class VaultStorage:
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
                 "archived": bool(row["archived"]),
-                "tags": json.loads(row["tags"]),
-                "linked_projects": json.loads(row["linked_projects"]),
+                "tags": _parse_json_list(row["tags"]),
+                "linked_projects": _parse_json_list(row["linked_projects"]),
                 "workspace_path": row["workspace_path"] if "workspace_path" in row.keys() else None,
                 "doc_count": stats["doc_count"],
                 "total_size_bytes": stats["total_size"],
@@ -831,7 +842,7 @@ class VaultStorage:
             ).fetchone()
             if not row:
                 return False
-            projects = json.loads(row["linked_projects"])
+            projects = _parse_json_list(row["linked_projects"])
             if project_name not in projects:
                 projects.append(project_name)
                 conn.execute(
@@ -1038,7 +1049,7 @@ class VaultStorage:
             # Update FTS index
             conn.execute("DELETE FROM doc_fts WHERE doc_id = ?", (doc_id,))
             final_name = name if name is not None else row["name"]
-            final_tags = tags if tags is not None else json.loads(row["tags"])
+            final_tags = tags if tags is not None else _parse_json_list(row["tags"])
             final_notes = notes if notes is not None else row["notes"]
             if extracted is None:
                 extracted_path = doc_dir / "extracted.txt"
@@ -1099,7 +1110,7 @@ class VaultStorage:
                 "file_extension": row["file_extension"],
                 "category": row["category"],
                 "priority": row["priority"],
-                "tags": json.loads(row["tags"]),
+                "tags": _parse_json_list(row["tags"]),
                 "notes": row["notes"],
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
@@ -1178,7 +1189,7 @@ class VaultStorage:
                     "file_extension": row["file_extension"],
                     "category": row["category"],
                     "priority": row["priority"],
-                    "tags": json.loads(row["tags"]),
+                    "tags": _parse_json_list(row["tags"]),
                     "notes": row["notes"],
                     "updated_at": row["updated_at"],
                     "file_size_bytes": row["file_size_bytes"],
@@ -1319,7 +1330,7 @@ class VaultStorage:
             if not row:
                 return None
 
-            current_tags = set(json.loads(row["tags"]))
+            current_tags = set(_parse_json_list(row["tags"]))
             if add_tags:
                 current_tags.update(add_tags)
             if remove_tags:
@@ -1361,7 +1372,7 @@ class VaultStorage:
             count = 0
             now = self._now()
             for row in rows:
-                current_tags = set(json.loads(row["tags"]))
+                current_tags = set(_parse_json_list(row["tags"]))
                 if add_tags:
                     current_tags.update(add_tags)
                 if remove_tags:
