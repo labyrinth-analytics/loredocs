@@ -115,7 +115,7 @@ At session end:
 
 LoreDocs provides 39 MCP tools organized by function:
 
-### Vault Management (7 tools)
+### Vault Management (8 tools)
 | Tool | What it does |
 |------|-------------|
 | `vault_create` | Create a new vault with name and description |
@@ -125,6 +125,7 @@ LoreDocs provides 39 MCP tools organized by function:
 | `vault_delete` | Permanently delete a vault and all its documents |
 | `vault_link_project` | Link a vault to a project directory |
 | `vault_open_workspace` | Open or create the vault scoped to a directory path |
+| `loredocs_onboard` | Set up workspace with starter vaults on first install |
 
 ### Document Operations (9 tools)
 | Tool | What it does |
@@ -178,13 +179,12 @@ LoreDocs provides 39 MCP tools organized by function:
 | `vault_link_doc` | Create a link between two documents |
 | `vault_unlink_doc` | Remove a link between documents |
 
-### Administration (4 tools)
+### Administration (3 tools)
 | Tool | What it does |
 |------|-------------|
 | `vault_tier_status` | Check current tier limits and usage |
 | `vault_set_tier` | Set the active tier (free, pro, team) |
 | `get_license_tier` | Check current tier and license key status |
-| `loredocs_onboard` | Set up workspace with starter vaults on first install |
 
 ## Portable Project Workspace
 
