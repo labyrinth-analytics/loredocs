@@ -145,7 +145,7 @@ LoreDocs provides 39 MCP tools organized by function:
 |------|-------------|
 | `vault_search` | Full-text search across all vaults |
 | `vault_search_by_tag` | Find documents by tag across all vaults |
-| `vault_find_related` | Discover documents related to a given doc |
+| `vault_find_related` | Discover documents related to a given doc (Pro only) |
 | `vault_suggest` | Proactive suggestions for relevant docs to load |
 | `vault_rebuild_index` | Rebuild the LanceDB semantic search index (Pro only; run once after installing Pro deps) |
 

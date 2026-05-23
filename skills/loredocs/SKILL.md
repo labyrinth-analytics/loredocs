@@ -80,7 +80,7 @@ Vaults group related documents by project or topic:
 
 - `vault_search("query")` - Full-text search across all vaults
 - `vault_search_by_tag("tag-name")` - Find all docs with a specific tag
-- `vault_find_related(doc_id)` - Discover docs related to a given doc
+- `vault_find_related(doc_id)` - Discover docs related to a given doc (Pro only)
 - `vault_suggest()` - Proactive suggestions for docs relevant to current context
 - `vault_rebuild_index()` - Rebuild semantic search index (Pro only; run after first Pro install)
 
