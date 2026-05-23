@@ -178,9 +178,9 @@ Remove a link between two documents (both directions).
 
 ---
 
-### `vault_find_related`
+### `vault_find_related` *(Pro)*
 
-Find all documents linked to a given document. Shows linked documents from any vault.
+Find all documents linked to a given document. Shows linked documents from any vault. Requires LoreDocs Pro.
 
 **When Claude uses it:** When you ask "what documents are related to this one?"
 
@@ -427,7 +427,7 @@ Return the current license tier name and the raw license key status (present/abs
 | 15 | `vault_move_doc` | Move a document to another vault |
 | 16 | `vault_link_doc` | Link two documents |
 | 17 | `vault_unlink_doc` | Remove a link between documents |
-| 18 | `vault_find_related` | Find linked documents |
+| 18 | `vault_find_related` | Find linked documents (Pro) |
 | 19 | `vault_search` | Full-text search across vaults |
 | 20 | `vault_search_by_tag` | Search by tag |
 | 21 | `vault_rebuild_index` | Rebuild semantic search index (Pro) |

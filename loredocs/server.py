@@ -1436,11 +1436,18 @@ class FindRelatedInput(BaseModel):
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
 async def vault_find_related(params: FindRelatedInput, ctx: Context) -> str:
-    """Find all documents linked to a given document.
+    """Find all documents linked to a given document. Pro only.
 
     Returns each related document with its vault, category, tags, and link label.
     Use vault_link_doc to create new links.
     """
+    status = get_license_status()
+    if not status["is_pro"]:
+        return (
+            "Error: vault_find_related requires LoreDocs Pro. "
+            "Use vault_set_tier with tier='pro' to activate your license."
+        )
+
     storage = _get_storage(ctx)
     related = storage.find_related_docs(params.doc_id)
     if not related:
