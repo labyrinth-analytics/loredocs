@@ -111,6 +111,30 @@ Install via the `.plugin` file in the cloned directory:
 
 ---
 
+## Connecting to Cursor IDE
+
+Cursor uses the same MCP protocol as Claude Code. Configure it by creating a `.cursor/mcp.json` file in your project root:
+
+```json
+{
+  "mcpServers": {
+    "loredocs": {
+      "command": "python",
+      "args": ["-m", "loredocs.server"],
+      "env": {
+        "LOREDOCS_PRO": "your-license-key"
+      }
+    }
+  }
+}
+```
+
+Or copy `.mcp.json` as `.cursor/mcp.json` if you already have a working Claude Code setup.
+
+Restart Cursor after adding the configuration. LoreDocs MCP tools will be available in the next Cursor session.
+
+---
+
 ## Verifying the Installation
 
 After connecting LoreDocs to Claude Code, verify it is working:
