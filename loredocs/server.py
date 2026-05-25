@@ -1719,10 +1719,17 @@ async def vault_set_tier(params: VaultSetTierInput, ctx: Context) -> str:
                 "Get a license key at labyrinthanalyticsconsulting.com."
             )
 
+    prev_tier = get_tier(storage.root)
     try:
         set_tier(storage.root, params.tier)
     except ValueError as exc:
         return f"Error: {exc}"
+
+    # Phase 2a: archive/unarchive embedding links on tier transition (defense-in-depth)
+    if prev_tier == "pro" and params.tier == "free":
+        storage.archive_embedding_links()
+    elif prev_tier == "free" and params.tier == "pro":
+        storage.unarchive_embedding_links()
 
     limits = TIER_LIMITS[params.tier]
     if limits.is_unlimited():
