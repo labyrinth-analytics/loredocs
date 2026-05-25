@@ -389,23 +389,23 @@ def _migrate_db(db_path: Path) -> None:
     link_cols = {row[1] for row in conn.execute("PRAGMA table_info(doc_links)")}
     if "archived_at" not in link_cols:
         conn.execute("ALTER TABLE doc_links ADD COLUMN archived_at TEXT DEFAULT NULL")
-    # Add UNIQUE constraint on logical key (auto:embedding rows only; manual links untouched)
+    # Dedup any pre-existing auto-generated link duplicates before creating the unique index.
+    # Manual links are never touched. Order matters: dedupe MUST run before CREATE UNIQUE INDEX,
+    # otherwise SQLite raises IntegrityError on the existing duplicate rows.
+    conn.execute("""
+        DELETE FROM doc_links
+        WHERE label LIKE 'auto:%'
+          AND id NOT IN (
+            SELECT MIN(id) FROM doc_links
+            WHERE label LIKE 'auto:%'
+            GROUP BY source_vault_id, source_doc_id, target_vault_id, target_doc_id, label
+          )
+    """)
     # SQLite doesn't support ADD CONSTRAINT on existing tables; recreate is too disruptive.
     # Use a unique index instead -- enforces the same constraint without recreation.
     conn.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_doc_links_unique_key
         ON doc_links(source_vault_id, source_doc_id, target_vault_id, target_doc_id, label)
-    """)
-    # Dedup any pre-existing auto:embedding duplicates before the unique index takes effect.
-    # Manual links are never touched.
-    conn.execute("""
-        DELETE FROM doc_links
-        WHERE label = 'auto:embedding'
-          AND id NOT IN (
-            SELECT MIN(id) FROM doc_links
-            WHERE label = 'auto:embedding'
-            GROUP BY source_vault_id, source_doc_id, target_vault_id, target_doc_id, label
-          )
     """)
 
     conn.commit()

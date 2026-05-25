@@ -4,6 +4,22 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## 2026-05-25 -- v0.1.6
+
+### Bug Fixes
+
+- **Upgrading to v0.1.5 could prevent the server from starting if your vault had auto-discovered related-document links.** The v0.1.5 schema migration introduced a UNIQUE constraint on `doc_links` but applied it before deduplicating the pre-existing rows, so vaults that already had keyword co-occurrence links (added in v0.1.2) crashed with a SQLite integrity error on startup. The migration now runs the dedupe pass first and covers all auto-generated link types, not just embedding links. If you hit the v0.1.5 crash, upgrading to v0.1.6 resolves it automatically -- no manual cleanup needed.
+
+---
+
+## 2026-05-22 -- v0.1.5
+
+### New Features
+
+- **Auto-discovered embedding-based document relationships for Pro users.** LoreDocs Pro now builds `auto:embedding` links between documents whose semantic embeddings are similar above a configurable threshold, in addition to the keyword co-occurrence links from v0.1.2. Surfaced through `vault_find_related`. (SH-10529 Phase 2a)
+
+---
+
 ## 2026-05-16 -- v0.1.4
 
 ### New Features
