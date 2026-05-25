@@ -19,11 +19,13 @@ Storage is organized as:
                             v2{.ext}
 """
 
+import hashlib
 import json
 import os
 import re
 import shutil
 import sqlite3
+import time
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -31,6 +33,72 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .tiers import TierEnforcer, TierLimitError, get_tier, TIER_PRO  # noqa: F401 (re-exported)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2a: Deterministic link ID + per-vault circuit breaker
+# ---------------------------------------------------------------------------
+
+def _make_link_id(
+    source_vault_id: str,
+    source_doc_id: str,
+    target_vault_id: str,
+    target_doc_id: str,
+    label: str,
+) -> str:
+    """Return a deterministic 16-char hex ID that covers the full UNIQUE key.
+
+    The UNIQUE constraint on doc_links is (source_vault_id, source_doc_id,
+    target_vault_id, target_doc_id, label). The ID is a SHA-1 hex digest of
+    all five components so id collision always implies the same logical link.
+    """
+    raw = f"{source_vault_id}|{source_doc_id}|{target_vault_id}|{target_doc_id}|{label}"
+    return hashlib.sha1(raw.encode()).hexdigest()[:16]
+
+
+_EMBD_THRESHOLD = 5
+_EMBD_RESET_SECONDS = 1800
+
+# vault_id -> (failure_count, circuit_open, opened_at)
+_embd_circuits: Dict[str, Tuple[int, bool, float]] = {}
+
+
+def _embd_check_circuit(vault_id: str) -> bool:
+    state = _embd_circuits.get(vault_id, (0, False, 0.0))
+    failures, open_, opened_at = state
+    if not open_:
+        return True
+    reset_secs = int(os.environ.get("LOREDOCS_CIRCUIT_RESET_MINUTES", "30")) * 60
+    if time.time() - opened_at >= reset_secs:
+        _embd_circuits[vault_id] = (0, False, 0.0)
+        return True
+    return False
+
+
+def _embd_record_success(vault_id: str) -> None:
+    _embd_circuits.pop(vault_id, None)
+
+
+def _embd_record_failure(vault_id: str) -> None:
+    import logging
+    failures, open_, opened_at = _embd_circuits.get(vault_id, (0, False, 0.0))
+    if open_:
+        _embd_circuits[vault_id] = (failures + 1, True, opened_at)
+        return
+    failures += 1
+    if failures >= _EMBD_THRESHOLD:
+        _embd_circuits[vault_id] = (failures, True, time.time())
+        logging.getLogger(__name__).warning(
+            "auto_link embedding circuit OPEN for vault=%r after %d failures. "
+            "Will retry in 30 min.",
+            vault_id, _EMBD_THRESHOLD,
+        )
+    else:
+        _embd_circuits[vault_id] = (failures, False, 0.0)
+        logging.getLogger(__name__).error(
+            "auto_link_doc_embeddings failure %d/%d for vault=%r",
+            failures, _EMBD_THRESHOLD, vault_id,
+        )
 
 _STOPWORDS = frozenset({
     "a", "about", "after", "again", "ago", "all", "also", "an", "and",
@@ -316,6 +384,30 @@ def _migrate_db(db_path: Path) -> None:
         "CREATE INDEX IF NOT EXISTS idx_vaults_workspace ON vaults(workspace_path)"
     )
 
+    # v0.6: Phase 2a embedding autolink schema (SH-10529)
+    # Add archived_at column to doc_links (row-level visibility for downgraded users)
+    link_cols = {row[1] for row in conn.execute("PRAGMA table_info(doc_links)")}
+    if "archived_at" not in link_cols:
+        conn.execute("ALTER TABLE doc_links ADD COLUMN archived_at TEXT DEFAULT NULL")
+    # Add UNIQUE constraint on logical key (auto:embedding rows only; manual links untouched)
+    # SQLite doesn't support ADD CONSTRAINT on existing tables; recreate is too disruptive.
+    # Use a unique index instead -- enforces the same constraint without recreation.
+    conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_doc_links_unique_key
+        ON doc_links(source_vault_id, source_doc_id, target_vault_id, target_doc_id, label)
+    """)
+    # Dedup any pre-existing auto:embedding duplicates before the unique index takes effect.
+    # Manual links are never touched.
+    conn.execute("""
+        DELETE FROM doc_links
+        WHERE label = 'auto:embedding'
+          AND id NOT IN (
+            SELECT MIN(id) FROM doc_links
+            WHERE label = 'auto:embedding'
+            GROUP BY source_vault_id, source_doc_id, target_vault_id, target_doc_id, label
+          )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -405,6 +497,128 @@ def _auto_link_doc_cooccurrences(
             )
         except sqlite3.IntegrityError:
             pass
+
+
+def _auto_link_doc_embeddings(
+    conn: sqlite3.Connection,
+    doc_id: str,
+    lance_index: Any,
+    cap: int = 10,
+    is_pro: bool = True,
+) -> None:
+    """Create bidirectional embedding-based links in doc_links. Pro tier only.
+
+    Queries the Lance chunk index for semantically similar documents in the same
+    vault. Confirms vault membership against SQLite before writing (Lance metadata
+    is advisory). Uses INSERT WHERE EXISTS to atomically validate both doc IDs at
+    write time. Caps at cap bidirectional pairs per document.
+    """
+    if not is_pro:
+        return
+    if os.environ.get("LOREDOCS_EMBEDDING_LINKS", "1") == "0":
+        return
+
+    src_row = conn.execute(
+        "SELECT vault_id FROM documents WHERE id = ? AND deleted = 0", (doc_id,)
+    ).fetchone()
+    if not src_row:
+        return
+    source_vault_id = src_row[0]
+
+    if not _embd_check_circuit(source_vault_id):
+        return
+
+    try:
+        table = lance_index._open_table()
+        model = lance_index._get_model()
+        # Use first 256 tokens of extracted text for the query (same as semantic search)
+        extracted_row = conn.execute(
+            "SELECT name FROM documents WHERE id = ?", (doc_id,)
+        ).fetchone()
+        query_text = extracted_row[0] if extracted_row else ""
+        q_vec = model.encode([query_text])[0].tolist()
+
+        raw = table.search(
+            q_vec,
+            vector_column_name="vector",
+            query_type="vector",
+        ).limit(50).to_list()
+
+        # Dedup to best distance per doc_id, filter by threshold + same vault
+        best: Dict[str, float] = {}
+        for r in raw:
+            cand_doc_id = r.get("doc_id") or r.get("session_id")
+            cand_vault_id = r.get("vault_id")
+            dist = r.get("_distance", 999)
+            if cand_doc_id == doc_id:
+                continue
+            if dist > 0.707:  # cosine < 0.75 for L2-normalized vectors
+                continue
+            if cand_vault_id != source_vault_id:
+                continue
+            if cand_doc_id not in best or dist < best[cand_doc_id]:
+                best[cand_doc_id] = dist
+
+        # SQLite confirmation: verify vault membership against DB (Lance metadata advisory)
+        confirmed: List[str] = []
+        for cand_doc_id in best:
+            row = conn.execute(
+                "SELECT vault_id FROM documents WHERE id = ? AND deleted = 0",
+                (cand_doc_id,)
+            ).fetchone()
+            if row and row[0] == source_vault_id:
+                confirmed.append(cand_doc_id)
+
+        now = datetime.now(timezone.utc).isoformat()
+        inserted = 0
+        for other_doc_id in confirmed:
+            if inserted >= cap:
+                break
+            existing = conn.execute(
+                "SELECT 1 FROM doc_links WHERE "
+                "(source_doc_id=? AND target_doc_id=?) OR "
+                "(source_doc_id=? AND target_doc_id=?)",
+                (doc_id, other_doc_id, other_doc_id, doc_id)
+            ).fetchone()
+            if existing:
+                continue
+
+            fwd_id = _make_link_id(source_vault_id, doc_id, source_vault_id, other_doc_id, "auto:embedding")
+            rev_id = _make_link_id(source_vault_id, other_doc_id, source_vault_id, doc_id, "auto:embedding")
+            try:
+                # INSERT WHERE EXISTS validates both docs exist atomically
+                conn.execute(
+                    """INSERT OR IGNORE INTO doc_links
+                       (id, source_vault_id, source_doc_id, target_vault_id,
+                        target_doc_id, created_at, label)
+                       SELECT ?, ?, ?, ?, ?, ?, 'auto:embedding'
+                       WHERE EXISTS (SELECT 1 FROM documents WHERE id=? AND vault_id=? AND deleted=0)
+                         AND EXISTS (SELECT 1 FROM documents WHERE id=? AND vault_id=? AND deleted=0)
+                    """,
+                    (fwd_id, source_vault_id, doc_id, source_vault_id, other_doc_id, now,
+                     doc_id, source_vault_id, other_doc_id, source_vault_id)
+                )
+                conn.execute(
+                    """INSERT OR IGNORE INTO doc_links
+                       (id, source_vault_id, source_doc_id, target_vault_id,
+                        target_doc_id, created_at, label)
+                       SELECT ?, ?, ?, ?, ?, ?, 'auto:embedding'
+                       WHERE EXISTS (SELECT 1 FROM documents WHERE id=? AND vault_id=? AND deleted=0)
+                         AND EXISTS (SELECT 1 FROM documents WHERE id=? AND vault_id=? AND deleted=0)
+                    """,
+                    (rev_id, source_vault_id, other_doc_id, source_vault_id, doc_id, now,
+                     other_doc_id, source_vault_id, doc_id, source_vault_id)
+                )
+                inserted += 1
+            except sqlite3.IntegrityError:
+                pass
+        _embd_record_success(source_vault_id)
+    except Exception as exc:
+        _embd_record_failure(source_vault_id)
+        import logging
+        logging.getLogger(__name__).error(
+            "auto_link_doc_embeddings failed for doc %s: %s", doc_id, exc
+        )
 
 
 def _reindex_all_docs(conn: sqlite3.Connection, vaults_dir: Path) -> None:
@@ -954,6 +1168,14 @@ class VaultStorage:
                 pass
 
         self._lance_write_safe(doc_id, vault_id, name, extracted)
+        # Phase 2a: embedding-based auto-link (Pro only, errors never propagate)
+        is_pro = get_tier(self.root) == TIER_PRO
+        if is_pro and self._lance_index is not None:
+            with self._db() as conn:
+                try:
+                    _auto_link_doc_embeddings(conn, doc_id, self._lance_index, is_pro=True)
+                except Exception:
+                    pass
         return meta
 
     def add_document_from_text(self, vault_id: str, name: str, text_content: str,
@@ -1076,6 +1298,14 @@ class VaultStorage:
 
         if content is not None or name is not None:
             self._lance_write_safe(doc_id, vault_id, final_name, extracted)
+            # Phase 2a: embedding-based auto-link (Pro only, errors never propagate)
+            is_pro = get_tier(self.root) == TIER_PRO
+            if is_pro and self._lance_index is not None:
+                with self._db() as conn:
+                    try:
+                        _auto_link_doc_embeddings(conn, doc_id, self._lance_index, is_pro=True)
+                    except Exception:
+                        pass
         # Return fresh metadata
         return self.get_document(doc_id)
 
@@ -1639,11 +1869,40 @@ class VaultStorage:
             )
             return cursor.rowcount
 
+    def archive_embedding_links(self) -> int:
+        """Set archived_at on all auto:embedding links (Pro->Free downgrade).
+
+        Defense-in-depth: find_related_docs already filters by archived_at IS NULL,
+        but setting this flag at downgrade time makes the exclusion data-layer enforced
+        and independent of per-call filter logic.
+        """
+        now = self._now()
+        with self._db() as conn:
+            cursor = conn.execute(
+                "UPDATE doc_links SET archived_at = ? "
+                "WHERE label = 'auto:embedding' AND archived_at IS NULL",
+                (now,)
+            )
+            return cursor.rowcount
+
+    def unarchive_embedding_links(self) -> int:
+        """Clear archived_at on all auto:embedding links (Free->Pro re-upgrade)."""
+        with self._db() as conn:
+            cursor = conn.execute(
+                "UPDATE doc_links SET archived_at = NULL "
+                "WHERE label = 'auto:embedding' AND archived_at IS NOT NULL"
+            )
+            return cursor.rowcount
+
     def find_related_docs(self, doc_id: str) -> List[Dict[str, Any]]:
         """Return all documents linked to or from the given document.
 
         Each result includes the related document's metadata and the link label.
+        Embedding links (label='auto:embedding') are excluded for free-tier callers
+        and deduplicated: if the same pair has both co-occurrence and embedding links,
+        the co-occurrence entry wins.
         """
+        is_pro = get_tier(self.root) == TIER_PRO
         with self._db() as conn:
             rows = conn.execute(
                 """SELECT d.id, d.vault_id, d.name, d.category, d.tags, d.notes,
@@ -1651,16 +1910,35 @@ class VaultStorage:
                    FROM doc_links dl
                    JOIN documents d ON dl.target_doc_id = d.id
                    JOIN vaults v ON d.vault_id = v.id
-                   WHERE dl.source_doc_id = ? AND d.deleted = 0
+                   WHERE dl.source_doc_id = ?
+                     AND d.deleted = 0
+                     AND (dl.archived_at IS NULL)
                    ORDER BY dl.created_at DESC""",
                 (doc_id,)
             ).fetchall()
-            results = []
+
+            seen: Dict[str, dict] = {}
             for row in rows:
                 item = dict(row)
                 item["tags"] = json.loads(item.get("tags") or "[]")
-                results.append(item)
-            return results
+                label = item.get("label", "related")
+                target_id = item["id"]
+
+                # Filter embedding links for free tier
+                if label == "auto:embedding" and not is_pro:
+                    continue
+
+                # Dedup: cooccurrence wins over embedding for same pair
+                if target_id in seen:
+                    existing_label = seen[target_id].get("label", "")
+                    if existing_label == "auto:cooccurrence" and label == "auto:embedding":
+                        continue
+                    if label == "auto:cooccurrence":
+                        seen[target_id] = item
+                else:
+                    seen[target_id] = item
+
+            return list(seen.values())
 
     # -------------------------------------------------------------------
     # Vault manifest export (Phase 2)
