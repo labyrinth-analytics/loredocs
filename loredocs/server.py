@@ -21,8 +21,11 @@ from typing import Any, Dict, List, Optional
 from mcp.server.fastmcp import FastMCP, Context
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .storage import VaultStorage
-from .tiers import TierLimitError, get_tier, set_tier, TIER_LIMITS
+from .storage import (
+    VaultStorage, CROSS_LINK_SCHEMA_VERSION, discover_product_db, DiscoveryError,
+    _CROSS_LINK_EMBEDDING_MODEL,
+)
+from .tiers import TierLimitError, get_tier, set_tier, TIER_LIMITS, TIER_PRO
 from .license import get_license_status
 from .onboard_tool import run_onboard as _run_onboard
 
@@ -1764,6 +1767,139 @@ def get_license_tier() -> dict:
         error   -- error message (if mode is "invalid_key")
     """
     return get_license_status()
+
+
+# ---------------------------------------------------------------------------
+# Cross-product linking tools (Phase 2b, SH-10727)
+# Requires LoreConvo to be installed. Pro tier only for auto-links.
+# ---------------------------------------------------------------------------
+
+@mcp.tool(title="Link Session to Doc", name="vault_link_session")
+def vault_link_session(
+    ctx: Context,
+    session_id: str,
+    doc_id: str,
+    vault_id: str,
+) -> dict:
+    """Create a manual cross-product link from a LoreConvo session to a LoreDocs doc.
+
+    Both LoreConvo and LoreDocs must be installed. Manual links are accessible
+    on all tiers. The linked doc must not be in an opt-out vault.
+
+    Args:
+        session_id  -- LoreConvo session UUID
+        doc_id      -- LoreDocs document ID
+        vault_id    -- LoreDocs vault containing the document
+
+    Returns dict with:
+        ok          -- bool
+        session_id, doc_id on success
+        reason      -- failure description (generic; details in debug log)
+    """
+    storage = _get_storage(ctx)
+    try:
+        lc_db = discover_product_db("loreconvo")
+    except DiscoveryError:
+        return {"ok": False, "reason": "Cross-product linking unavailable"}
+    if lc_db is None:
+        return {"ok": False, "reason": "Cross-product linking unavailable"}
+
+    is_pro = get_tier(storage.root) == TIER_PRO
+    return storage.link_session_to_doc(
+        session_id=session_id,
+        doc_id=doc_id,
+        vault_id=vault_id,
+        link_type="manual",
+        is_pro=is_pro,
+    )
+
+
+@mcp.tool(title="Get Session Links for Doc", name="vault_get_session_links")
+def vault_get_session_links(ctx: Context, doc_id: str, limit: int = 5) -> dict:
+    """Return cross-product LoreConvo sessions linked to a LoreDocs document.
+
+    Both LoreConvo and LoreDocs must be installed. Requires Pro tier for
+    auto-links. Manual links are always returned.
+
+    Args:
+        doc_id  -- LoreDocs document ID
+        limit   -- max results (default 5)
+
+    Returns dict with:
+        schema_version          -- CROSS_LINK_SCHEMA_VERSION for version negotiation
+        cross_product_available -- bool
+        tier_gate               -- "satisfied" | "pro_required"
+        links                   -- list of {target_product, target_id, similarity_score,
+                                   link_type, created_at, is_stale}
+    """
+    storage = _get_storage(ctx)
+    try:
+        lc_db = discover_product_db("loreconvo")
+    except DiscoveryError:
+        return {
+            "schema_version": CROSS_LINK_SCHEMA_VERSION,
+            "cross_product_available": False,
+            "reason": "Cross-product linking unavailable",
+            "links": [],
+        }
+    if lc_db is None:
+        return {
+            "schema_version": CROSS_LINK_SCHEMA_VERSION,
+            "cross_product_available": False,
+            "reason": "Cross-product linking unavailable",
+            "links": [],
+        }
+
+    is_pro = get_tier(storage.root) == TIER_PRO
+    return storage.get_cross_product_links(
+        source_product="loredocs",
+        source_id=doc_id,
+        current_embedding_model=_CROSS_LINK_EMBEDDING_MODEL,
+        limit=limit,
+        is_pro=is_pro,
+    )
+
+
+@mcp.tool(title="Get Linked Sessions", name="vault_get_linked_sessions")
+def vault_get_linked_sessions(ctx: Context, session_id: str, limit: int = 5) -> dict:
+    """Return LoreDocs documents linked to a given LoreConvo session.
+
+    Queries the LoreDocs cross_product_links table for links where the session
+    is the source or target. Returns both auto and manual links. Requires Pro
+    tier for auto-links.
+
+    Args:
+        session_id  -- LoreConvo session UUID
+        limit       -- max results (default 5)
+
+    Returns same structure as vault_get_session_links.
+    """
+    storage = _get_storage(ctx)
+    try:
+        lc_db = discover_product_db("loreconvo")
+    except DiscoveryError:
+        return {
+            "schema_version": CROSS_LINK_SCHEMA_VERSION,
+            "cross_product_available": False,
+            "reason": "Cross-product linking unavailable",
+            "links": [],
+        }
+    if lc_db is None:
+        return {
+            "schema_version": CROSS_LINK_SCHEMA_VERSION,
+            "cross_product_available": False,
+            "reason": "Cross-product linking unavailable",
+            "links": [],
+        }
+
+    is_pro = get_tier(storage.root) == TIER_PRO
+    return storage.get_cross_product_links(
+        source_product="loreconvo",
+        source_id=session_id,
+        current_embedding_model=_CROSS_LINK_EMBEDDING_MODEL,
+        limit=limit,
+        is_pro=is_pro,
+    )
 
 
 # ---------------------------------------------------------------------------

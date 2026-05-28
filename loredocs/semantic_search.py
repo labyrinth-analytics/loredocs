@@ -294,3 +294,15 @@ class DocLanceIndex:
         self._table.create_fts_index('chunk_text', replace=True)
         os.chmod(self._lance_dir, 0o700)
         return len(all_rows)
+
+
+def get_lance_db_path(root: Optional[Path] = None) -> Optional[Path]:
+    """Return the docs.lance/ directory path for this LoreDocs install.
+
+    Used by LoreConvo to locate the LoreDocs Lance index for cross-product
+    similarity queries without hardcoding the path. Returns None if the
+    index directory does not exist (Pro not enabled or never indexed).
+    """
+    from .storage import DEFAULT_ROOT
+    lance_dir = (root or DEFAULT_ROOT) / 'docs.lance'
+    return lance_dir if lance_dir.exists() else None

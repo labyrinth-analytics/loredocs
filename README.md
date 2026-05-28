@@ -113,7 +113,7 @@ At session end:
 
 ## MCP Tools
 
-LoreDocs provides 39 MCP tools organized by function:
+LoreDocs provides 42 MCP tools organized by function:
 
 ### Vault Management (8 tools)
 | Tool | What it does |
@@ -185,6 +185,13 @@ LoreDocs provides 39 MCP tools organized by function:
 | `vault_tier_status` | Check current tier limits and usage |
 | `vault_set_tier` | Set the active tier (free, pro, team) |
 | `get_license_tier` | Check current tier and license key status |
+
+### Cross-product Session Links (3 tools, Pro)
+| Tool | What it does |
+|------|-------------|
+| `vault_link_session` | Create a manual link from a LoreConvo session to a LoreDocs document |
+| `vault_get_session_links` | Return LoreConvo sessions linked to a LoreDocs document |
+| `vault_get_linked_sessions` | Return LoreDocs documents linked to a given LoreConvo session |
 
 ## Portable Project Workspace
 
