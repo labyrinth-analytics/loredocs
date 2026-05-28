@@ -142,8 +142,81 @@ CONFIG_FILE = "config.json"
 DB_FILE = "loredocs.db"
 VAULTS_DIR = "vaults"
 
+# Cross-product linking (Phase 2b, SH-10727)
+# Increment when cross_product_links schema changes incompatibly.
+CROSS_LINK_SCHEMA_VERSION = 1
+# LoreConvo callers check >= REQUIRED_CROSS_LINK_SCHEMA_VERSION before using links.
+REQUIRED_CROSS_LINK_SCHEMA_VERSION = 1
+_CROSS_LINK_THRESHOLD = 0.80   # cosine similarity floor
+_CROSS_LINK_L2_THRESHOLD = 0.6  # L2-normalized distance ceiling (cosine 0.80 ~ dist 0.632)
+_CROSS_LINK_CAP = 5             # max cross-product links per session/doc
+_CROSS_LINK_DEBOUNCE_SECS = 600 # 10-minute per-entity debounce
+_CROSS_LINK_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+_CROSS_LINK_EMBEDDING_DIM = 384
+
 # File size limits (bytes)
 MAX_FILE_SIZE = 30 * 1024 * 1024  # 30 MB per file (matches Claude Projects)
+
+
+# ---------------------------------------------------------------------------
+# Cross-product path discovery (Phase 2b)
+# ---------------------------------------------------------------------------
+
+class DiscoveryError(Exception):
+    """Raised when an env-var DB path override is set but invalid."""
+
+
+def discover_product_db(product: str) -> Optional[Path]:
+    """Return the DB path for another Lore product, or None if not installed.
+
+    Checks the <PRODUCT>_DB_PATH env var first (for testing / non-default install).
+    Validated env paths must be under $HOME, end in .db, and be readable SQLite.
+
+    Raises DiscoveryError only when the env var is explicitly set but the path
+    fails validation (misconfiguration signal worth surfacing). Returns None
+    silently when the product is simply not installed.
+    """
+    import logging as _logging
+    log = _logging.getLogger(__name__)
+
+    env_key = f"{product.upper().replace('-', '_')}_DB_PATH"
+    env_override = os.environ.get(env_key)
+    if env_override:
+        p = Path(env_override)
+        home = Path.home()
+        try:
+            p.resolve().relative_to(home.resolve())
+        except ValueError:
+            raise DiscoveryError(
+                f"{env_key}={env_override!r} is outside $HOME -- refusing to open it"
+            )
+        if p.suffix != ".db":
+            raise DiscoveryError(
+                f"{env_key}={env_override!r} does not end in .db -- check the path"
+            )
+        if not p.exists():
+            raise DiscoveryError(
+                f"{env_key}={env_override!r} set but file does not exist. "
+                f"Check {product} installation or unset {env_key}."
+            )
+        # Validate it is a readable SQLite file
+        try:
+            import sqlite3 as _sqlite3
+            c = _sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+            c.execute("SELECT 1")
+            c.close()
+        except Exception as exc:
+            raise DiscoveryError(
+                f"{env_key}={env_override!r} is not a readable SQLite file: {exc}"
+            )
+        return p
+
+    default = Path.home() / f".{product}" / f"{product}.db"
+    if default.exists():
+        log.debug("discover_product_db: found %s at default path", product)
+        return default
+    log.debug("discover_product_db: %s not installed (default path absent)", product)
+    return None
 
 # Free tier limits
 FREE_MAX_VAULTS = 3
@@ -407,6 +480,42 @@ def _migrate_db(db_path: Path) -> None:
         CREATE UNIQUE INDEX IF NOT EXISTS idx_doc_links_unique_key
         ON doc_links(source_vault_id, source_doc_id, target_vault_id, target_doc_id, label)
     """)
+
+    # v0.7: Phase 2b cross-product linking (SH-10727)
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS cross_product_links (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_product  TEXT NOT NULL,
+            source_id       TEXT NOT NULL,
+            target_product  TEXT NOT NULL,
+            target_id       TEXT NOT NULL,
+            similarity_score REAL,
+            embedding_model  TEXT NOT NULL,
+            embedding_dim    INTEGER NOT NULL,
+            link_type        TEXT NOT NULL DEFAULT 'auto',
+            tier_required    TEXT NOT NULL DEFAULT 'pro',
+            created_at       TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+            UNIQUE(source_product, source_id, target_product, target_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_cross_links_source
+            ON cross_product_links(source_product, source_id);
+        CREATE INDEX IF NOT EXISTS idx_cross_links_target
+            ON cross_product_links(target_product, target_id);
+    """)
+
+    # Privacy: vault-level opt-out column
+    vault_cols_v7 = {row[1] for row in conn.execute("PRAGMA table_info(vaults)")}
+    if "cross_link_opt_out" not in vault_cols_v7:
+        conn.execute(
+            "ALTER TABLE vaults ADD COLUMN cross_link_opt_out INTEGER NOT NULL DEFAULT 0"
+        )
+
+    # Debounce: last_cross_linked_at on documents
+    doc_cols_v7 = {row[1] for row in conn.execute("PRAGMA table_info(documents)")}
+    if "last_cross_linked_at" not in doc_cols_v7:
+        conn.execute(
+            "ALTER TABLE documents ADD COLUMN last_cross_linked_at TEXT DEFAULT NULL"
+        )
 
     conn.commit()
     conn.close()
@@ -1176,6 +1285,11 @@ class VaultStorage:
                     _auto_link_doc_embeddings(conn, doc_id, self._lance_index, is_pro=True)
                 except Exception:
                     pass
+        # Phase 2b: save-triggered cross-product linking (Pro only, best-effort)
+        try:
+            self.cross_link_doc(doc_id, vault_id)
+        except Exception:
+            pass
         return meta
 
     def add_document_from_text(self, vault_id: str, name: str, text_content: str,
@@ -1306,6 +1420,11 @@ class VaultStorage:
                         _auto_link_doc_embeddings(conn, doc_id, self._lance_index, is_pro=True)
                     except Exception:
                         pass
+            # Phase 2b: save-triggered cross-product linking (Pro only, best-effort)
+            try:
+                self.cross_link_doc(doc_id, vault_id)
+            except Exception:
+                pass
         # Return fresh metadata
         return self.get_document(doc_id)
 
@@ -2000,6 +2119,277 @@ class VaultStorage:
                 "documents": doc_list,
                 "generated_at": self._now(),
             }
+
+    # -------------------------------------------------------------------
+    # Cross-product linking (Phase 2b, SH-10727)
+    # -------------------------------------------------------------------
+
+    def _write_cross_product_link(
+        self,
+        conn: sqlite3.Connection,
+        source_product: str,
+        source_id: str,
+        target_product: str,
+        target_id: str,
+        similarity_score: Optional[float],
+        embedding_model: str,
+        embedding_dim: int,
+        link_type: str = "auto",
+        tier_required: str = "pro",
+    ) -> None:
+        """Write a single cross-product link. All cross-product writes go through here."""
+        conn.execute(
+            """INSERT OR IGNORE INTO cross_product_links
+               (source_product, source_id, target_product, target_id,
+                similarity_score, embedding_model, embedding_dim,
+                link_type, tier_required)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (source_product, source_id, target_product, target_id,
+             similarity_score, embedding_model, embedding_dim,
+             link_type, tier_required),
+        )
+
+    def get_cross_product_links(
+        self,
+        source_product: str,
+        source_id: str,
+        current_embedding_model: str,
+        limit: int = 5,
+        is_pro: bool = False,
+    ) -> Dict[str, Any]:
+        """Return cross-product links for a source entity.
+
+        Filters stale-model links (marks them is_stale=True, still returned so
+        callers can surface an upgrade message). Manual links bypass model check.
+
+        Returns a dict with:
+          schema_version, cross_product_available, tier_gate, links
+        """
+        if not is_pro:
+            return {
+                "schema_version": CROSS_LINK_SCHEMA_VERSION,
+                "cross_product_available": True,
+                "tier_gate": "pro_required",
+                "message": "Cross-product linking requires Pro tier.",
+                "links": [],
+            }
+        with self._db() as conn:
+            rows = conn.execute(
+                """SELECT target_product, target_id, similarity_score,
+                          embedding_model, embedding_dim, link_type, created_at
+                   FROM cross_product_links
+                   WHERE source_product = ? AND source_id = ?
+                   ORDER BY
+                     CASE link_type WHEN 'manual' THEN 0 ELSE 1 END,
+                     CASE WHEN embedding_model = ? THEN 0 ELSE 1 END,
+                     similarity_score DESC
+                   LIMIT ?""",
+                (source_product, source_id, current_embedding_model, limit),
+            ).fetchall()
+
+        links = []
+        for row in rows:
+            is_stale = (row["link_type"] != "manual" and
+                        row["embedding_model"] != current_embedding_model)
+            entry: Dict[str, Any] = {
+                "target_product": row["target_product"],
+                "target_id": row["target_id"],
+                "similarity_score": row["similarity_score"],
+                "link_type": row["link_type"],
+                "created_at": row["created_at"],
+                "is_stale": is_stale,
+            }
+            if is_stale:
+                entry["upgrade_message"] = (
+                    "This link was created with a different embedding model. "
+                    "Re-index both products to refresh cross-product links."
+                )
+            links.append(entry)
+
+        return {
+            "schema_version": CROSS_LINK_SCHEMA_VERSION,
+            "cross_product_available": True,
+            "tier_gate": "satisfied",
+            "links": links,
+        }
+
+    def link_session_to_doc(
+        self,
+        session_id: str,
+        doc_id: str,
+        vault_id: str,
+        link_type: str = "manual",
+        similarity_score: Optional[float] = None,
+        is_pro: bool = False,
+    ) -> Dict[str, Any]:
+        """Write a manual cross-product link from a LoreConvo session to a LoreDocs doc.
+
+        Checks vault opt-out. Manual links use embedding_model='manual', dim=0,
+        tier_required='free' (manual links are free-tier accessible per design).
+        """
+        if not is_pro and link_type == "manual":
+            # Manual links allowed for all tiers per architecture decision
+            pass
+
+        with self._db() as conn:
+            vault_row = conn.execute(
+                "SELECT cross_link_opt_out FROM vaults WHERE id = ?", (vault_id,)
+            ).fetchone()
+            if not vault_row:
+                return {"ok": False, "reason": "vault not found"}
+            if vault_row["cross_link_opt_out"]:
+                return {"ok": False, "reason": "vault has cross-linking disabled"}
+
+            doc_row = conn.execute(
+                "SELECT 1 FROM documents WHERE id = ? AND deleted = 0", (doc_id,)
+            ).fetchone()
+            if not doc_row:
+                return {"ok": False, "reason": "document not found"}
+
+            self._write_cross_product_link(
+                conn,
+                source_product="loreconvo",
+                source_id=session_id,
+                target_product="loredocs",
+                target_id=doc_id,
+                similarity_score=similarity_score,
+                embedding_model="manual",
+                embedding_dim=0,
+                link_type="manual",
+                tier_required="free",
+            )
+
+        return {"ok": True, "session_id": session_id, "doc_id": doc_id}
+
+    def cross_link_doc(self, doc_id: str, vault_id: str) -> int:
+        """Trigger save-time cross-product linking for a LoreDocs document.
+
+        Queries the LoreConvo sessions.lance index for semantically similar sessions,
+        writes up to _CROSS_LINK_CAP links. Pro-only, best-effort (never fails a save).
+
+        Returns count of links written (0 if product unavailable, not Pro, etc).
+        Updates documents.last_cross_linked_at.
+        """
+        import logging as _logging
+        log = _logging.getLogger(__name__)
+
+        if get_tier(self.root) != TIER_PRO:
+            return 0
+
+        # Check debounce
+        now_str = self._now()
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT last_cross_linked_at FROM documents WHERE id = ?", (doc_id,)
+            ).fetchone()
+        if row and row["last_cross_linked_at"]:
+            try:
+                from datetime import datetime as _dt, timezone as _tz
+                last = _dt.fromisoformat(row["last_cross_linked_at"].replace("Z", "+00:00"))
+                now_dt = _dt.now(_tz.utc)
+                if (now_dt - last).total_seconds() < _CROSS_LINK_DEBOUNCE_SECS:
+                    return 0
+            except Exception:
+                pass
+
+        # Discover LoreConvo sessions.lance
+        try:
+            lc_db = discover_product_db("loreconvo")
+        except DiscoveryError:
+            return 0
+        if lc_db is None:
+            return 0
+
+        # Find LoreConvo sessions.lance directory
+        lc_lance_dir = lc_db.parent / "sessions.lance"
+        if not lc_lance_dir.exists():
+            return 0
+
+        # Get the document's text for embedding
+        with self._db() as conn:
+            vault_row = conn.execute(
+                "SELECT cross_link_opt_out FROM vaults WHERE id = ?", (vault_id,)
+            ).fetchone()
+            if not vault_row or vault_row["cross_link_opt_out"]:
+                return 0
+            doc_row = conn.execute(
+                "SELECT name FROM documents WHERE id = ? AND deleted = 0", (doc_id,)
+            ).fetchone()
+        if not doc_row:
+            return 0
+
+        extracted_path = self.vaults_dir / vault_id / "docs" / doc_id / "extracted.txt"
+        doc_text = doc_row["name"]
+        if extracted_path.exists():
+            try:
+                doc_text = extracted_path.read_text(encoding="utf-8", errors="replace")[:2000]
+            except Exception:
+                pass
+
+        try:
+            import lancedb as _lancedb
+            from sentence_transformers import SentenceTransformer as _ST
+
+            model = _ST(_CROSS_LINK_EMBEDDING_MODEL)
+            q_vec = model.encode(doc_text).tolist()
+
+            lc_lance_db = _lancedb.connect(str(lc_lance_dir))
+            table = lc_lance_db.open_table("sessions")
+            raw = table.search(
+                q_vec, vector_column_name="vector", query_type="vector"
+            ).limit(50).to_list()
+
+            # Deduplicate to best distance per session_id
+            best: Dict[str, float] = {}
+            for r in raw:
+                sid = r.get("session_id")
+                dist = r.get("_distance", 999.0)
+                if not sid:
+                    continue
+                if dist > _CROSS_LINK_L2_THRESHOLD:
+                    continue
+                if sid not in best or dist < best[sid]:
+                    best[sid] = dist
+
+            # Check LoreConvo DB for session opt-out
+            import sqlite3 as _sqlite3
+            lc_conn = _sqlite3.connect(f"file:{lc_db}?mode=ro", uri=True)
+            lc_conn.row_factory = _sqlite3.Row
+            written = 0
+            with self._db() as conn:
+                for sid, dist in sorted(best.items(), key=lambda x: x[1])[:_CROSS_LINK_CAP]:
+                    if written >= _CROSS_LINK_CAP:
+                        break
+                    row = lc_conn.execute(
+                        "SELECT cross_link_opt_out FROM sessions WHERE id = ?", (sid,)
+                    ).fetchone()
+                    # cross_link_opt_out may not exist on older schemas -- treat as 0
+                    if row and row[0]:
+                        continue
+                    cosine = max(0.0, 1.0 - dist)
+                    self._write_cross_product_link(
+                        conn,
+                        source_product="loredocs",
+                        source_id=doc_id,
+                        target_product="loreconvo",
+                        target_id=sid,
+                        similarity_score=round(cosine, 4),
+                        embedding_model=_CROSS_LINK_EMBEDDING_MODEL,
+                        embedding_dim=_CROSS_LINK_EMBEDDING_DIM,
+                        link_type="auto",
+                        tier_required="pro",
+                    )
+                    written += 1
+                conn.execute(
+                    "UPDATE documents SET last_cross_linked_at = ? WHERE id = ?",
+                    (now_str, doc_id),
+                )
+            lc_conn.close()
+            log.debug("cross_link_doc: wrote %d cross-product links for doc %s", written, doc_id)
+            return written
+        except Exception as exc:
+            log.warning("cross_link_doc: unavailable (%s)", type(exc).__name__)
+            return 0
 
     # -------------------------------------------------------------------
     # Suggestions (Phase 2)
