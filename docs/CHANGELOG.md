@@ -4,6 +4,14 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## 2026-05-28 -- v0.1.7
+
+### New Features
+
+- **Cross-product session linking with LoreConvo (Pro).** LoreDocs Pro can now discover and display the LoreConvo sessions most relevant to any vault document, and vice versa. When you save a session in LoreConvo or add a document in LoreDocs, the two products automatically compare content and link the most similar items. Three new MCP tools support this workflow: `vault_link_session` (manually link a session to a document), `vault_get_session_links` (see which sessions relate to a document), and `vault_get_linked_sessions` (see which documents relate to a session). Requires both LoreConvo Pro and LoreDocs Pro to be installed. Cross-product linking can be disabled per-vault via opt-out.
+
+---
+
 ## 2026-05-25 -- v0.1.6
 
 ### Bug Fixes
