@@ -1,6 +1,6 @@
 # LoreDocs MCP Tool Catalog
 
-LoreDocs provides 39 MCP tools that Claude calls during your sessions. You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
+LoreDocs provides 42 MCP tools that Claude calls during your sessions. You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
 
 This catalog explains what each tool does and when Claude uses it. Tools are grouped by function.
 
@@ -449,3 +449,6 @@ Return the current license tier name and the raw license key status (present/abs
 | 37 | `vault_tier_status` | Check tier and usage |
 | 38 | `vault_set_tier` | Activate a tier |
 | 39 | `get_license_tier` | Check current tier and license key status |
+| 40 | `vault_link_session` | Create a manual link from a LoreConvo session to a LoreDocs document (Pro) |
+| 41 | `vault_get_session_links` | Return LoreConvo sessions linked to a LoreDocs document (Pro) |
+| 42 | `vault_get_linked_sessions` | Return LoreDocs documents linked to a given LoreConvo session (Pro) |

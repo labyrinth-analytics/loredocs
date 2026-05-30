@@ -8,7 +8,7 @@ description: >
   Also triggers on "version history", "roll back doc", "tag this doc", "link docs", or
   "export vault".
 metadata:
-  version: "0.1.0"
+  version: "0.1.7"
   author: "Labyrinth Analytics Consulting"
 ---
 
@@ -80,7 +80,7 @@ Vaults group related documents by project or topic:
 
 - `vault_search("query")` - Full-text search across all vaults
 - `vault_search_by_tag("tag-name")` - Find all docs with a specific tag
-- `vault_find_related(doc_id)` - Discover docs related to a given doc (Pro only)
+- `vault_find_related(doc_id)` - Discover docs related to a given doc. Free: keyword co-occurrence links. Pro: adds embedding-based auto-links (BGE-small-en-v1.5, cosine >= 0.75, same-vault scoped).
 - `vault_suggest()` - Proactive suggestions for docs relevant to current context
 - `vault_rebuild_index()` - Rebuild semantic search index (Pro only; run after first Pro install)
 

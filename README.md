@@ -1,4 +1,4 @@
-# LoreDocs v0.1.4
+# LoreDocs v0.1.7
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -35,7 +35,7 @@ Or inside an existing session:
 /plugin add /path/to/loredocs
 ```
 
-Once loaded, Claude has access to all 39 LoreDocs MCP tools automatically. Ask Claude to "create a vault for this project" or "find the architecture doc" and it uses the tools on its own.
+Once loaded, Claude has access to all 42 LoreDocs MCP tools automatically. Ask Claude to "create a vault for this project" or "find the architecture doc" and it uses the tools on its own.
 
 ### Cowork (Desktop App)
 
@@ -108,6 +108,8 @@ At session end:
 - **Context injection**: Load specific docs, tags, or vault summaries into Claude's context
 - **Bulk operations**: Import directories, bulk-tag, export manifests
 - **Document linking**: Connect related docs across vaults
+- **Embedding-based document relationships (Pro)**: `vault_find_related` returns both keyword co-occurrence and embedding-based auto-links for Pro users. Uses BGE-small-en-v1.5, cosine >= 0.75, same-vault scoped. Embedding links are archived if you downgrade from Pro to Free.
+- **Cross-product session linking (Pro)**: Automatically links vault documents to the most relevant LoreConvo sessions, and vice versa. Three tools: `vault_link_session`, `vault_get_session_links`, `vault_get_linked_sessions`. Requires both LoreDocs Pro and LoreConvo Pro.
 - **Tier management**: Free/Pro/Team tiers with configurable limits
 - **Local-first**: SQLite database, no cloud dependency, zero API costs
 
