@@ -44,7 +44,6 @@ pro = [
 
 [project.scripts]
 loredocs = "loredocs.server:main"
-loredocs-cli = "loredocs.cli:cli"
 
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
