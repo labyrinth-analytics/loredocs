@@ -318,6 +318,7 @@ def _init_db(db_path: Path) -> None:
     """Create the SQLite database with FTS5 tables if they don't exist."""
     conn = sqlite3.connect(str(db_path))
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys=ON")
 
     conn.executescript("""
@@ -405,6 +406,7 @@ def _migrate_db(db_path: Path) -> None:
     """Apply incremental schema migrations that are safe to run repeatedly."""
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys=ON")
 
     # v0.2: add label column to doc_links if missing
@@ -825,6 +827,9 @@ class VaultStorage:
         """Context manager for database connections."""
         conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row
+        # Wait up to 5s for a competing writer instead of failing instantly
+        # with "database is locked" under transient contention.
+        conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("PRAGMA foreign_keys=ON")
         try:
             yield conn
