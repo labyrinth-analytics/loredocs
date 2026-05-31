@@ -1908,6 +1908,9 @@ def vault_get_linked_sessions(ctx: Context, session_id: str, limit: int = 5) -> 
 
 def main():
     """Run the LoreDocs MCP server."""
+    from . import idle_watchdog
+    # Reap this process if the client parks it idle, freeing resources.
+    idle_watchdog.install(mcp, env_var="LOREDOCS_IDLE_TIMEOUT")
     mcp.run()
 
 
