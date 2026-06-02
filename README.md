@@ -98,6 +98,64 @@ At session end:
 
 **For Cowork users:** Cowork does not run hooks automatically. Add instructions to call `vault_list` and `vault_inject_summary` at session start in your project CLAUDE.md.
 
+## Canonical Project Knowledge
+
+In multi-agent environments, different tools and agents often create improvised mirrors
+of shared skill or configuration content -- playbooks, style guides, shared reference
+docs. Those mirrors drift. One agent updates the source; the other keeps reading the
+stale copy. Two agents in the same project end up operating from divergent knowledge
+with no visible signal that anything is wrong.
+
+LoreDocs prevents this by making the vault the single canonical source that every agent
+reads. Instead of each agent loading a local file copy, every agent calls
+`vault_inject_by_tag` at session start and gets the same vault-managed version.
+
+### Recommended pattern
+
+Store shared content (playbooks, team guidelines, shared specs) as vault documents
+rather than as local files that agents copy or mirror.
+
+Agents load the content at session start:
+
+```
+vault_inject_by_tag: team-playbook
+```
+
+All agents -- regardless of surface (Claude Code, Cowork, CLI, or any future AI tool)
+-- call the same vault and receive the same current version. Updating the content
+requires editing the vault document once; all agents pick up the change on their next
+session start.
+
+Local files (`.claude/skills/`, `.agents/`, or any surface-specific config) become
+pointers or bootstrap stubs only -- not the authoritative content. The vault is the
+source of truth.
+
+### Example: sharing a playbook across an agent team
+
+```python
+# Session start for any agent on the team:
+# 1. Inject the shared playbook by tag
+vault_inject_by_tag("team-playbook")
+
+# 2. Inject any project-specific reference docs
+vault_inject_by_tag("project-architecture")
+
+# Working context is now current -- no local file copies needed.
+```
+
+To store the shared content in the vault (one time, or on each update):
+
+```python
+# Store (or update) the shared playbook:
+vault_update_doc(vault="team-knowledge", doc_id="playbook-id", content=open("PLAYBOOK.md").read())
+
+# Or add it fresh:
+vault_add_doc(vault="team-knowledge", name="Team Playbook", content=open("PLAYBOOK.md").read(), tags=["team-playbook"])
+```
+
+Any agent that calls `vault_inject_by_tag("team-playbook")` reads the same document.
+No copies, no mirrors, no drift.
+
 ## Features
 
 - **Vault organization**: Group docs by project with linked project metadata
