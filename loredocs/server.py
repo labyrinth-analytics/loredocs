@@ -28,6 +28,7 @@ from .storage import (
 from .tiers import TierLimitError, get_tier, set_tier, TIER_LIMITS, TIER_PRO
 from .license import get_license_status
 from .onboard_tool import run_onboard as _run_onboard
+from .compat_check import check as _compat_check, emit_startup_warnings as _compat_emit
 
 
 # ---------------------------------------------------------------------------
@@ -1903,11 +1904,31 @@ def vault_get_linked_sessions(ctx: Context, session_id: str, limit: int = 5) -> 
 
 
 # ---------------------------------------------------------------------------
+# Compatibility guard
+# ---------------------------------------------------------------------------
+
+@mcp.tool(title="Get Server Info")
+def get_server_info() -> dict:
+    """Return MCP compatibility status for this LoreDocs server.
+
+    Returns product version, installed mcp SDK version, tested version, and
+    compatibility status. Useful for diagnosing version mismatches on running
+    servers without requiring a restart.
+
+    Returns dict with: product_name, product_version, mcp_installed, mcp_tested,
+    mcp_accepted, status (ok|mismatch|undetermined|disabled|internal_error), note.
+    """
+    result = _compat_check()
+    return {k: v for k, v in result.items() if k != "error_detail"}
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 def main():
     """Run the LoreDocs MCP server."""
+    _compat_emit(_compat_check())
     from . import idle_watchdog
     # Reap this process if the client parks it idle, freeing resources.
     idle_watchdog.install(mcp, env_var="LOREDOCS_IDLE_TIMEOUT")

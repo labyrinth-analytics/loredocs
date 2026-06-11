@@ -44,6 +44,7 @@ pro = [
 
 [project.scripts]
 loredocs = "loredocs.server:main"
+loredocs-compat-check = "loredocs.compat_check:main"
 
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
