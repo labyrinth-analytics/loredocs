@@ -187,10 +187,10 @@ LoreDocs provides 42 MCP tools organized by function:
 | `vault_open_workspace` | Open or create the vault scoped to a directory path |
 | `loredocs_onboard` | Set up workspace with starter vaults on first install |
 
-### Document Operations (9 tools)
+### Document Operations (10 tools)
 | Tool | What it does |
 |------|-------------|
-| `vault_add_doc` | Add a new document to a vault |
+| `vault_add_doc` | Add a new document to a vault (inline content or from file path) |
 | `vault_update_doc` | Update document content (creates version history) |
 | `vault_remove_doc` | Remove a document from a vault |
 | `vault_get_doc` | Retrieve a document with full content |

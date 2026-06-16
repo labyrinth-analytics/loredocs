@@ -2,6 +2,8 @@
 
 LoreDocs provides 42 MCP tools that Claude calls during your sessions. You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
 
+> **Version 0.1.8:** Added file-based document ingest to `vault_add_doc` (read documents from disk with the `path` parameter).
+
 This catalog explains what each tool does and when Claude uses it. Tools are grouped by function.
 
 ---
@@ -92,11 +94,13 @@ Set up your LoreDocs workspace with recommended vaults. Call once after installi
 
 ### `vault_add_doc`
 
-Add a text document to a vault. LoreDocs automatically extracts searchable text and stores the document with metadata (tags, category, priority, notes).
+Add a text document to a vault. LoreDocs automatically extracts searchable text and stores the document with metadata (tags, category, priority, notes). You can provide document content inline or read it from a file path on disk.
 
-**When Claude uses it:** When you say "add this document to my vault" or "save these notes."
+**When Claude uses it:** When you say "add this document to my vault" or "save these notes" or "import this file into my vault."
 
-**Key parameters:** `vault_id` (required), `name` (required), `content` (required), `tags`, `category`, `priority`, `notes`
+**Key parameters:** `vault_id` (required), `name` (required), `content` (inline text) or `path` (file path on disk) — provide exactly one of these two, `tags`, `category`, `priority`, `notes`
+
+**File-based ingest:** Use the `path` parameter to add documents from files on disk. This is useful for large documents or when you want to import a file without copying its contents into your Claude context. LoreDocs reads the file and stores it in the vault.
 
 ---
 
