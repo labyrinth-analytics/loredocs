@@ -163,6 +163,22 @@ If you see an error, check the Troubleshooting section below.
 
 ---
 
+## Adding Documents to Your Vault
+
+LoreDocs provides two ways to add documents:
+
+**Inline content:** Pass the text directly to Claude. Use this for short notes, summaries, or content you already have in your context.
+
+**File-based ingest:** Use the `path` parameter to read documents directly from your disk. This is useful for large documents, PDFs, or files you want to import without loading them into your Claude context. Ask Claude:
+
+```
+Add the file ~/my-project/docs/architecture.md to my vault
+```
+
+Claude will use the file-based ingest feature to load the document directly from disk and store it in LoreDocs.
+
+---
+
 ## Troubleshooting
 
 **"Module not found" or "command not found" error**
