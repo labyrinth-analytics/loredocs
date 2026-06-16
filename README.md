@@ -296,45 +296,6 @@ The `.mcp.json` points to the virtual environment's Python. If you moved the fol
 **Cowork can't see docs saved in Code?**
 Ask Claude to "mount my ~/.loredocs folder" so Cowork can access the shared database.
 
-## CLI Reference
-
-After `pip install loredocs` (or `uv sync`), the `loredocs-cli` command is available:
-
-```bash
-# List all vaults
-loredocs-cli vault list
-
-# Create a vault
-loredocs-cli vault create "My Project Docs" --desc "Architecture and specs"
-
-# Show vault details and document list
-loredocs-cli vault info "My Project Docs"
-
-# Archive / restore a vault
-loredocs-cli vault archive "Old Docs"
-loredocs-cli vault restore "Old Docs"
-
-# Add a document from a file
-loredocs-cli doc add "My Project Docs" "Architecture Overview" --file docs/architecture.md
-
-# Add a document from stdin
-echo "# Quick Note" | loredocs-cli doc add "My Project Docs" "Quick Note" --stdin
-
-# Update a document
-loredocs-cli doc update <doc-id> --name "New Title" --priority authoritative
-
-# Delete a document
-loredocs-cli doc delete <doc-id>
-
-# Search documents across all vaults
-loredocs-cli search "architecture"
-
-# Full help
-loredocs-cli --help
-loredocs-cli vault --help
-loredocs-cli doc --help
-```
-
 ## Fallback Script (Direct DB Access)
 
 If the MCP server is unreachable (e.g., in scheduled tasks or automation scripts), `scripts/query_loredocs.py` provides the same core operations directly against the SQLite database.
