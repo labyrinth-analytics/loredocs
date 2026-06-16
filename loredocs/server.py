@@ -478,12 +478,19 @@ class DocAddInput(BaseModel):
 
     vault: str = Field(..., description="Vault ID or name to add the document to", min_length=1)
     name: str = Field(..., description="Display name for the document (e.g., 'Depreciation Schedule 2025')", min_length=1, max_length=200)
-    content: str = Field(..., description="The text content of the document", min_length=1)
+    content: Optional[str] = Field(default=None, description="The text content of the document (required if path not provided)", min_length=1)
+    path: Optional[str] = Field(default=None, description="File path to read document content from (required if content not provided)")
     filename: Optional[str] = Field(default=None, description="Filename with extension (e.g., 'schedule.md'). Defaults to name.md")
     tags: Optional[List[str]] = Field(default=None, description="Tags for the document")
     category: DocCategory = Field(default=DocCategory.GENERAL, description="Document category")
     priority: DocPriority = Field(default=DocPriority.NORMAL, description="Document priority/status")
     notes: str = Field(default="", description="Notes about this document")
+
+    def model_post_init(self, __context):
+        if not self.content and not self.path:
+            raise ValueError('Either content or path must be provided')
+        if self.content and self.path:
+            raise ValueError('Provide either content or path, not both')
 
 
 @mcp.tool(
@@ -495,6 +502,7 @@ async def vault_add_doc(params: DocAddInput, ctx: Context) -> str:
     """Add a text document to a vault with metadata (tags, category, priority, notes).
 
     The document will be full-text indexed for search and stored with version tracking.
+    Content can be provided inline (content parameter) or from a file path (path parameter).
     For binary files (PDF, DOCX, etc.), use vault_import_dir to import from a directory.
     """
     storage = _get_storage(ctx)
@@ -502,11 +510,20 @@ async def vault_add_doc(params: DocAddInput, ctx: Context) -> str:
     if not vault:
         return f"Error: Vault '{params.vault}' not found. Use vault_list to see available vaults."
 
+    text_content = params.content
+    if params.path:
+        try:
+            text_content = Path(params.path).read_text(encoding='utf-8')
+        except FileNotFoundError:
+            return f"Error: File not found at path '{params.path}'"
+        except (IOError, OSError) as exc:
+            return f"Error: Could not read file '{params.path}': {exc}"
+
     try:
         result = storage.add_document_from_text(
             vault_id=vault["id"],
             name=params.name,
-            text_content=params.content,
+            text_content=text_content,
             filename=params.filename,
             tags=params.tags,
             category=params.category.value,
