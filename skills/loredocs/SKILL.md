@@ -8,7 +8,7 @@ description: >
   Also triggers on "version history", "roll back doc", "tag this doc", "link docs", or
   "export vault".
 metadata:
-  version: "0.1.7"
+  version: "0.1.8"
   author: "Labyrinth Analytics Consulting"
 ---
 
