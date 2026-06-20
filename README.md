@@ -149,8 +149,8 @@ To store the shared content in the vault (one time, or on each update):
 # Store (or update) the shared playbook:
 vault_update_doc(vault="team-knowledge", doc_id="playbook-id", content=open("PLAYBOOK.md").read())
 
-# Or add it fresh:
-vault_add_doc(vault="team-knowledge", name="Team Playbook", content=open("PLAYBOOK.md").read(), tags=["team-playbook"])
+# Or add it fresh (path= reads directly from disk -- no need to load into context):
+vault_add_doc(vault="team-knowledge", name="Team Playbook", path="/absolute/path/to/PLAYBOOK.md", tags=["team-playbook"])
 ```
 
 Any agent that calls `vault_inject_by_tag("team-playbook")` reads the same document.
