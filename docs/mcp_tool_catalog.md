@@ -410,6 +410,38 @@ Return the current license tier name and the raw license key status (present/abs
 
 ---
 
+## Cross-Product Session Linking (3 tools)
+
+### `vault_link_session`
+
+Create a manual link between a LoreConvo session and a LoreDocs document. Both products must be installed. Manual links work on all tiers; auto-links require Pro.
+
+**When Claude uses it:** When you say "link this session to that document" or "connect this conversation to my architecture spec."
+
+**Key parameters:** `session_id` (required), `doc_id` (required), `vault_id` (required)
+
+---
+
+### `vault_get_session_links`
+
+Return LoreConvo sessions linked to a given LoreDocs document. Manual links are returned on all tiers; auto-links require Pro.
+
+**When Claude uses it:** When you ask "which sessions reference this document?" or "show me conversations related to this spec."
+
+**Key parameters:** `doc_id` (required), `limit` (default 5)
+
+---
+
+### `vault_get_linked_sessions`
+
+Return LoreDocs documents linked to a given LoreConvo session. Searches both directions (source and target). Manual links on all tiers; auto-links require Pro.
+
+**When Claude uses it:** When you ask "what documents are linked to this session?" or "show me docs connected to that conversation."
+
+**Key parameters:** `session_id` (required), `limit` (default 5)
+
+---
+
 ## Quick Reference
 
 | # | Tool | One-line summary |
