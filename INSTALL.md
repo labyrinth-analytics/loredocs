@@ -179,6 +179,56 @@ Claude will use the file-based ingest feature to load the document directly from
 
 ---
 
+## Importing Existing Notes
+
+### Obsidian vault import
+
+1. Open Claude with LoreDocs connected. Create a vault for the notes:
+
+   ```
+   Create a vault called "my-notes"
+   ```
+
+2. Call `vault_import_dir` with the path to your Obsidian vault directory:
+
+   ```
+   Import my Obsidian vault at /Users/yourname/Documents/MyVault into the "my-notes" vault
+   ```
+
+   LoreDocs imports all nested folders recursively. Notes with tags in YAML frontmatter (`tags: [a, b, c]`) have those tags preserved in LoreDocs.
+
+3. Verify the import succeeded:
+
+   ```
+   Search the "my-notes" vault for a term you know appears in your notes
+   ```
+
+**Limitations:** Obsidian aliases, created dates, and backlinks are not imported. The document title is taken from the filename if no `title` key exists in frontmatter.
+
+---
+
+### Notion export import
+
+1. In Notion, open the page or database you want to export. Click the `...` menu, choose **Export**, and select **Markdown & CSV** format. Download and extract the ZIP file to a local directory.
+
+2. Call `vault_import_dir` with the path to the extracted directory:
+
+   ```
+   Import the Notion export at /Users/yourname/Downloads/My-Notion-Export into my "my-notes" vault
+   ```
+
+   All Markdown content is imported and becomes full-text searchable.
+
+3. After import, manually add tags to key documents to make them easier to find later:
+
+   ```
+   Tag the document "Project Overview" with ["project", "overview"]
+   ```
+
+**Limitations:** Notion properties (Status, Owner, etc.) are not mapped to LoreDocs tags. Only the text content is imported. For databases, each row exports as a separate Markdown file.
+
+---
+
 ## Troubleshooting
 
 **"Module not found" or "command not found" error**
@@ -261,5 +311,5 @@ The installer detects the existing venv and updates it in place.
 ## More Documentation
 
 - [Quickstart Guide](docs/quickstart.md) -- get up and running in 5 minutes
-- [MCP Tool Catalog](docs/mcp_tool_catalog.md) -- all 39 tools explained in plain English
+- [MCP Tool Catalog](docs/mcp_tool_catalog.md) -- all 42 tools explained in plain English
 - [Changelog](docs/CHANGELOG.md) -- what changed in each release
