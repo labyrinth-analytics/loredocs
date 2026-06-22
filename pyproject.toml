@@ -1,6 +1,7 @@
 [project]
 name = "loredocs"
-version = "0.1.8"
+version = "0.1.9"
+mcpName = "io.github.labyrinth-analytics/loredocs"
 description = "Knowledge management MCP server for AI projects - search, tag, version, and organize your project knowledge"
 readme = "README.md"
 license = { file = "LICENSE" }
