@@ -156,6 +156,31 @@ vault_add_doc(vault="team-knowledge", name="Team Playbook", path="/absolute/path
 Any agent that calls `vault_inject_by_tag("team-playbook")` reads the same document.
 No copies, no mirrors, no drift.
 
+## Plans: Free vs Pro
+
+LoreDocs is local-first and free to use. Pro ($9/mo) removes the storage limits and
+unlocks semantic (meaning-based) retrieval. Everything runs on your machine on either
+plan -- Pro does not add any cloud component.
+
+| | Free | Pro ($9/mo) |
+|---|---|---|
+| Vaults | 3 | Unlimited |
+| Documents per vault | 50 | Unlimited |
+| Storage | 500 MB | Unlimited |
+| Version history per document | 5 versions | Unlimited |
+| Full-text search (FTS5) | Yes | Yes |
+| Core MCP tools (create, search, version, tag, inject, import/export) | Yes | Yes |
+| Local-first, no cloud, no telemetry | Yes | Yes |
+| Semantic search (`vault_search semantic=true`, `vault_rebuild_index`) | -- | Yes |
+| Embedding-based document relationships (`vault_find_related`) | Keyword co-occurrence only | Keyword + embedding auto-links |
+| Cross-product session linking (`vault_link_session` + 2 more) | -- | Yes (also requires LoreConvo Pro) |
+
+Free tier limits are enforced before writes; Pro removes them. Check your current tier
+and usage anytime with `vault_tier_status`. Activate a Pro license with `vault_set_tier`.
+
+> The Pro semantic features use a local embedding model (BGE-small-en-v1.5) and the
+> LanceDB index -- still no data leaves your machine.
+
 ## Features
 
 - **Vault organization**: Group docs by project with linked project metadata
@@ -168,7 +193,7 @@ No copies, no mirrors, no drift.
 - **Document linking**: Connect related docs across vaults
 - **Embedding-based document relationships (Pro)**: `vault_find_related` returns both keyword co-occurrence and embedding-based auto-links for Pro users. Uses BGE-small-en-v1.5, cosine >= 0.75, same-vault scoped. Embedding links are archived if you downgrade from Pro to Free.
 - **Cross-product session linking (Pro)**: Automatically links vault documents to the most relevant LoreConvo sessions, and vice versa. Three tools: `vault_link_session`, `vault_get_session_links`, `vault_get_linked_sessions`. Requires both LoreDocs Pro and LoreConvo Pro.
-- **Tier management**: Free/Pro/Team tiers with configurable limits
+- **Tier management**: Free/Pro tiers with configurable limits
 - **Local-first**: SQLite database, no cloud dependency, zero API costs
 
 ## MCP Tools
@@ -243,7 +268,7 @@ LoreDocs provides 42 MCP tools organized by function:
 | Tool | What it does |
 |------|-------------|
 | `vault_tier_status` | Check current tier limits and usage |
-| `vault_set_tier` | Set the active tier (free, pro, team) |
+| `vault_set_tier` | Set the active tier (free or pro) |
 | `get_license_tier` | Check current tier and license key status |
 
 ### Cross-product Session Links (3 tools, Pro)
