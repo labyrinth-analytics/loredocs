@@ -30,11 +30,11 @@ pydantic==2.12.5
 pydantic-settings==2.13.1
 pydantic_core==2.41.5
 Pygments==2.20.0
-PyJWT==2.12.1
+PyJWT==2.13.0
 pypdfium2==5.6.0
 python-docx==1.2.0
 python-dotenv==1.2.2
-python-multipart==0.0.26
+python-multipart==0.0.31
 python-pptx==1.0.2
 referencing==0.37.0
 rich==14.3.3
