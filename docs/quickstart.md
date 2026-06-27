@@ -8,7 +8,7 @@ Get LoreDocs running in under 5 minutes. By the end, you will have a searchable 
 
 - Python 3.10 or newer
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) package manager (recommended) or pip
-- Claude Code or Cowork installed
+- One of: Claude Code, Cursor, OpenAI Codex, or Hermes Agent installed
 
 Check your Python version:
 
