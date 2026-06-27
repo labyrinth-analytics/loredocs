@@ -149,7 +149,14 @@ class VaultCreateInput(BaseModel):
     name="vault_create",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 )
-async def vault_create(params: VaultCreateInput, ctx: Context) -> str:
+async def vault_create(
+    ctx: Context,
+    name: str,
+    description: str = "",
+    tags: Optional[List[str]] = None,
+    linked_projects: Optional[List[str]] = None,
+    response_format: ResponseFormat = ResponseFormat.JSON,
+) -> str:
     """Create a new knowledge vault for organizing project documents.
 
     A vault is a container for related documents -- like a project folder with
@@ -158,6 +165,7 @@ async def vault_create(params: VaultCreateInput, ctx: Context) -> str:
 
     Returns the new vault's ID and metadata.
     """
+    params = VaultCreateInput(name=name, description=description, tags=tags, linked_projects=linked_projects, response_format=response_format)
     storage = _get_storage(ctx)
     try:
         vault = storage.create_vault(
@@ -195,11 +203,16 @@ class VaultListInput(BaseModel):
     name="vault_list",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_list(params: VaultListInput, ctx: Context) -> str:
+async def vault_list(
+    ctx: Context,
+    include_archived: bool = False,
+    response_format: ResponseFormat = ResponseFormat.MARKDOWN,
+) -> str:
     """List all knowledge vaults with summary stats (document count, total size, last modified).
 
     Use this to see what vaults exist and find the one you need.
     """
+    params = VaultListInput(include_archived=include_archived, response_format=response_format)
     storage = _get_storage(ctx)
     vaults = storage.list_vaults(include_archived=params.include_archived)
 
@@ -240,11 +253,16 @@ class VaultIdInput(BaseModel):
     name="vault_info",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_info(params: VaultIdInput, ctx: Context) -> str:
+async def vault_info(
+    ctx: Context,
+    vault: str,
+    response_format: ResponseFormat = ResponseFormat.MARKDOWN,
+) -> str:
     """Get detailed information about a vault, including its full document manifest.
 
     Accepts either a vault ID or vault name.
     """
+    params = VaultIdInput(vault=vault, response_format=response_format)
     storage = _get_storage(ctx)
     vault = _resolve_vault(storage, params.vault)
     if not vault:
@@ -290,8 +308,9 @@ class VaultArchiveInput(BaseModel):
     name="vault_archive",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_archive(params: VaultArchiveInput, ctx: Context) -> str:
+async def vault_archive(ctx: Context, vault: str) -> str:
     """Archive a vault (soft delete). Archived vaults are hidden from vault_list by default but can be restored."""
+    params = VaultArchiveInput(vault=vault)
     storage = _get_storage(ctx)
     vault = _resolve_vault(storage, params.vault)
     if not vault:
@@ -312,11 +331,12 @@ class VaultDeleteInput(BaseModel):
     name="vault_delete",
     annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": False}
 )
-async def vault_delete(params: VaultDeleteInput, ctx: Context) -> str:
+async def vault_delete(ctx: Context, vault: str, confirm: bool = False) -> str:
     """Permanently delete a vault and ALL its documents. This cannot be undone.
 
     You must set confirm=true to proceed. Consider using vault_archive instead.
     """
+    params = VaultDeleteInput(vault=vault, confirm=confirm)
     if not params.confirm:
         return "Error: Set confirm=true to permanently delete this vault. This action cannot be undone. Consider vault_archive instead."
     storage = _get_storage(ctx)
@@ -342,7 +362,13 @@ class OnboardInput(BaseModel):
     name="loredocs_onboard",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def loredocs_onboard(params: OnboardInput, ctx: Context) -> str:
+async def loredocs_onboard(
+    ctx: Context,
+    name: Optional[str] = None,
+    domains: Optional[List[str]] = None,
+    agents: Optional[List[str]] = None,
+    tag_style: str = "simple",
+) -> str:
     """Set up or update your LoreDocs workspace configuration.
 
     Call once after installing LoreDocs to get a recommended vault structure.
@@ -364,6 +390,7 @@ async def loredocs_onboard(params: OnboardInput, ctx: Context) -> str:
     Categories: reference, report, template, config, archive, general.
     Priority: authoritative, normal, draft, outdated.
     """
+    params = OnboardInput(name=name, domains=domains, agents=agents, tag_style=tag_style)
     if params.tag_style not in ("simple", "detailed"):
         return "Error: tag_style must be 'simple' or 'detailed'"
     storage = _get_storage(ctx)
@@ -387,12 +414,13 @@ class VaultLinkProjectInput(BaseModel):
     name="vault_link_project",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_link_project(params: VaultLinkProjectInput, ctx: Context) -> str:
+async def vault_link_project(ctx: Context, vault: str, project_name: str) -> str:
     """Associate a Claude Project name with a vault.
 
     This is metadata for your organization -- it records which Claude Projects
     use knowledge from this vault. A vault can be linked to multiple projects.
     """
+    params = VaultLinkProjectInput(vault=vault, project_name=project_name)
     storage = _get_storage(ctx)
     vault = _resolve_vault(storage, params.vault)
     if not vault:
@@ -422,7 +450,11 @@ class VaultOpenWorkspaceInput(BaseModel):
     name="vault_open_workspace",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_open_workspace(params: VaultOpenWorkspaceInput, ctx: Context) -> str:
+async def vault_open_workspace(
+    ctx: Context,
+    workspace_path: str,
+    description: str = "",
+) -> str:
     """Open (or create) a vault scoped to a workspace directory.
 
     If a vault is already linked to this directory path, returns it.
@@ -433,6 +465,7 @@ async def vault_open_workspace(params: VaultOpenWorkspaceInput, ctx: Context) ->
     than naming vaults manually. Named vaults remain available for users
     who prefer explicit management.
     """
+    params = VaultOpenWorkspaceInput(workspace_path=workspace_path, description=description)
     storage = _get_storage(ctx)
     resolved = str(Path(params.workspace_path).expanduser().resolve())
 
@@ -498,13 +531,25 @@ class DocAddInput(BaseModel):
     name="vault_add_doc",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 )
-async def vault_add_doc(params: DocAddInput, ctx: Context) -> str:
+async def vault_add_doc(
+    ctx: Context,
+    vault: str,
+    name: str,
+    content: Optional[str] = None,
+    path: Optional[str] = None,
+    filename: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+    category: DocCategory = DocCategory.GENERAL,
+    priority: DocPriority = DocPriority.NORMAL,
+    notes: str = "",
+) -> str:
     """Add a text document to a vault with metadata (tags, category, priority, notes).
 
     The document will be full-text indexed for search and stored with version tracking.
     Content can be provided inline (content parameter) or from a file path (path parameter).
     For binary files (PDF, DOCX, etc.), use vault_import_dir to import from a directory.
     """
+    params = DocAddInput(vault=vault, name=name, content=content, path=path, filename=filename, tags=tags, category=category, priority=priority, notes=notes)
     storage = _get_storage(ctx)
     vault = _resolve_vault(storage, params.vault)
     if not vault:
@@ -554,12 +599,22 @@ class DocUpdateInput(BaseModel):
     name="vault_update_doc",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 )
-async def vault_update_doc(params: DocUpdateInput, ctx: Context) -> str:
+async def vault_update_doc(
+    ctx: Context,
+    doc_id: str,
+    content: Optional[str] = None,
+    name: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+    category: Optional[DocCategory] = None,
+    priority: Optional[DocPriority] = None,
+    notes: Optional[str] = None,
+) -> str:
     """Update a document's content or metadata.
 
     If content changes, the previous version is saved automatically in the
     version history. You can restore old versions with vault_doc_restore.
     """
+    params = DocUpdateInput(doc_id=doc_id, content=content, name=name, tags=tags, category=category, priority=priority, notes=notes)
     storage = _get_storage(ctx)
     content_bytes = params.content.encode("utf-8") if params.content else None
     result = storage.update_document(
@@ -586,11 +641,12 @@ class DocIdInput(BaseModel):
     name="vault_remove_doc",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_remove_doc(params: DocIdInput, ctx: Context) -> str:
+async def vault_remove_doc(ctx: Context, doc_id: str) -> str:
     """Soft-delete a document. The document is hidden but can be recovered.
 
     For permanent deletion, use vault_delete to remove the entire vault.
     """
+    params = DocIdInput(doc_id=doc_id)
     storage = _get_storage(ctx)
     if storage.remove_document(params.doc_id):
         return f"Document '{params.doc_id}' has been removed (soft-deleted)."
@@ -609,11 +665,17 @@ class DocGetInput(BaseModel):
     name="vault_get_doc",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_get_doc(params: DocGetInput, ctx: Context) -> str:
+async def vault_get_doc(
+    ctx: Context,
+    doc_id: str,
+    include_content: bool = True,
+    response_format: ResponseFormat = ResponseFormat.MARKDOWN,
+) -> str:
     """Retrieve a document's metadata and optionally its text content.
 
     Use include_content=false to get just the metadata without loading the full text.
     """
+    params = DocGetInput(doc_id=doc_id, include_content=include_content, response_format=response_format)
     storage = _get_storage(ctx)
     doc = storage.get_document(params.doc_id)
     if not doc:
@@ -664,12 +726,23 @@ class DocListInput(BaseModel):
     name="vault_list_docs",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_list_docs(params: DocListInput, ctx: Context) -> str:
+async def vault_list_docs(
+    ctx: Context,
+    vault: str,
+    sort_by: DocSortField = DocSortField.UPDATED,
+    sort_order: SortOrder = SortOrder.DESC,
+    category: Optional[DocCategory] = None,
+    tag: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    response_format: ResponseFormat = ResponseFormat.MARKDOWN,
+) -> str:
     """List documents in a vault with sorting and filtering options.
 
     Supports sorting by name, date, size, or category.
     Filter by category or tag to narrow results.
     """
+    params = DocListInput(vault=vault, sort_by=sort_by, sort_order=sort_order, category=category, tag=tag, limit=limit, offset=offset, response_format=response_format)
     storage = _get_storage(ctx)
     vault = _resolve_vault(storage, params.vault)
     if not vault:
@@ -742,7 +815,15 @@ class SearchInput(BaseModel):
     name="vault_search",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_search(params: SearchInput, ctx: Context) -> str:
+async def vault_search(
+    ctx: Context,
+    query: str,
+    vault: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0,
+    semantic: bool = False,
+    response_format: ResponseFormat = ResponseFormat.MARKDOWN,
+) -> str:
     """Full-text or semantic search across document contents.
 
     Default (semantic=False): SQLite FTS5 keyword search. Supports FTS5 syntax:
@@ -757,6 +838,7 @@ async def vault_search(params: SearchInput, ctx: Context) -> str:
     LoreDocs Pro and `pip install loredocs[pro]`. Falls back to FTS5 if the
     semantic index has not been built yet (run vault_rebuild_index first).
     """
+    params = SearchInput(query=query, vault=vault, limit=limit, offset=offset, semantic=semantic, response_format=response_format)
     storage = _get_storage(ctx)
     vault_id = None
     vault_name = None
@@ -842,7 +924,7 @@ class RebuildIndexInput(BaseModel):
     name="vault_rebuild_index",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_rebuild_index(params: RebuildIndexInput, ctx: Context) -> str:
+async def vault_rebuild_index(ctx: Context, confirm: bool = False) -> str:
     """Rebuild the LanceDB semantic search index from all stored documents. Pro only.
 
     Run this after first installing the Pro deps (pip install loredocs[pro]) or
@@ -850,6 +932,7 @@ async def vault_rebuild_index(params: RebuildIndexInput, ctx: Context) -> str:
     new documents added after install, but existing documents require a one-time
     rebuild to become searchable semantically.
     """
+    params = RebuildIndexInput(confirm=confirm)
     if not params.confirm:
         return "Error: Set confirm=true to start the rebuild."
 
@@ -885,8 +968,14 @@ class SearchByTagInput(BaseModel):
     name="vault_search_by_tag",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_search_by_tag(params: SearchByTagInput, ctx: Context) -> str:
+async def vault_search_by_tag(
+    ctx: Context,
+    tag: str,
+    vault: Optional[str] = None,
+    response_format: ResponseFormat = ResponseFormat.MARKDOWN,
+) -> str:
     """Find all documents with a specific tag, across one vault or all vaults."""
+    params = SearchByTagInput(tag=tag, vault=vault, response_format=response_format)
     storage = _get_storage(ctx)
     vault_id = None
     if params.vault:
@@ -928,12 +1017,18 @@ class TagDocInput(BaseModel):
     name="vault_tag_doc",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_tag_doc(params: TagDocInput, ctx: Context) -> str:
+async def vault_tag_doc(
+    ctx: Context,
+    doc_id: str,
+    add_tags: Optional[List[str]] = None,
+    remove_tags: Optional[List[str]] = None,
+) -> str:
     """Add or remove tags on a document.
 
     You can add and remove tags in a single operation.
     Tags are case-sensitive strings. Duplicates are automatically removed.
     """
+    params = TagDocInput(doc_id=doc_id, add_tags=add_tags, remove_tags=remove_tags)
     storage = _get_storage(ctx)
     result = storage.tag_document(
         params.doc_id,
@@ -958,11 +1053,17 @@ class BulkTagInput(BaseModel):
     name="vault_bulk_tag",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_bulk_tag(params: BulkTagInput, ctx: Context) -> str:
+async def vault_bulk_tag(
+    ctx: Context,
+    doc_ids: List[str],
+    add_tags: Optional[List[str]] = None,
+    remove_tags: Optional[List[str]] = None,
+) -> str:
     """Apply tag changes to multiple documents at once.
 
     Useful for organizing a batch of documents after import or reclassification.
     """
+    params = BulkTagInput(doc_ids=doc_ids, add_tags=add_tags, remove_tags=remove_tags)
     storage = _get_storage(ctx)
     count = storage.bulk_tag(
         params.doc_ids,
@@ -983,8 +1084,9 @@ class CategorizeInput(BaseModel):
     name="vault_categorize",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_categorize(params: CategorizeInput, ctx: Context) -> str:
+async def vault_categorize(ctx: Context, doc_id: str, category: DocCategory) -> str:
     """Set a document's category (general, reference, config, report, template, archive, imported)."""
+    params = CategorizeInput(doc_id=doc_id, category=category)
     storage = _get_storage(ctx)
     result = storage.update_document(params.doc_id, category=params.category.value)
     if result:
@@ -1003,12 +1105,13 @@ class SetPriorityInput(BaseModel):
     name="vault_set_priority",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_set_priority(params: SetPriorityInput, ctx: Context) -> str:
+async def vault_set_priority(ctx: Context, doc_id: str, priority: DocPriority) -> str:
     """Mark a document's priority/status: authoritative, normal, draft, or outdated.
 
     'authoritative' means this document is the source of truth.
     'outdated' flags the document as no longer current.
     """
+    params = SetPriorityInput(doc_id=doc_id, priority=priority)
     storage = _get_storage(ctx)
     result = storage.update_document(params.doc_id, priority=params.priority.value)
     if result:
@@ -1027,11 +1130,12 @@ class AddNoteInput(BaseModel):
     name="vault_add_note",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_add_note(params: AddNoteInput, ctx: Context) -> str:
+async def vault_add_note(ctx: Context, doc_id: str, notes: str) -> str:
     """Attach a contextual note to a document.
 
     Notes help you and your AI assistant understand when/how to use this document.
     """
+    params = AddNoteInput(doc_id=doc_id, notes=notes)
     storage = _get_storage(ctx)
     result = storage.update_document(params.doc_id, notes=params.notes)
     if result:
@@ -1048,12 +1152,13 @@ async def vault_add_note(params: AddNoteInput, ctx: Context) -> str:
     name="vault_doc_history",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_doc_history(params: DocIdInput, ctx: Context) -> str:
+async def vault_doc_history(ctx: Context, doc_id: str) -> str:
     """View the version history for a document.
 
     Every time a document's content is updated, the previous version is saved
     automatically. Use vault_doc_restore to revert to an earlier version.
     """
+    params = DocIdInput(doc_id=doc_id)
     storage = _get_storage(ctx)
     doc = storage.get_document(params.doc_id)
     if not doc:
@@ -1081,12 +1186,13 @@ class DocRestoreInput(BaseModel):
     name="vault_doc_restore",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 )
-async def vault_doc_restore(params: DocRestoreInput, ctx: Context) -> str:
+async def vault_doc_restore(ctx: Context, doc_id: str, version: int) -> str:
     """Restore a document to a previous version.
 
     The current version is saved to history first, then the specified version
     becomes the new current version.
     """
+    params = DocRestoreInput(doc_id=doc_id, version=version)
     storage = _get_storage(ctx)
     doc = storage.get_document(params.doc_id)
     if not doc:
@@ -1126,8 +1232,9 @@ class CopyDocInput(BaseModel):
     name="vault_copy_doc",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 )
-async def vault_copy_doc(params: CopyDocInput, ctx: Context) -> str:
+async def vault_copy_doc(ctx: Context, doc_id: str, target_vault: str) -> str:
     """Copy a document from one vault to another, including all metadata."""
+    params = CopyDocInput(doc_id=doc_id, target_vault=target_vault)
     storage = _get_storage(ctx)
     target = _resolve_vault(storage, params.target_vault)
     if not target:
@@ -1150,8 +1257,9 @@ class MoveDocInput(BaseModel):
     name="vault_move_doc",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 )
-async def vault_move_doc(params: MoveDocInput, ctx: Context) -> str:
+async def vault_move_doc(ctx: Context, doc_id: str, target_vault: str) -> str:
     """Move a document to a different vault. Removes it from the source vault."""
+    params = MoveDocInput(doc_id=doc_id, target_vault=target_vault)
     storage = _get_storage(ctx)
     target = _resolve_vault(storage, params.target_vault)
     if not target:
@@ -1177,12 +1285,13 @@ class InjectInput(BaseModel):
     name="vault_inject",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_inject(params: InjectInput, ctx: Context) -> str:
+async def vault_inject(ctx: Context, doc_ids: List[str]) -> str:
     """Load specific documents into the current conversation context.
 
     Returns the full text content of each document, formatted for easy reading.
     Use this to bring vault knowledge into the current conversation.
     """
+    params = InjectInput(doc_ids=doc_ids)
     storage = _get_storage(ctx)
     parts = []
     for doc_id in params.doc_ids:
@@ -1217,26 +1326,30 @@ class InjectByTagInput(BaseModel):
     name="vault_inject_by_tag",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_inject_by_tag(params: InjectByTagInput, ctx: Context) -> str:
+async def vault_inject_by_tag(
+    ctx: Context,
+    tag: str,
+    vault: Optional[str] = None,
+) -> str:
     """Load all documents matching a tag into the current conversation context.
 
     Useful for bringing in all documents related to a topic, e.g.,
     'inject everything tagged tax-2025'.
     """
+    params = InjectByTagInput(tag=tag, vault=vault)
     storage = _get_storage(ctx)
     vault_id = None
     if params.vault:
-        vault = _resolve_vault(storage, params.vault)
-        if vault:
-            vault_id = vault["id"]
+        v = _resolve_vault(storage, params.vault)
+        if v:
+            vault_id = v["id"]
 
     docs = storage.search_by_tag(params.tag, vault_id=vault_id)
     if not docs:
         return f"No documents found with tag '{params.tag}'."
 
     doc_ids = [d["id"] for d in docs]
-    inject_params = InjectInput(doc_ids=doc_ids)
-    return await vault_inject(inject_params, ctx)
+    return await vault_inject(ctx=ctx, doc_ids=doc_ids)
 
 
 class InjectSummaryInput(BaseModel):
@@ -1249,19 +1362,20 @@ class InjectSummaryInput(BaseModel):
     name="vault_inject_summary",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_inject_summary(params: InjectSummaryInput, ctx: Context) -> str:
+async def vault_inject_summary(ctx: Context, vault: str) -> str:
     """Generate a summary overview of a vault's contents for conversation orientation.
 
     Lists all documents with their categories, tags, priorities, and notes.
     Useful at the start of a conversation to understand what knowledge is available.
     """
+    params = InjectSummaryInput(vault=vault)
     storage = _get_storage(ctx)
-    vault = _resolve_vault(storage, params.vault)
-    if not vault:
+    v = _resolve_vault(storage, params.vault)
+    if not v:
         return f"Error: Vault '{params.vault}' not found."
 
     # This is essentially vault_info in markdown format
-    return await vault_info(VaultIdInput(vault=vault["id"]), ctx)
+    return await vault_info(ctx=ctx, vault=v["id"])
 
 
 class VaultPrimeInput(BaseModel):
@@ -1275,14 +1389,19 @@ class VaultPrimeInput(BaseModel):
     name="vault_prime",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_prime(params: VaultPrimeInput, ctx: Context) -> str:
+async def vault_prime(
+    ctx: Context,
+    vault_name: str,
+    max_chars: Optional[int] = None,
+) -> str:
     """Pre-load vault context into current session.
 
     Returns a summary overview of the vault's contents including all documents
     with their categories, tags, priorities, and notes. Use at session start
     to orient yourself on what knowledge is available in a vault.
     """
-    result = await vault_inject_summary(InjectSummaryInput(vault=params.vault_name), ctx)
+    params = VaultPrimeInput(vault_name=vault_name, max_chars=max_chars)
+    result = await vault_inject_summary(ctx=ctx, vault=params.vault_name)
     if params.max_chars and len(result) > params.max_chars:
         return result[:params.max_chars] + "\n\n[Truncated to {} chars]".format(params.max_chars)
     return result
@@ -1307,7 +1426,14 @@ class ImportDirInput(BaseModel):
     name="vault_import_dir",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
 )
-async def vault_import_dir(params: ImportDirInput, ctx: Context) -> str:
+async def vault_import_dir(
+    ctx: Context,
+    vault: str,
+    directory: str,
+    tags: Optional[List[str]] = None,
+    category: DocCategory = DocCategory.IMPORTED,
+    recursive: bool = True,
+) -> str:
     """Bulk import all supported files from a directory into a vault.
 
     Imports text files, PDFs, Word docs, Excel files, PowerPoints, and more.
@@ -1318,6 +1444,7 @@ async def vault_import_dir(params: ImportDirInput, ctx: Context) -> str:
     (set recursive=False for single-level import). Markdown files with YAML frontmatter
     tags (tags: [a, b] or block-list style) have those tags merged into the document.
     """
+    params = ImportDirInput(vault=vault, directory=directory, tags=tags, category=category, recursive=recursive)
     storage = _get_storage(ctx)
     vault = _resolve_vault(storage, params.vault)
     if not vault:
@@ -1357,12 +1484,13 @@ class ExportInput(BaseModel):
     name="vault_export",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_export(params: ExportInput, ctx: Context) -> str:
+async def vault_export(ctx: Context, vault: str, directory: str) -> str:
     """Export all documents from a vault to a local directory.
 
     Copies the original files (not extracted text) to the specified directory.
     Useful for backing up or sharing vault contents.
     """
+    params = ExportInput(vault=vault, directory=directory)
     storage = _get_storage(ctx)
     vault = _resolve_vault(storage, params.vault)
     if not vault:
@@ -1393,13 +1521,19 @@ class LinkDocInput(BaseModel):
     name="vault_link_doc",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_link_doc(params: LinkDocInput, ctx: Context) -> str:
+async def vault_link_doc(
+    ctx: Context,
+    source_doc: str,
+    target_doc: str,
+    label: str = "related",
+) -> str:
     """Create a link between two documents across any vault.
 
     Links are bidirectional and labelled (e.g. 'related', 'references',
     'supersedes', 'part-of').  If the link already exists, reports it.
     Use vault_find_related to discover all docs linked to a given document.
     """
+    params = LinkDocInput(source_doc=source_doc, target_doc=target_doc, label=label)
     storage = _get_storage(ctx)
     result = storage.link_doc(params.source_doc, params.target_doc, params.label)
     if result is None:
@@ -1430,11 +1564,12 @@ class UnlinkDocInput(BaseModel):
     name="vault_unlink_doc",
     annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_unlink_doc(params: UnlinkDocInput, ctx: Context) -> str:
+async def vault_unlink_doc(ctx: Context, source_doc: str, target_doc: str) -> str:
     """Remove a link between two documents (both directions).
 
     If no link exists between the two documents, reports that cleanly.
     """
+    params = UnlinkDocInput(source_doc=source_doc, target_doc=target_doc)
     storage = _get_storage(ctx)
     deleted = storage.unlink_doc(params.source_doc, params.target_doc)
     if deleted == 0:
@@ -1456,12 +1591,13 @@ class FindRelatedInput(BaseModel):
     name="vault_find_related",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_find_related(params: FindRelatedInput, ctx: Context) -> str:
+async def vault_find_related(ctx: Context, doc_id: str) -> str:
     """Find all documents linked to a given document. Pro only.
 
     Returns each related document with its vault, category, tags, and link label.
     Use vault_link_doc to create new links.
     """
+    params = FindRelatedInput(doc_id=doc_id)
     status = get_license_status()
     if not status["is_pro"]:
         return (
@@ -1507,7 +1643,11 @@ class VaultSuggestInput(BaseModel):
     name="vault_suggest",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_suggest(params: VaultSuggestInput, ctx: Context) -> str:
+async def vault_suggest(
+    ctx: Context,
+    vault: Optional[str] = None,
+    limit: int = 5,
+) -> str:
     """Get suggestions for documents that may need attention.
 
     Surfaces documents that are undocumented (no notes), unorganized (no tags),
@@ -1516,6 +1656,7 @@ async def vault_suggest(params: VaultSuggestInput, ctx: Context) -> str:
 
     Optionally scope to a single vault.
     """
+    params = VaultSuggestInput(vault=vault, limit=limit)
     storage = _get_storage(ctx)
     vault_id: Optional[str] = None
     if params.vault:
@@ -1556,7 +1697,11 @@ class ExportManifestInput(BaseModel):
     name="vault_export_manifest",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_export_manifest(params: ExportManifestInput, ctx: Context) -> str:
+async def vault_export_manifest(
+    ctx: Context,
+    vault: str,
+    format: ResponseFormat = ResponseFormat.MARKDOWN,
+) -> str:
     """Export a complete manifest of a vault's contents.
 
     Returns vault metadata, document list with tags and categories,
@@ -1564,6 +1709,7 @@ async def vault_export_manifest(params: ExportManifestInput, ctx: Context) -> st
     Use the json format for machine-readable output.
     Use the markdown format for human-readable summaries.
     """
+    params = ExportManifestInput(vault=vault, format=format)
     storage = _get_storage(ctx)
     vault = _resolve_vault(storage, params.vault)
     if not vault:
@@ -1629,13 +1775,17 @@ class VaultTierStatusInput(BaseModel):
     name="vault_tier_status",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_tier_status(params: VaultTierStatusInput, ctx: Context) -> str:
+async def vault_tier_status(
+    ctx: Context,
+    response_format: ResponseFormat = ResponseFormat.MARKDOWN,
+) -> str:
     """Show current tier (Free or Pro) and usage vs. limits.
 
     Displays how many vaults and how much storage are in use, with percentages
     against Free tier limits. Useful before hitting a limit to know how close
     you are, or to confirm Pro tier is active after upgrading.
     """
+    params = VaultTierStatusInput(response_format=response_format)
     storage = _get_storage(ctx)
 
     vault_count = len(storage.list_vaults(include_archived=False))
@@ -1709,7 +1859,7 @@ class VaultSetTierInput(BaseModel):
     name="vault_set_tier",
     annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_set_tier(params: VaultSetTierInput, ctx: Context) -> str:
+async def vault_set_tier(ctx: Context, tier: str) -> str:
     """Activate a tier (free or pro) for LoreDocs.
 
     Pro tier removes all vault, document, storage, and version limits.
@@ -1719,6 +1869,7 @@ async def vault_set_tier(params: VaultSetTierInput, ctx: Context) -> str:
     does not delete any existing data that exceeds the limits -- it only blocks
     new writes).
     """
+    params = VaultSetTierInput(tier=tier)
     storage = _get_storage(ctx)
 
     # Require a valid license key before persisting Pro tier.
