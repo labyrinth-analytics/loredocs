@@ -1,13 +1,13 @@
 # LoreDocs Installation Guide
 
-**LoreDocs** gives you a searchable, organized, version-tracked knowledge base for your AI projects. Works with Claude Code and Cowork.
+**LoreDocs** gives you a searchable, organized, version-tracked knowledge base for your AI projects. Works with Claude Code, Cursor, OpenAI Codex, and Hermes Agent.
 
 ---
 
 ## Prerequisites
 
 - **Python 3.10 or newer** (macOS/Linux)
-- Claude Code or Cowork installed
+- One of: Claude Code, Cursor, OpenAI Codex, or Hermes Agent installed
 
 Check your Python version:
 
@@ -132,6 +132,52 @@ Cursor uses the same MCP protocol as Claude Code. Configure it by creating a `.c
 Or copy `.mcp.json` as `.cursor/mcp.json` if you already have a working Claude Code setup.
 
 Restart Cursor after adding the configuration. LoreDocs MCP tools will be available in the next Cursor session.
+
+---
+
+## Connecting to OpenAI Codex
+
+Codex uses a TOML config file at `~/.codex/config.toml`. Add a `[mcp_servers.loredocs]` section:
+
+```toml
+[mcp_servers.loredocs]
+command = "/path/to/loredocs/.venv/bin/python3"
+args = ["-m", "loredocs.server"]
+
+[mcp_servers.loredocs.env]
+CODEX_HOME = "/Users/your-username/.codex"  # Required by Codex to locate its own config when running MCP servers as subprocesses
+LOREDOCS_PRO = "your-license-key"
+```
+
+Replace `/path/to/loredocs` with the absolute path where you installed LoreDocs. Replace `your-username` with your macOS username and `your-license-key` with your Pro license key. Omit the `LOREDOCS_PRO` line if you are using the free tier.
+
+**macOS note:** `~/.Codex/config.toml` (capital C) resolves to the same location on a case-insensitive filesystem. The canonical path is lowercase `~/.codex/config.toml`.
+
+Restart Codex after saving the file. LoreDocs MCP tools will be available in the next Codex session.
+
+---
+
+## Connecting to Hermes Agent
+
+Hermes Agent uses its own YAML config file at `~/.hermes/config.yaml` -- it does **not** use `.mcp.json`. Add an entry under `mcp_servers:`:
+
+```yaml
+mcp_servers:
+  loredocs:
+    command: /path/to/loredocs/.venv/bin/python3
+    args:
+      - -m
+      - loredocs.server
+    enabled: true
+    env:
+      LOREDOCS_PRO: your-license-key
+```
+
+Replace `/path/to/loredocs` with the absolute path where you installed LoreDocs. Replace `your-license-key` with your Pro license key. Omit the `LOREDOCS_PRO` line if you are using the free tier.
+
+Restart Hermes Agent after saving the file. LoreDocs MCP tools will be available in the next Hermes session.
+
+> **Note:** Hermes Agent was verified compatible with LoreDocs on 2026-06-18.
 
 ---
 

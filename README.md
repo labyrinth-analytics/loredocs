@@ -2,7 +2,7 @@
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
-LoreDocs gives Claude persistent access to your project documentation -- specs, guides, architecture decisions, reference docs -- so it never loses context between sessions. Works with Claude Code and Cowork.
+LoreDocs gives Claude persistent access to your project documentation -- specs, guides, architecture decisions, reference docs -- so it never loses context between sessions. Works with Claude Code, Cursor, OpenAI Codex, and Hermes Agent.
 
 > **Available on the Anthropic Marketplace.** Install directly from Claude, or via PyPI: `uvx loredocs`
 
@@ -19,7 +19,7 @@ cd /path/to/loredocs
 uv sync
 ```
 
-For detailed installation instructions (including Cowork plugin setup), see [INSTALL.md](INSTALL.md).
+For detailed installation instructions, see [INSTALL.md](INSTALL.md).
 
 ## Using LoreDocs
 
