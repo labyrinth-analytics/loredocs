@@ -4,6 +4,40 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## v0.1.10
+
+### Security
+
+- **Dependency security updates.** `cryptography` is upgraded from 46.0.7 to 49.0.0,
+  clearing an OpenSSL advisory (GHSA-537c-gmf6-5ccf). `starlette` is now pinned to
+  1.3.1, which clears five advisories. All runtime dependencies are exact-pinned.
+
+### Bug Fixes
+
+- **MCP tools accept flat arguments correctly.** Several LoreDocs MCP tools required a
+  nested `{"params": {...}}` wrapper and rejected the flat arguments some clients send.
+  Tool signatures are now explicit, so flat arguments work as expected. (SH-11722)
+
+### Reliability
+
+- **WAL journal-mode guardrail.** LoreDocs now detects and refuses to mix SQLite
+  journal modes on the same database, avoiding a class of "database is locked" and
+  integrity errors.
+
+### Packaging
+
+- License metadata migrated to SPDX form (`BUSL-1.1`).
+
+---
+
+## v0.1.9
+
+Internal packaging release: prepared plugin metadata for the MCP plugin registry
+submission (supersedes the brief 0.1.8 packaging build). No user-facing functional
+changes.
+
+---
+
 ## 2026-05-28 -- v0.1.7
 
 ### New Features
