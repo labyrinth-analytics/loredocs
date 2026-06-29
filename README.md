@@ -1,4 +1,4 @@
-# LoreDocs v0.1.7
+# LoreDocs v0.1.10
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -350,6 +350,38 @@ echo "# Quick Note" | python scripts/query_loredocs.py --add-doc \
 ```
 
 The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--db-path` explicitly). It writes the same schema as the MCP tools, including FTS indexing and on-disk file storage.
+
+## What's New
+
+<!-- WHATS_NEW:START -->
+
+## v0.1.10
+
+### Security
+
+- **Dependency security updates.** `cryptography` is upgraded from 46.0.7 to 49.0.0,
+  clearing an OpenSSL advisory (GHSA-537c-gmf6-5ccf). `starlette` is now pinned to
+  1.3.1, which clears five advisories. All runtime dependencies are exact-pinned.
+
+### Bug Fixes
+
+- **MCP tools accept flat arguments correctly.** Several LoreDocs MCP tools required a
+  nested `{"params": {...}}` wrapper and rejected the flat arguments some clients send.
+  Tool signatures are now explicit, so flat arguments work as expected. (SH-11722)
+
+### Reliability
+
+- **WAL journal-mode guardrail.** LoreDocs now detects and refuses to mix SQLite
+  journal modes on the same database, avoiding a class of "database is locked" and
+  integrity errors.
+
+### Packaging
+
+- License metadata migrated to SPDX form (`BUSL-1.1`).
+
+<!-- WHATS_NEW:END -->
+
+See the full [changelog](docs/CHANGELOG.md) for the complete release history.
 
 ## License
 
