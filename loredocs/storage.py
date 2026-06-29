@@ -317,7 +317,15 @@ def extract_text(file_path: Path) -> str:
 def _init_db(db_path: Path) -> None:
     """Create the SQLite database with FTS5 tables if they don't exist."""
     conn = sqlite3.connect(str(db_path))
-    conn.execute("PRAGMA journal_mode=WAL")
+    row = conn.execute("PRAGMA journal_mode=WAL").fetchone()
+    actual_mode = row[0] if row else "unknown"
+    if actual_mode != "wal":
+        conn.close()
+        raise RuntimeError(
+            f"Database at '{db_path}' is in '{actual_mode}' journal mode, expected WAL. "
+            "Another process may be using a conflicting journal mode. "
+            "Close all other LoreDocs connections and retry."
+        )
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys=ON")
 
@@ -408,6 +416,13 @@ def _migrate_db(db_path: Path) -> None:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys=ON")
+    row = conn.execute("PRAGMA journal_mode").fetchone()
+    actual_mode = row[0] if row else "unknown"
+    if actual_mode != "wal":
+        conn.close()
+        raise RuntimeError(
+            f"Database at '{db_path}' is in '{actual_mode}' journal mode, expected WAL."
+        )
 
     # v0.2: add label column to doc_links if missing
     existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(doc_links)")}
