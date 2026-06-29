@@ -373,7 +373,7 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 - **WAL journal-mode guardrail.** LoreDocs now detects and refuses to mix SQLite
   journal modes on the same database, avoiding a class of "database is locked" and
-  integrity errors.
+  integrity errors. In-memory databases (which cannot use WAL) are exempt.
 
 ### Packaging
 
