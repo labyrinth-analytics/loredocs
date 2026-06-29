@@ -314,12 +314,29 @@ def extract_text(file_path: Path) -> str:
 # Database setup
 # ---------------------------------------------------------------------------
 
+def _is_in_memory_db(db_path) -> bool:
+    """True for in-memory SQLite databases.
+
+    In-memory databases cannot use WAL -- ``PRAGMA journal_mode=WAL`` always
+    returns "memory" -- and there is no file for a second client to lock into a
+    conflicting mode, so the WAL mixing guard does not apply to them. The guard
+    keys on the configured path (not the returned mode) so a file DB that fails
+    WAL still raises.
+    """
+    p = str(db_path)
+    if p == ":memory:":
+        return True
+    if p.startswith("file:"):
+        return ":memory:" in p or "mode=memory" in p
+    return False
+
+
 def _init_db(db_path: Path) -> None:
     """Create the SQLite database with FTS5 tables if they don't exist."""
     conn = sqlite3.connect(str(db_path))
     row = conn.execute("PRAGMA journal_mode=WAL").fetchone()
     actual_mode = row[0] if row else "unknown"
-    if actual_mode != "wal":
+    if actual_mode != "wal" and not _is_in_memory_db(db_path):
         conn.close()
         raise RuntimeError(
             f"Database at '{db_path}' is in '{actual_mode}' journal mode, expected WAL. "
@@ -418,7 +435,7 @@ def _migrate_db(db_path: Path) -> None:
     conn.execute("PRAGMA foreign_keys=ON")
     row = conn.execute("PRAGMA journal_mode").fetchone()
     actual_mode = row[0] if row else "unknown"
-    if actual_mode != "wal":
+    if actual_mode != "wal" and not _is_in_memory_db(db_path):
         conn.close()
         raise RuntimeError(
             f"Database at '{db_path}' is in '{actual_mode}' journal mode, expected WAL."
