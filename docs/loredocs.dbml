@@ -1,7 +1,7 @@
 // LoreDocs Data Model (loredocs.db)
 // AI project knowledge management -- durable vaults for specs, guides, reference docs
-// Product: LoreDocs v0.1.0
-// Generated: 2026-04-17
+// Product: LoreDocs v0.1.10
+// Generated: 2026-06-29
 
 Project LoreDocs {
   database_type: 'SQLite'
@@ -24,7 +24,7 @@ Table vaults {
 
   Note: '''
     Top-level container. One vault per project or knowledge domain.
-    Convention: vault name matches project tag (e.g. "side_hustle").
+    Convention: vault name matches project tag (e.g. "my_project").
     Shared knowledge goes in named vaults like "cross_project_patterns".
   '''
 }
