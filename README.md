@@ -288,7 +288,7 @@ entirely on your machine.
 - **LoreDocs** stores the reference docs, specs, and guides Claude needs (durable knowledge)
 
 Where cloud AI workspaces tie you to one ecosystem, LoreConvo + LoreDocs works across
-every Claude surface you already use -- Code, Cowork, and Chat. Both store data locally in
+Claude Code, Cursor, OpenAI Codex, Hermes Agent, and Cowork. Both store data locally in
 SQLite. Neither sends anything to an external server.
 
 ## Requirements
