@@ -21,6 +21,7 @@ Storage is organized as:
 
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -33,6 +34,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .tiers import TierEnforcer, TierLimitError, get_tier, TIER_PRO  # noqa: F401 (re-exported)
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -337,11 +340,13 @@ def _init_db(db_path: Path) -> None:
     row = conn.execute("PRAGMA journal_mode=WAL").fetchone()
     actual_mode = row[0] if row else "unknown"
     if actual_mode != "wal" and not _is_in_memory_db(db_path):
-        conn.close()
-        raise RuntimeError(
-            f"Database at '{db_path}' is in '{actual_mode}' journal mode, expected WAL. "
-            "Another process may be using a conflicting journal mode. "
-            "Close all other LoreDocs connections and retry."
+        logger.warning(
+            "Database at '%s' fell back to journal mode '%s' (WAL unavailable); "
+            "continuing without WAL. This is expected on network/FUSE filesystems "
+            "or other environments without shared-memory support. Concurrent write "
+            "throughput may be reduced until WAL mode can be established. "
+            "Close all other LoreDocs connections if you expected WAL here.",
+            db_path, actual_mode,
         )
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -436,9 +441,12 @@ def _migrate_db(db_path: Path) -> None:
     row = conn.execute("PRAGMA journal_mode").fetchone()
     actual_mode = row[0] if row else "unknown"
     if actual_mode != "wal" and not _is_in_memory_db(db_path):
-        conn.close()
-        raise RuntimeError(
-            f"Database at '{db_path}' is in '{actual_mode}' journal mode, expected WAL."
+        logger.warning(
+            "Database at '%s' is in journal mode '%s' (WAL expected); continuing "
+            "in fallback mode. This is expected on network/FUSE filesystems or "
+            "other environments without shared-memory support. Concurrent write "
+            "throughput may be reduced until WAL mode can be established.",
+            db_path, actual_mode,
         )
 
     # v0.2: add label column to doc_links if missing
