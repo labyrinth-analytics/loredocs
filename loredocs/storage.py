@@ -360,7 +360,9 @@ def _init_db(db_path: Path) -> None:
             updated_at TEXT NOT NULL,
             archived INTEGER DEFAULT 0,
             tags TEXT DEFAULT '[]',
-            linked_projects TEXT DEFAULT '[]'
+            linked_projects TEXT DEFAULT '[]',
+            injection_cap_tokens INTEGER DEFAULT NULL
+                CHECK(injection_cap_tokens IS NULL OR injection_cap_tokens > 0)
         );
 
         CREATE TABLE IF NOT EXISTS documents (
@@ -558,6 +560,19 @@ def _migrate_db(db_path: Path) -> None:
         conn.execute(
             "ALTER TABLE documents ADD COLUMN last_cross_linked_at TEXT DEFAULT NULL"
         )
+
+    # v0.8: injection cap per vault (SH-12014)
+    # The vaults CREATE TABLE now includes injection_cap_tokens; only existing installs need ALTER.
+    vault_cols_v8 = {row[1] for row in conn.execute("PRAGMA table_info(vaults)")}
+    if "injection_cap_tokens" not in vault_cols_v8:
+        # Check if vaults table exists (fresh install: the CREATE TABLE above already includes the col)
+        tbl = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='vaults'").fetchone()
+        if tbl:
+            logger.info("[LOREDOCS-MIGRATE] Adding injection_cap_tokens column to vaults table")
+            conn.execute(
+                "ALTER TABLE vaults ADD COLUMN injection_cap_tokens INTEGER DEFAULT NULL "
+                "CHECK(injection_cap_tokens IS NULL OR injection_cap_tokens > 0)"
+            )
 
     conn.commit()
     conn.close()
@@ -1709,6 +1724,152 @@ class VaultStorage:
                 }
                 for r in rows
             ]
+
+    # -------------------------------------------------------------------
+    # Injection cap (SH-12014)
+    # -------------------------------------------------------------------
+
+    def get_vault_max_updated_at(self, vault_id: str) -> str:
+        """Return MAX(updated_at) for documents in a vault, or '' if empty."""
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT MAX(updated_at) FROM documents WHERE vault_id = ? AND deleted = 0",
+                (vault_id,)
+            ).fetchone()
+            return row[0] or ""
+
+    def get_injection_cap(self, vault_id: str) -> Optional[int]:
+        """Return vault-level injection_cap_tokens, or None if not set."""
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT injection_cap_tokens FROM vaults WHERE id = ?", (vault_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            return row[0]  # int or None
+
+    def set_injection_cap(self, vault_id: str, tokens: int) -> bool:
+        """Set injection_cap_tokens for a vault. Returns False if vault not found."""
+        with self._db() as conn:
+            row = conn.execute("SELECT id FROM vaults WHERE id = ?", (vault_id,)).fetchone()
+            if not row:
+                return False
+            conn.execute(
+                "UPDATE vaults SET injection_cap_tokens = ? WHERE id = ?",
+                (tokens, vault_id)
+            )
+            return True
+
+    def get_docs_for_injection(
+        self,
+        vault_id: str,
+        query: str = "",
+        limit: int = 500,
+    ) -> List[Dict[str, Any]]:
+        """Return ranked docs for injection.
+
+        With query: ranked by FTS5 score DESC, priority_weight DESC, updated_at DESC, doc_id DESC.
+        Without query: ranked by priority_weight DESC, updated_at DESC, doc_id DESC.
+
+        Returns list of dicts with keys: doc_id, name, priority, updated_at, content.
+        Content is the extracted text from disk.
+        """
+        _PWEIGHT = "CASE priority WHEN 'authoritative' THEN 4 WHEN 'normal' THEN 3 " \
+                   "WHEN 'draft' THEN 2 WHEN 'outdated' THEN 1 ELSE 3 END"
+
+        with self._db() as conn:
+            if query.strip():
+                safe_q = self._sanitize_fts_query(query)
+                rows = conn.execute(
+                    f"""SELECT d.id, d.name, d.priority, d.updated_at,
+                               {_PWEIGHT} AS priority_weight,
+                               fts.rank AS fts_rank
+                        FROM doc_fts fts
+                        JOIN documents d ON d.id = fts.doc_id
+                        WHERE fts.doc_fts MATCH ?
+                          AND d.vault_id = ?
+                          AND d.deleted = 0
+                        ORDER BY fts.rank DESC, priority_weight DESC, d.updated_at DESC, d.id DESC
+                        LIMIT ?""",
+                    (safe_q, vault_id, limit)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    f"""SELECT id, name, priority, updated_at,
+                               {_PWEIGHT} AS priority_weight
+                        FROM documents
+                        WHERE vault_id = ? AND deleted = 0
+                        ORDER BY priority_weight DESC, updated_at DESC, id DESC
+                        LIMIT ?""",
+                    (vault_id, limit)
+                ).fetchall()
+
+        # Fetch content from disk (outside DB connection to avoid long-held locks)
+        result = []
+        for row in rows:
+            doc_id = row[0]
+            extracted_path = self.vaults_dir / vault_id / "docs" / doc_id / "extracted.txt"
+            content = ""
+            if extracted_path.exists():
+                try:
+                    content = extracted_path.read_text(encoding="utf-8")
+                except OSError:
+                    content = ""
+            result.append({
+                "doc_id": doc_id,
+                "name": row[1],
+                "priority": row[2],
+                "updated_at": row[3],
+                "content": content,
+            })
+        return result
+
+    def get_docs_for_injection_by_tags(
+        self,
+        vault_id: str,
+        tags: List[str],
+        limit: int = 500,
+    ) -> List[Dict[str, Any]]:
+        """Return docs matching any of the given tags, ordered by priority + recency."""
+        if not tags:
+            return []
+
+        _PWEIGHT = "CASE priority WHEN 'authoritative' THEN 4 WHEN 'normal' THEN 3 " \
+                   "WHEN 'draft' THEN 2 WHEN 'outdated' THEN 1 ELSE 3 END"
+
+        tag_clauses = " OR ".join(f'tags LIKE ?' for _ in tags)
+        tag_params = [f'%"{t}"%' for t in tags]
+
+        with self._db() as conn:
+            rows = conn.execute(
+                f"""SELECT id, name, priority, updated_at,
+                           {_PWEIGHT} AS priority_weight
+                    FROM documents
+                    WHERE vault_id = ? AND deleted = 0
+                      AND ({tag_clauses})
+                    ORDER BY priority_weight DESC, updated_at DESC, id DESC
+                    LIMIT ?""",
+                [vault_id] + tag_params + [limit]
+            ).fetchall()
+
+        result = []
+        for row in rows:
+            doc_id = row[0]
+            extracted_path = self.vaults_dir / vault_id / "docs" / doc_id / "extracted.txt"
+            content = ""
+            if extracted_path.exists():
+                try:
+                    content = extracted_path.read_text(encoding="utf-8")
+                except OSError:
+                    content = ""
+            result.append({
+                "doc_id": doc_id,
+                "name": row[1],
+                "priority": row[2],
+                "updated_at": row[3],
+                "content": content,
+            })
+        return result
 
     # -------------------------------------------------------------------
     # Tagging and metadata

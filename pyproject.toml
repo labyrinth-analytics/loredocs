@@ -1,6 +1,6 @@
 [project]
 name = "loredocs"
-version = "0.1.10"
+version = "0.1.11"
 description = "Knowledge management MCP server for AI projects - search, tag, version, and organize your project knowledge"
 readme = "README.md"
 license = "BUSL-1.1"
@@ -41,6 +41,9 @@ pro = [
     "lancedb==0.30.2",
     "sentence-transformers==5.5.0",
     "pyarrow==24.0.0",
+]
+token-count = [
+    "tiktoken==0.7.0",
 ]
 
 [project.scripts]
