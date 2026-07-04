@@ -10,10 +10,17 @@ Usage:
     loredocs                           # via installed entry point
 """
 
+import hmac
 import json
 import os
+import re
 import sys
+import time
+import uuid
+import warnings
+from collections import OrderedDict
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -32,16 +39,508 @@ from .compat_check import check as _compat_check, emit_startup_warnings as _comp
 
 
 # ---------------------------------------------------------------------------
+# Token estimation (SH-12014 / Gap 1)
+# ---------------------------------------------------------------------------
+
+_tiktoken_encoder = None
+_tiktoken_available = False
+_warned_tiktoken = False
+
+
+def _load_tiktoken():
+    global _tiktoken_encoder, _tiktoken_available
+    try:
+        import tiktoken as _tiktoken
+        _tiktoken_encoder = _tiktoken.encoding_for_model("cl100k_base")
+        _tiktoken_available = True
+    except (ImportError, Exception):
+        _tiktoken_available = False
+
+
+_load_tiktoken()
+
+
+def _estimate_tokens(text: str) -> int:
+    """Estimate token count for text. Uses tiktoken if available, else char-based fallback."""
+    global _warned_tiktoken
+    if not text:
+        return 0
+    if _tiktoken_available and _tiktoken_encoder is not None:
+        try:
+            return len(_tiktoken_encoder.encode(text))
+        except Exception:
+            pass
+    # Char-based fallback
+    if not _warned_tiktoken:
+        _warned_tiktoken = True
+        warnings.warn(
+            "[LOREDOCS-WARN] tiktoken unavailable; token estimates use char-based fallback "
+            "(+-50% error). Install loredocs[token-count] for better accuracy.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    non_ascii = sum(1 for c in text if ord(c) > 127)
+    if non_ascii / max(len(text), 1) > 0.20:
+        return max(1, len(text) // 2)
+    return max(1, len(text) // 4)
+
+
+def _token_estimator_name() -> str:
+    if _tiktoken_available:
+        return "tiktoken/cl100k_base"
+    return "char//4"
+
+
+# ---------------------------------------------------------------------------
+# Per-session injection cache (SH-12014 / Gap 1)
+# ---------------------------------------------------------------------------
+
+def _detect_multi_worker() -> bool:
+    if os.environ.get("LOREDOCS_DISABLE_SESSION_CACHE", "0") == "1":
+        return True
+    if os.environ.get("GUNICORN_PID"):
+        return True
+    try:
+        if int(os.environ.get("WEB_CONCURRENCY", "1")) > 1:
+            return True
+    except ValueError:
+        pass
+    return False
+
+
+_SESSION_CACHE_DISABLED = _detect_multi_worker()
+if _SESSION_CACHE_DISABLED:
+    warnings.warn(
+        "[LOREDOCS] Per-session injection cache DISABLED: multi-worker deployment "
+        "detected (GUNICORN_PID or WEB_CONCURRENCY>1). Set LOREDOCS_DISABLE_SESSION_CACHE=1 "
+        "to suppress this warning.",
+        RuntimeWarning,
+        stacklevel=1,
+    )
+
+_SESSION_CACHE_MAX_ENTRIES: int = int(os.environ.get("LOREDOCS_SESSION_CACHE_MAX_ENTRIES", "1000"))
+_injection_cache: "OrderedDict[tuple, '_InjectionCacheEntry']" = OrderedDict()
+_injection_cache_eviction_warned: bool = False
+_PROCESS_START_TS: float = time.monotonic()
+
+
+@dataclass
+class _InjectionCacheEntry:
+    injected_doc_ids: List[str]
+    estimated_token_count: int
+    vault_max_updated_at: str
+
+
+def _cache_lookup(cache_key: tuple) -> "Optional[_InjectionCacheEntry]":
+    if _SESSION_CACHE_DISABLED:
+        return None
+    entry = _injection_cache.get(cache_key)
+    if entry is not None:
+        _injection_cache.move_to_end(cache_key)
+    return entry
+
+
+def _cache_store(cache_key: tuple, entry: _InjectionCacheEntry) -> None:
+    global _injection_cache_eviction_warned
+    if _SESSION_CACHE_DISABLED:
+        return
+    if cache_key in _injection_cache:
+        _injection_cache.move_to_end(cache_key)
+        _injection_cache[cache_key] = entry
+        return
+    if len(_injection_cache) >= _SESSION_CACHE_MAX_ENTRIES:
+        _injection_cache.popitem(last=False)  # LRU eviction
+        if not _injection_cache_eviction_warned:
+            _injection_cache_eviction_warned = True
+            warnings.warn(
+                f"[LOREDOCS-WARN] Session cache LRU eviction triggered "
+                f"({_SESSION_CACHE_MAX_ENTRIES} entries); consider raising "
+                "LOREDOCS_SESSION_CACHE_MAX_ENTRIES or reducing session_token variety.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+    _injection_cache[cache_key] = entry
+
+
+def _build_cache_key(
+    session_token: Optional[str],
+    vault_name: str,
+    max_tokens: Optional[int],
+    tags_frozen: "Optional[frozenset[str]]",
+    query: str,
+    vault_max_updated_at: str,
+) -> tuple:
+    return (
+        session_token or "",
+        os.getpid(),
+        _PROCESS_START_TS,
+        vault_name,
+        max_tokens,
+        tags_frozen or frozenset(),
+        query or "",
+        vault_max_updated_at,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Admin token security (SH-12014 / Gap 1)
+# ---------------------------------------------------------------------------
+
+_WEAK_TOKENS = frozenset({
+    "admin", "test", "password", "secret", "12345", "loredocs",
+    "loredocs_admin", "changeme", "token",
+})
+_ADMIN_LOCKOUT_THRESHOLD = 5
+_admin_fail_count: int = 0
+_admin_lockout_until: float = 0.0
+_lockout_path = Path.home() / ".loredocs" / "admin_lockout.json"
+
+
+def _load_lockout_state() -> None:
+    global _admin_fail_count, _admin_lockout_until
+    try:
+        if _lockout_path.exists():
+            data = json.loads(_lockout_path.read_text())
+            _admin_fail_count = data.get("fail_count", 0)
+            _admin_lockout_until = data.get("until", 0.0)
+    except Exception:
+        pass
+
+
+def _persist_lockout_state() -> None:
+    try:
+        _lockout_path.parent.mkdir(parents=True, exist_ok=True)
+        _lockout_path.write_text(json.dumps(
+            {"until": _admin_lockout_until, "fail_count": _admin_fail_count}
+        ))
+    except Exception:
+        pass
+
+
+_load_lockout_state()
+
+
+def _admin_token_valid() -> bool:
+    """Check whether LOREDOCS_ADMIN_TOKEN passes weak-token validation."""
+    token = os.environ.get("LOREDOCS_ADMIN_TOKEN", "")
+    if not token or len(token) < 16:
+        return False
+    if token in _WEAK_TOKENS:
+        return False
+    has_upper = any(c.isupper() for c in token)
+    has_lower = any(c.islower() for c in token)
+    has_digit = any(c.isdigit() for c in token)
+    has_special = any(c in "!@#$%^&*()-_=+[]{}|;:,.<>?" for c in token)
+    char_classes = sum([has_upper, has_lower, has_digit, has_special])
+    return char_classes >= 2
+
+
+def _check_admin_token(provided: str) -> bool:
+    """Compare provided token against LOREDOCS_ADMIN_TOKEN.
+
+    Enforces constant-time comparison and brute-force lockout.
+    Returns True if valid.
+    """
+    global _admin_fail_count, _admin_lockout_until
+    lockout_secs = float(os.environ.get("LOREDOCS_ADMIN_LOCKOUT_SECS", "300"))
+    now = time.monotonic()
+
+    if _admin_lockout_until > 0.0 and now < _admin_lockout_until:
+        remaining = int(_admin_lockout_until - now)
+        raise PermissionError(
+            f"[LOREDOCS-SECURITY] Admin token locked out for {remaining}s after repeated failures."
+        )
+
+    expected = os.environ.get("LOREDOCS_ADMIN_TOKEN", "")
+    if not expected:
+        _admin_fail_count += 1
+        _persist_lockout_state()
+        raise PermissionError("[LOREDOCS-SECURITY] LOREDOCS_ADMIN_TOKEN is not set.")
+
+    valid = hmac.compare_digest(provided.encode("utf-8"), expected.encode("utf-8"))
+    if valid:
+        _admin_fail_count = 0
+        _persist_lockout_state()
+        return True
+
+    _admin_fail_count += 1
+    if _admin_fail_count >= _ADMIN_LOCKOUT_THRESHOLD:
+        _admin_lockout_until = now + lockout_secs
+    _persist_lockout_state()
+
+    if os.environ.get("LOREDOCS_SECURITY_LOG") == "1":
+        _lockout_path.parent.mkdir(parents=True, exist_ok=True)
+        sec_log = _lockout_path.parent / "security.log"
+        try:
+            with open(sec_log, "a") as f:
+                f.write(
+                    f"[LOREDOCS-SECURITY] Admin token failure {_admin_fail_count}/"
+                    f"{_ADMIN_LOCKOUT_THRESHOLD}\n"
+                )
+            os.chmod(str(sec_log), 0o600)
+        except Exception:
+            pass
+
+    raise PermissionError(
+        f"[LOREDOCS-SECURITY] Admin token rejected "
+        f"(failure {_admin_fail_count}/{_ADMIN_LOCKOUT_THRESHOLD})."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Startup gate flag (SH-12014 / Gap 1)
+# ---------------------------------------------------------------------------
+
+_mcp_server_accepting_connections: bool = False
+
+_SESSION_TOKEN_REGISTRY_ENABLED: bool = (
+    os.environ.get("LOREDOCS_SESSION_TOKEN_REGISTRY", "0") == "1"
+)
+_registered_session_tokens: "set[str]" = set()
+
+
+# ---------------------------------------------------------------------------
+# Injection cap helper
+# ---------------------------------------------------------------------------
+
+_INJECTION_CAP_VALID_BEHAVIORS = frozenset({"best_effort", "strict"})
+_SESSION_TOKEN_REGEX = re.compile(r'^[A-Za-z0-9_:/.@-]{1,128}$')
+_INJECTION_DEFAULT_CAP: int = int(os.environ.get("LOREDOCS_INJECTION_DEFAULT_CAP_TOKENS", "100000"))
+
+
+def _validate_injection_params(
+    max_tokens: Optional[int],
+    safety_factor: float,
+    max_single_doc_tokens: Optional[int],
+    cap_behavior: str,
+    session_token: Optional[str],
+) -> Optional[str]:
+    """Validate injection parameters. Returns an error message string, or None if valid."""
+    if max_tokens is not None and max_tokens < 100:
+        return f"[LOREDOCS-ERROR] max_tokens must be >= 100 (got {max_tokens})."
+    if not (0.0 < safety_factor <= 1.0):
+        return f"[LOREDOCS-ERROR] safety_factor must be in range (0.0, 1.0] (got {safety_factor})."
+    if max_single_doc_tokens is not None and max_single_doc_tokens < 100 and max_single_doc_tokens != 0:
+        return f"[LOREDOCS-ERROR] max_single_doc_tokens must be >= 100 or 0 (got {max_single_doc_tokens})."
+    if cap_behavior not in _INJECTION_CAP_VALID_BEHAVIORS:
+        return (
+            f"[LOREDOCS-ERROR] cap_behavior must be 'best_effort' or 'strict' "
+            f"(got {cap_behavior!r})."
+        )
+    if session_token is not None and not _SESSION_TOKEN_REGEX.match(session_token):
+        return (
+            "[LOREDOCS-ERROR] session_token must be 1-128 chars matching "
+            "[A-Za-z0-9_:/.@-] or None."
+        )
+    return None
+
+
+def _resolve_max_tokens(
+    caller_max_tokens: Optional[int],
+    vault_cap: Optional[int],
+) -> Optional[int]:
+    """Resolve effective max_tokens using priority chain.
+
+    Priority: caller > vault DB > env var > process default.
+    Returns None if all sources are None (no cap -- caller must handle).
+    """
+    if caller_max_tokens is not None:
+        return caller_max_tokens
+    if vault_cap is not None:
+        return vault_cap
+    env_cap = os.environ.get("LOREDOCS_INJECTION_CAP_TOKENS")
+    if env_cap is not None:
+        try:
+            v = int(env_cap)
+            if v > 0:
+                return v
+        except ValueError:
+            pass
+    if _INJECTION_DEFAULT_CAP > 0:
+        return _INJECTION_DEFAULT_CAP
+    return None
+
+
+def _do_injection(
+    docs: List[Dict],
+    effective_cap: Optional[int],
+    cap_behavior: str,
+    max_single_doc_tokens: Optional[int],
+    vault_name: str,
+) -> Dict[str, Any]:
+    """Apply token cap logic and build injection output.
+
+    Returns dict with:
+      text: str -- formatted injection text
+      injected_doc_ids: List[str]
+      estimated_token_count: int
+      cap_exceeded: bool
+      overflow_tokens: int
+      omitted_count: int
+    """
+    if not docs:
+        return {
+            "text": f"[LoreDocs: {vault_name} -- no documents found]",
+            "injected_doc_ids": [],
+            "estimated_token_count": 0,
+            "cap_exceeded": False,
+            "overflow_tokens": 0,
+            "omitted_count": 0,
+        }
+
+    injected = []
+    running_tokens = 0
+    omitted_count = 0
+    overflow_tokens = 0
+
+    for i, doc in enumerate(docs):
+        content = doc["content"] or ""
+        doc_tokens = _estimate_tokens(content)
+
+        # Apply per-doc truncation if requested
+        single_doc_limit = max_single_doc_tokens
+        if single_doc_limit is None and effective_cap is not None:
+            single_doc_limit = effective_cap  # default: cap single doc at effective_cap
+
+        truncated = False
+        if single_doc_limit is not None and single_doc_limit != 0 and doc_tokens > single_doc_limit:
+            # Truncate content to approximately single_doc_limit tokens
+            if _tiktoken_available and _tiktoken_encoder is not None:
+                try:
+                    tokens = _tiktoken_encoder.encode(content)
+                    content = _tiktoken_encoder.decode(tokens[:single_doc_limit])
+                    doc_tokens = single_doc_limit
+                    truncated = True
+                except Exception:
+                    # Fall back to char-based truncation
+                    approx_chars = single_doc_limit * 4
+                    content = content[:approx_chars]
+                    doc_tokens = _estimate_tokens(content)
+                    truncated = True
+            else:
+                approx_chars = single_doc_limit * 4
+                content = content[:approx_chars]
+                doc_tokens = _estimate_tokens(content)
+                truncated = True
+
+        if truncated:
+            content += f"\n[...TRUNCATED: document exceeded max_single_doc_tokens ({single_doc_limit} estimated tokens)]"
+
+        if effective_cap is not None:
+            remaining = effective_cap - running_tokens
+            if doc_tokens > remaining:
+                if i == 0:
+                    # First document exceeds cap
+                    if cap_behavior == "strict":
+                        smallest_name = docs[0]["name"]
+                        smallest_tokens = doc_tokens
+                        for d2 in docs[1:]:
+                            t2 = _estimate_tokens(d2["content"] or "")
+                            if t2 < smallest_tokens:
+                                smallest_tokens = t2
+                                smallest_name = d2["name"]
+                        return {
+                            "text": (
+                                f"[LOREDOCS-WARN] {vault_name}: no documents fit within cap "
+                                f"(strict mode). Smallest estimated doc is ~{smallest_tokens} tokens. "
+                                f"Increase cap or reduce document sizes."
+                            ),
+                            "injected_doc_ids": [],
+                            "estimated_token_count": 0,
+                            "cap_exceeded": True,
+                            "overflow_tokens": 0,
+                            "omitted_count": len(docs),
+                        }
+                    else:
+                        # best_effort: inject first doc (already truncated above if needed)
+                        if running_tokens + doc_tokens > effective_cap:
+                            overflow = (running_tokens + doc_tokens) - effective_cap
+                            overflow_tokens += overflow
+                        injected.append((doc, content))
+                        running_tokens += doc_tokens
+                        omitted_count += len(docs) - 1
+                        break
+                else:
+                    # Subsequent doc doesn't fit: skip it, continue for best_effort
+                    if cap_behavior == "strict":
+                        omitted_count += len(docs) - i
+                        break
+                    else:
+                        # best_effort: skip this doc, continue
+                        omitted_count += 1
+                        continue
+            else:
+                injected.append((doc, content))
+                running_tokens += doc_tokens
+        else:
+            # No cap
+            injected.append((doc, content))
+            running_tokens += doc_tokens
+
+    if not injected:
+        # InjectionCapError: no doc could be injected even in best_effort
+        return {
+            "text": (
+                f"[LOREDOCS-ERROR] InjectionCapError: {vault_name}: no document can be injected. "
+                f"All {len(docs)} documents exceed max_single_doc_tokens "
+                f"(smallest ~{min(_estimate_tokens(d['content'] or '') for d in docs)} tokens). "
+                "Options: (1) increase max_single_doc_tokens, (2) increase max_tokens, "
+                "(3) use cap_behavior='strict', (4) reduce document sizes."
+            ),
+            "injected_doc_ids": [],
+            "estimated_token_count": 0,
+            "cap_exceeded": True,
+            "overflow_tokens": 0,
+            "omitted_count": len(docs),
+        }
+
+    # Build output text
+    parts = []
+    injected_ids = []
+    for doc, content in injected:
+        parts.append(f"=== {doc['name']} ({doc['doc_id']}) ===")
+        parts.append(f"Priority: {doc['priority']}")
+        parts.append("")
+        parts.append(content)
+        parts.append("")
+        parts.append("=" * 60)
+        parts.append("")
+        injected_ids.append(doc["doc_id"])
+
+    cap_exceeded = overflow_tokens > 0
+    text = "\n".join(parts)
+    if effective_cap is not None:
+        inaccurate = "" if _tiktoken_available else " (estimates may be inaccurate without tiktoken)"
+        sys.stderr.write(
+            f"[LOREDOCS-INJECT] {vault_name}: {len(injected_ids)} docs "
+            f"(~{running_tokens} estimated tokens, effective_cap={effective_cap}){inaccurate}, "
+            f"{omitted_count} omitted\n"
+        )
+
+    return {
+        "text": text,
+        "injected_doc_ids": injected_ids,
+        "estimated_token_count": running_tokens,
+        "cap_exceeded": cap_exceeded,
+        "overflow_tokens": overflow_tokens,
+        "omitted_count": omitted_count,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Lifespan -- initialize storage once, share across all tools
 # ---------------------------------------------------------------------------
 
 @asynccontextmanager
 async def app_lifespan(app):
     """Initialize the VaultStorage instance for the server lifetime."""
+    global _mcp_server_accepting_connections
     root_override = os.environ.get("LOREDOCS_ROOT")
     root = Path(root_override) if root_override else None
     storage = VaultStorage(root=root)
+    _mcp_server_accepting_connections = True
     yield {"storage": storage}
+    _mcp_server_accepting_connections = False
 
 
 mcp = FastMCP(
@@ -1275,50 +1774,175 @@ async def vault_move_doc(ctx: Context, doc_id: str, target_vault: str) -> str:
 # CONTEXT INJECTION TOOLS
 # ===================================================================
 
-class InjectInput(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
-    doc_ids: List[str] = Field(..., description="Document IDs to inject into conversation", min_length=1)
+def _run_vault_injection(
+    storage: VaultStorage,
+    vault_name: str,
+    query: str,
+    max_tokens: Optional[int],
+    cap_behavior: str,
+    session_token: Optional[str],
+    max_single_doc_tokens: Optional[int],
+    safety_factor: float,
+    tags: "Optional[List[str]]" = None,
+) -> str:
+    """Shared injection logic for vault_inject / vault_prime / vault_inject_by_tag.
+
+    Resolves the token cap, checks the per-session cache, fetches docs from storage,
+    delegates to _do_injection, stores the cache entry, and returns formatted text.
+    """
+    err = _validate_injection_params(max_tokens, safety_factor, max_single_doc_tokens, cap_behavior, session_token)
+    if err:
+        return err
+
+    v = _resolve_vault(storage, vault_name)
+    if not v:
+        return f"[LOREDOCS-ERROR] Vault '{vault_name}' not found."
+
+    vault_id = v["id"]
+    vault_max_updated_at = storage.get_vault_max_updated_at(vault_id) or ""
+    vault_cap = storage.get_injection_cap(vault_id)
+    effective_cap_raw = _resolve_max_tokens(max_tokens, vault_cap)
+    effective_cap = int(effective_cap_raw * safety_factor) if effective_cap_raw is not None else None
+
+    if effective_cap is not None and effective_cap < 100:
+        effective_cap = 100  # floor: never cap below 100 tokens
+
+    tags_frozen: "Optional[frozenset[str]]" = frozenset(tags) if tags is not None else None
+    cache_key = _build_cache_key(
+        session_token, vault_name, max_tokens, tags_frozen, query or "", vault_max_updated_at
+    )
+    cached = _cache_lookup(cache_key)
+    if cached is not None:
+        cache_label = "(cached)"
+        est = cached.estimated_token_count
+        inj_ids = cached.injected_doc_ids
+        # Re-fetch content for cached entry to build text (content is not cached, only ids)
+        # For cache hit, just indicate cache was used -- we do NOT re-build the full text here
+        # because we need to re-fetch doc content. Instead, we skip cache for text rebuilding.
+        # Note: the cache's value is "did we already inject this set", but since we need the
+        # actual text returned to the caller, we still need to fetch content on a cache hit.
+        # The cache's purpose is to skip the DB query + FTS step, not the text-building step.
+        # We store injected_doc_ids so we can fast-path retrieve exactly those docs in order.
+        docs = []
+        for doc_id in inj_ids:
+            doc_meta = storage.get_document(doc_id)
+            if doc_meta:
+                content = storage.get_document_content(doc_id) or ""
+                docs.append({
+                    "doc_id": doc_id,
+                    "name": doc_meta.get("name", doc_id),
+                    "priority": doc_meta.get("priority", "normal"),
+                    "updated_at": doc_meta.get("updated_at", ""),
+                    "content": content,
+                })
+        # Re-apply injection (idempotent since we have the exact id list)
+        result = _do_injection(docs, effective_cap, cap_behavior, max_single_doc_tokens, vault_name)
+    else:
+        cache_label = ""
+        if tags is not None:
+            docs = storage.get_docs_for_injection_by_tags(vault_id, list(tags), limit=500)
+        else:
+            docs = storage.get_docs_for_injection(vault_id, query=query or "", limit=500)
+        result = _do_injection(docs, effective_cap, cap_behavior, max_single_doc_tokens, vault_name)
+        # Store cache entry
+        cache_entry = _InjectionCacheEntry(
+            injected_doc_ids=result["injected_doc_ids"],
+            estimated_token_count=result["estimated_token_count"],
+            vault_max_updated_at=vault_max_updated_at,
+        )
+        _cache_store(cache_key, cache_entry)
+
+    # Append metadata footer
+    footer_lines = []
+    if cache_label:
+        footer_lines.append(f"[LoreDocs: {vault_name} | CACHE HIT]")
+    if result["omitted_count"] > 0:
+        footer_lines.append(
+            f"[LoreDocs: {result['omitted_count']} document(s) omitted due to token cap "
+            f"(cap={effective_cap}, behavior={cap_behavior})]"
+        )
+    if result.get("cap_exceeded") and result["overflow_tokens"] > 0:
+        footer_lines.append(
+            f"[LoreDocs-WARN: injection exceeded cap by ~{result['overflow_tokens']} tokens (best_effort)]"
+        )
+    if footer_lines:
+        return result["text"].rstrip() + "\n\n" + "\n".join(footer_lines)
+    return result["text"]
 
 
 @mcp.tool(
-    title="Inject Documents into Context",
+    title="Inject Vault Documents",
     name="vault_inject",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_inject(ctx: Context, doc_ids: List[str]) -> str:
-    """Load specific documents into the current conversation context.
+async def vault_inject(
+    ctx: Context,
+    vault_name: str,
+    query: str = "",
+    max_tokens: Optional[int] = None,
+    cap_behavior: str = "best_effort",
+    session_token: Optional[str] = None,
+    max_single_doc_tokens: Optional[int] = None,
+    safety_factor: float = 0.60,
+) -> str:
+    """Load ranked vault documents into conversation context with token-budget enforcement.
 
-    Returns the full text content of each document, formatted for easy reading.
-    Use this to bring vault knowledge into the current conversation.
+    Documents are ranked by FTS5 relevance (when query is provided) and priority weight,
+    then packed greedily until the effective token cap is reached.
+
+    Args:
+        vault_name: Vault name or ID.
+        query: Optional FTS5 search query to rank documents by relevance.
+        max_tokens: Hard token budget. Overrides vault DB cap. Effective cap = max_tokens * safety_factor.
+        cap_behavior: 'best_effort' (inject as many docs as fit) or 'strict' (error if any doc exceeds cap).
+        session_token: Optional opaque string used as per-session cache key.
+        max_single_doc_tokens: Truncate individual documents to this many tokens. 0 = no per-doc limit.
+        safety_factor: Fraction of max_tokens to use as effective cap (default 0.60 = 60%).
     """
-    params = InjectInput(doc_ids=doc_ids)
+    if not _mcp_server_accepting_connections:
+        return "[LOREDOCS-ERROR] Server is still initializing. Retry in a moment."
     storage = _get_storage(ctx)
-    parts = []
-    for doc_id in params.doc_ids:
-        doc = storage.get_document(doc_id)
-        if not doc:
-            parts.append(f"[Document '{doc_id}' not found]")
-            continue
-        content = storage.get_document_content(doc_id) or "(empty)"
-        parts.append(f"=== {doc['name']} ({doc['id']}) ===")
-        parts.append(f"Category: {doc['category']} | Priority: {doc['priority']}")
-        if doc["tags"]:
-            parts.append(f"Tags: {', '.join(doc['tags'])}")
-        if doc["notes"]:
-            parts.append(f"Note: {doc['notes']}")
-        parts.append("")
-        parts.append(content)
-        parts.append("")
-        parts.append("=" * 60)
-        parts.append("")
-
-    return "\n".join(parts)
+    return _run_vault_injection(
+        storage, vault_name, query, max_tokens, cap_behavior,
+        session_token, max_single_doc_tokens, safety_factor, tags=None
+    )
 
 
-class InjectByTagInput(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
-    tag: str = Field(..., description="Tag to match (e.g., 'tax-2025')", min_length=1)
-    vault: Optional[str] = Field(default=None, description="Vault ID or name. Leave empty for all vaults.")
+@mcp.tool(
+    title="Prime Vault Context",
+    name="vault_prime",
+    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
+)
+async def vault_prime(
+    ctx: Context,
+    vault_name: str,
+    max_tokens: Optional[int] = None,
+    cap_behavior: str = "best_effort",
+    session_token: Optional[str] = None,
+    max_single_doc_tokens: Optional[int] = None,
+    safety_factor: float = 0.60,
+) -> str:
+    """Pre-load all vault documents into the current session by priority order.
+
+    Equivalent to vault_inject with no query: loads all documents ordered by
+    priority weight (authoritative first), then by recency. Use at session start
+    to orient yourself on all knowledge available in a vault.
+
+    Args:
+        vault_name: Vault name or ID.
+        max_tokens: Hard token budget. Effective cap = max_tokens * safety_factor.
+        cap_behavior: 'best_effort' (inject as many docs as fit) or 'strict' (error if cap exceeded).
+        session_token: Optional opaque string used as per-session cache key.
+        max_single_doc_tokens: Truncate individual documents to this many tokens.
+        safety_factor: Fraction of max_tokens to use as effective cap (default 0.60 = 60%).
+    """
+    if not _mcp_server_accepting_connections:
+        return "[LOREDOCS-ERROR] Server is still initializing. Retry in a moment."
+    storage = _get_storage(ctx)
+    return _run_vault_injection(
+        storage, vault_name, "", max_tokens, cap_behavior,
+        session_token, max_single_doc_tokens, safety_factor, tags=None
+    )
 
 
 @mcp.tool(
@@ -1328,28 +1952,37 @@ class InjectByTagInput(BaseModel):
 )
 async def vault_inject_by_tag(
     ctx: Context,
-    tag: str,
-    vault: Optional[str] = None,
+    vault_name: str,
+    tags: List[str],
+    max_tokens: Optional[int] = None,
+    cap_behavior: str = "best_effort",
+    session_token: Optional[str] = None,
+    max_single_doc_tokens: Optional[int] = None,
+    safety_factor: float = 0.60,
 ) -> str:
-    """Load all documents matching a tag into the current conversation context.
+    """Load all documents matching any of the given tags into the current conversation context.
 
-    Useful for bringing in all documents related to a topic, e.g.,
-    'inject everything tagged tax-2025'.
+    Documents matching any of the provided tags are fetched, ranked by priority weight
+    and recency, then packed greedily within the token cap.
+
+    Args:
+        vault_name: Vault name or ID.
+        tags: List of tags to match (OR semantics: any matching tag includes the doc).
+        max_tokens: Hard token budget. Effective cap = max_tokens * safety_factor.
+        cap_behavior: 'best_effort' (inject as many docs as fit) or 'strict'.
+        session_token: Optional opaque string used as per-session cache key.
+        max_single_doc_tokens: Truncate individual documents to this many tokens.
+        safety_factor: Fraction of max_tokens to use as effective cap (default 0.60 = 60%).
     """
-    params = InjectByTagInput(tag=tag, vault=vault)
+    if not _mcp_server_accepting_connections:
+        return "[LOREDOCS-ERROR] Server is still initializing. Retry in a moment."
+    if not tags:
+        return "[LOREDOCS-ERROR] vault_inject_by_tag: 'tags' must be a non-empty list."
     storage = _get_storage(ctx)
-    vault_id = None
-    if params.vault:
-        v = _resolve_vault(storage, params.vault)
-        if v:
-            vault_id = v["id"]
-
-    docs = storage.search_by_tag(params.tag, vault_id=vault_id)
-    if not docs:
-        return f"No documents found with tag '{params.tag}'."
-
-    doc_ids = [d["id"] for d in docs]
-    return await vault_inject(ctx=ctx, doc_ids=doc_ids)
+    return _run_vault_injection(
+        storage, vault_name, "", max_tokens, cap_behavior,
+        session_token, max_single_doc_tokens, safety_factor, tags=tags
+    )
 
 
 class InjectSummaryInput(BaseModel):
@@ -1378,33 +2011,197 @@ async def vault_inject_summary(ctx: Context, vault: str) -> str:
     return await vault_info(ctx=ctx, vault=v["id"])
 
 
-class VaultPrimeInput(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
-    vault_name: str = Field(..., description="Vault name or ID to prime", min_length=1)
-    max_chars: Optional[int] = Field(default=None, description="Maximum characters to return (default: no limit)")
+# ---------------------------------------------------------------------------
+# Token injection cap admin tools (SH-12014 / Gap 1)
+# Gated by LOREDOCS_ENABLE_CAP_TOOLS=1 for vault_set_injection_cap (admin-only).
+# vault_get_injection_cap, vault_get_session_token, vault_estimate_tokens, and
+# vault_get_server_capabilities are always available (read-only or no-side-effect).
+# ---------------------------------------------------------------------------
+
+@mcp.tool(
+    title="Get Injection Cap",
+    name="vault_get_injection_cap",
+    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
+)
+async def vault_get_injection_cap(ctx: Context, vault_name: str) -> str:
+    """Return the stored per-vault injection token cap (or 'not set' if none).
+
+    If not set, the server falls back to LOREDOCS_INJECTION_CAP_TOKENS env var,
+    then LOREDOCS_INJECTION_DEFAULT_CAP_TOKENS (default 100000).
+    """
+    storage = _get_storage(ctx)
+    v = _resolve_vault(storage, vault_name)
+    if not v:
+        return f"[LOREDOCS-ERROR] Vault '{vault_name}' not found."
+    cap = storage.get_injection_cap(v["id"])
+    if cap is None:
+        return (
+            f"Vault '{vault_name}': no injection cap stored. "
+            f"Effective default: {_INJECTION_DEFAULT_CAP} tokens "
+            f"(LOREDOCS_INJECTION_DEFAULT_CAP_TOKENS)."
+        )
+    return (
+        f"Vault '{vault_name}': injection_cap_tokens = {cap}. "
+        f"Effective cap per call = int({cap} * safety_factor)."
+    )
 
 
 @mcp.tool(
-    title="Prime Vault Context",
-    name="vault_prime",
+    title="Get Session Token",
+    name="vault_get_session_token",
+    annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
+)
+async def vault_get_session_token(ctx: Context) -> str:
+    """Generate a fresh session token (UUID4) for use with vault_inject / vault_prime.
+
+    Pass the returned token as session_token in subsequent injection calls so the
+    per-session cache can scope cached results to this conversation.
+    Cache hits are valid until any document in the vault is updated.
+    """
+    token = str(uuid.uuid4())
+    if _SESSION_TOKEN_REGISTRY_ENABLED:
+        _registered_session_tokens.add(token)
+    cache_note = "disabled (multi-worker deployment)" if _SESSION_CACHE_DISABLED else "enabled"
+    return (
+        f"session_token: {token}\n"
+        f"Per-session cache: {cache_note}.\n"
+        "Pass this token as session_token in vault_inject / vault_prime / vault_inject_by_tag calls."
+    )
+
+
+@mcp.tool(
+    title="Estimate Injection Tokens",
+    name="vault_estimate_tokens",
     annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_prime(
+async def vault_estimate_tokens(
     ctx: Context,
     vault_name: str,
-    max_chars: Optional[int] = None,
+    query: str = "",
+    max_single_doc_tokens: Optional[int] = None,
 ) -> str:
-    """Pre-load vault context into current session.
+    """Preview the token count of a vault injection without injecting documents.
 
-    Returns a summary overview of the vault's contents including all documents
-    with their categories, tags, priorities, and notes. Use at session start
-    to orient yourself on what knowledge is available in a vault.
+    Returns estimated token counts for each document (up to 500) so you can
+    choose an appropriate max_tokens value before calling vault_inject.
+    Uses tiktoken if available; falls back to char-based estimation.
     """
-    params = VaultPrimeInput(vault_name=vault_name, max_chars=max_chars)
-    result = await vault_inject_summary(ctx=ctx, vault=params.vault_name)
-    if params.max_chars and len(result) > params.max_chars:
-        return result[:params.max_chars] + "\n\n[Truncated to {} chars]".format(params.max_chars)
-    return result
+    storage = _get_storage(ctx)
+    v = _resolve_vault(storage, vault_name)
+    if not v:
+        return f"[LOREDOCS-ERROR] Vault '{vault_name}' not found."
+
+    vault_id = v["id"]
+    docs = storage.get_docs_for_injection(vault_id, query=query or "", limit=500)
+    if not docs:
+        return f"Vault '{vault_name}' has no documents."
+
+    lines = [f"Token estimates for vault '{vault_name}' (estimator: {_token_estimator_name()}):"]
+    total = 0
+    for doc in docs:
+        content = doc["content"] or ""
+        tok = _estimate_tokens(content)
+        per_doc_limit = max_single_doc_tokens
+        truncated_note = ""
+        if per_doc_limit is not None and per_doc_limit != 0 and tok > per_doc_limit:
+            truncated_note = f" [would truncate to {per_doc_limit}]"
+            tok = per_doc_limit
+        total += tok
+        lines.append(f"  {doc['name']!r} ({doc['doc_id']}): ~{tok} tokens{truncated_note}")
+    lines.append(f"Total (all {len(docs)} docs): ~{total} tokens")
+    vault_cap = storage.get_injection_cap(vault_id)
+    effective_resolved = _resolve_max_tokens(None, vault_cap)
+    if effective_resolved is not None:
+        eff = int(effective_resolved * 0.60)
+        lines.append(
+            f"Default effective cap (safety_factor=0.60): ~{eff} tokens "
+            f"({'vault DB cap' if vault_cap else 'env/default'} = {effective_resolved})"
+        )
+    return "\n".join(lines)
+
+
+@mcp.tool(
+    title="Get Server Capabilities",
+    name="vault_get_server_capabilities",
+    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
+)
+async def vault_get_server_capabilities(ctx: Context) -> str:
+    """Return a summary of this LoreDocs server's injection capabilities and token estimation settings.
+
+    Useful for diagnosing injection behavior or verifying which features are active.
+    """
+    import importlib.metadata
+    try:
+        version = importlib.metadata.version("loredocs")
+    except importlib.metadata.PackageNotFoundError:
+        version = "unknown"
+
+    admin_token_ok = _admin_token_valid()
+    cap_tools_enabled = os.environ.get("LOREDOCS_ENABLE_CAP_TOOLS") == "1"
+    lines = [
+        f"LoreDocs server capabilities (v{version})",
+        "",
+        f"  token_estimator: {_token_estimator_name()}",
+        f"  tiktoken_available: {_tiktoken_available}",
+        f"  session_cache: {'disabled (multi-worker)' if _SESSION_CACHE_DISABLED else 'enabled'}",
+        f"  session_cache_size: {len(_injection_cache)} / {_SESSION_CACHE_MAX_ENTRIES}",
+        f"  cap_tools_registered: {cap_tools_enabled}",
+        f"  admin_token_configured: {bool(os.environ.get('LOREDOCS_ADMIN_TOKEN'))}",
+        f"  admin_token_strength_ok: {admin_token_ok}",
+        f"  admin_lockout_active: {time.monotonic() < _admin_lockout_until}",
+        f"  default_injection_cap_tokens: {_INJECTION_DEFAULT_CAP}",
+        f"  server_accepting_connections: {_mcp_server_accepting_connections}",
+    ]
+    env_cap = os.environ.get("LOREDOCS_INJECTION_CAP_TOKENS")
+    if env_cap:
+        lines.append(f"  LOREDOCS_INJECTION_CAP_TOKENS: {env_cap}")
+    return "\n".join(lines)
+
+
+if os.environ.get("LOREDOCS_ENABLE_CAP_TOOLS") == "1":
+    @mcp.tool(
+        title="Set Vault Injection Cap",
+        name="vault_set_injection_cap",
+        annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
+    )
+    async def vault_set_injection_cap(
+        ctx: Context,
+        vault_name: str,
+        max_tokens: int,
+        admin_token: str,
+    ) -> str:
+        """Set the per-vault injection token cap (admin-only).
+
+        Requires LOREDOCS_ENABLE_CAP_TOOLS=1 and a valid LOREDOCS_ADMIN_TOKEN.
+        Once set, all vault_inject / vault_prime / vault_inject_by_tag calls
+        for this vault use this cap unless the caller overrides with max_tokens.
+
+        Args:
+            vault_name: Vault name or ID.
+            max_tokens: Token cap to store (must be >= 100).
+            admin_token: Value of LOREDOCS_ADMIN_TOKEN (never logged or echoed).
+        """
+        try:
+            _check_admin_token(admin_token)
+        except PermissionError as exc:
+            return str(exc)
+
+        if max_tokens < 100:
+            return f"[LOREDOCS-ERROR] max_tokens must be >= 100 (got {max_tokens})."
+
+        storage = _get_storage(ctx)
+        v = _resolve_vault(storage, vault_name)
+        if not v:
+            return f"[LOREDOCS-ERROR] Vault '{vault_name}' not found."
+
+        ok = storage.set_injection_cap(v["id"], max_tokens)
+        if not ok:
+            return f"[LOREDOCS-ERROR] Failed to set injection cap for vault '{vault_name}'."
+        return (
+            f"Vault '{vault_name}': injection_cap_tokens set to {max_tokens}. "
+            f"Effective per-call cap at default safety_factor=0.60: ~{int(max_tokens * 0.60)} tokens. "
+            "Session cache invalidated (updated_at changed)."
+        )
 
 
 # ===================================================================
