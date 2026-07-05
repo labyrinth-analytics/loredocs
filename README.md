@@ -1,4 +1,4 @@
-# LoreDocs v0.1.10
+# LoreDocs v0.1.11
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -360,29 +360,44 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
-## v0.1.10
+## v0.1.11
 
-### Security
+### New Features
 
-- **Dependency security updates.** `cryptography` is upgraded from 46.0.7 to 49.0.0,
-  clearing an OpenSSL advisory (GHSA-537c-gmf6-5ccf). `starlette` is now pinned to
-  1.3.1, which clears five advisories. All runtime dependencies are exact-pinned.
+- **Token-budget injection tools.** `vault_inject`, `vault_prime`, and `vault_inject_by_tag`
+  now accept `max_tokens`, `safety_factor`, `cap_behavior`, `session_token`, and
+  `max_single_doc_tokens` parameters. Documents are ranked by FTS5 relevance and priority,
+  then packed greedily within an effective token cap (`max_tokens * safety_factor`). The
+  default cap is 100,000 tokens (configurable via `LOREDOCS_INJECTION_DEFAULT_CAP_TOKENS`).
+  Use `cap_behavior="strict"` to error rather than truncate; default is `"best_effort"`.
+  (SH-12014 / SH-11800)
 
-### Bug Fixes
+- **Per-session injection cache.** Each call to an injection tool with a `session_token`
+  uses an in-process LRU cache so repeated calls with the same parameters return
+  instantly. Cache entries are invalidated whenever a document in the vault is updated.
+  Disabled automatically in multi-worker deployments.
 
-- **MCP tools accept flat arguments correctly.** Several LoreDocs MCP tools required a
-  nested `{"params": {...}}` wrapper and rejected the flat arguments some clients send.
-  Tool signatures are now explicit, so flat arguments work as expected. (SH-11722)
+- **Token estimation preview.** New `vault_estimate_tokens` tool shows the estimated
+  token count for each document in a vault before you inject, helping you choose a
+  suitable `max_tokens` budget. Uses tiktoken (if installed via `loredocs[token-count]`)
+  or a char-based fallback.
 
-### Reliability
+- **Vault-level injection cap.** New `vault_get_injection_cap` and (admin-gated)
+  `vault_set_injection_cap` tools let operators store a per-vault default token cap
+  that applies to all injection calls for that vault. Admin operations require
+  `LOREDOCS_ENABLE_CAP_TOOLS=1` and a strong `LOREDOCS_ADMIN_TOKEN`.
 
-- **WAL journal-mode guardrail.** LoreDocs now detects and refuses to mix SQLite
-  journal modes on the same database, avoiding a class of "database is locked" and
-  integrity errors. In-memory databases (which cannot use WAL) are exempt.
+- **Session token helper.** New `vault_get_session_token` tool returns a UUID to use
+  as the `session_token` parameter across injection calls, enabling cache scoping.
 
-### Packaging
+- **Server capabilities report.** New `vault_get_server_capabilities` tool reports
+  the active token estimator, session cache state, cap settings, and admin token
+  configuration.
 
-- License metadata migrated to SPDX form (`BUSL-1.1`).
+### Optional dependency
+
+- `loredocs[token-count]` installs `tiktoken==0.7.0` for improved token estimation
+  accuracy (+-15% vs +-50% for the char-based fallback).
 
 <!-- WHATS_NEW:END -->
 
