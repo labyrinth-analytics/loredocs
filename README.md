@@ -198,7 +198,7 @@ and usage anytime with `vault_tier_status`. Activate a Pro license with `vault_s
 
 ## MCP Tools
 
-LoreDocs provides 42 MCP tools organized by function:
+LoreDocs provides 47 MCP tools organized by function:
 
 ### Vault Management (8 tools)
 | Tool | What it does |
@@ -243,13 +243,18 @@ LoreDocs provides 42 MCP tools organized by function:
 | `vault_set_priority` | Set document priority level |
 | `vault_add_note` | Add a note or annotation to a document |
 
-### Context Injection (4 tools)
+### Context Injection (9 tools)
 | Tool | What it does |
 |------|-------------|
-| `vault_inject` | Load specific documents into Claude's context |
-| `vault_inject_by_tag` | Load all documents matching a tag |
+| `vault_inject` | Load ranked vault documents into context, packed within a token budget |
+| `vault_inject_by_tag` | Load all documents matching a tag, packed within a token budget |
 | `vault_inject_summary` | Load a vault summary with doc titles and descriptions |
-| `vault_prime` | Pre-load vault context into current session (convenience wrapper for vault_inject_summary) |
+| `vault_prime` | Pre-load all vault documents by priority order (equivalent to `vault_inject` with no query) |
+| `vault_get_injection_cap` | Get the configured token cap for a vault's injection tools |
+| `vault_set_injection_cap` | Set a vault's injection token cap (requires `LOREDOCS_ENABLE_CAP_TOOLS=1`) |
+| `vault_get_session_token` | Generate a per-session cache key for injection tools |
+| `vault_estimate_tokens` | Estimate the token count an injection call would use before running it |
+| `vault_get_server_capabilities` | Report which injection/token-budget features this server build supports |
 
 ### Import/Export (3 tools)
 | Tool | What it does |
