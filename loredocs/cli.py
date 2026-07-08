@@ -272,5 +272,17 @@ def search(query, vault_name, limit):
         click.echo(f"    Vault: {d.get('vault_name', '')} | {d.get('category', '')} | updated {str(d.get('updated_at', ''))[:10]}")
 
 
+@cli.command(name="ui")
+@click.option("--port", default=8766, type=int, show_default=True, help="Port to serve UI on.")
+@click.option("--no-browser", is_flag=True, help="Do not open browser automatically.")
+@click.option("--no-token-warning", is_flag=True, help="Suppress Pro vault startup warning.")
+def ui(port, no_browser, no_token_warning):
+    """Start the LoreDocs web UI (requires loredocs[ui] extra)."""
+    import os
+    from .server import run_ui
+    token = os.environ.get("LOREDOCS_UI_TOKEN")
+    run_ui(port=port, open_browser=not no_browser, token=token, suppress_warning=no_token_warning)
+
+
 if __name__ == "__main__":
     cli()
