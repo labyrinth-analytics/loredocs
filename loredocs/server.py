@@ -2888,6 +2888,50 @@ def get_server_info() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Web UI (SH-11803: Pro vault startup warning)
+# ---------------------------------------------------------------------------
+
+def run_ui(port: int, open_browser: bool, token: Optional[str] = None, suppress_warning: bool = False):
+    """Run the LoreDocs web UI (stub -- full implementation in SH-10404).
+
+    This function implements the Pro vault startup warning (SH-11803).
+    Full web UI routes, templates, and tier checking are deferred to SH-10404.
+    """
+    import sqlite3
+    import urllib.parse
+
+    # Get database path using same logic as MCP server
+    db_path = VaultStorage()._db_path()
+
+    if db_path.exists():
+        try:
+            encoded_path = urllib.parse.quote(str(db_path))
+            conn = sqlite3.connect(f"file:{encoded_path}?mode=ro", uri=True)
+            conn.execute("PRAGMA busy_timeout=2000")
+
+            # Check for Pro vaults if token not set and warning not suppressed
+            if not token and not suppress_warning:
+                pro_vault_count = conn.execute(
+                    "SELECT COUNT(*) FROM vaults WHERE tier IN ('pro', 'team') AND archived=0"
+                ).fetchone()[0]
+                if pro_vault_count > 0:
+                    sys.stderr.write(
+                        f"WARNING: {pro_vault_count} Pro/Team vault(s) detected. "
+                        "Set LOREDOCS_UI_TOKEN=<token> for additional protection "
+                        "against local process access. Example: "
+                        "LOREDOCS_UI_TOKEN=$(openssl rand -hex 16) loredocs ui\n"
+                    )
+            conn.close()
+        except sqlite3.OperationalError:
+            pass
+
+    # Placeholder: full web UI implementation deferred to SH-10404
+    print(f"LoreDocs web UI stub: listening on port {port}")
+    print("(Full web UI implementation pending SH-10404)")
+    sys.exit(0)
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
