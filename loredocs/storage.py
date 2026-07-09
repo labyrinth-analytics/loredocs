@@ -145,6 +145,11 @@ CONFIG_FILE = "config.json"
 DB_FILE = "loredocs.db"
 VAULTS_DIR = "vaults"
 
+DEFAULT_DB_FILENAMES = {
+    "loreconvo": "sessions.db",
+    "loredocs": "loredocs.db",
+}
+
 # Cross-product linking (Phase 2b, SH-10727)
 # Increment when cross_product_links schema changes incompatibly.
 CROSS_LINK_SCHEMA_VERSION = 1
@@ -214,7 +219,7 @@ def discover_product_db(product: str) -> Optional[Path]:
             )
         return p
 
-    default = Path.home() / f".{product}" / f"{product}.db"
+    default = Path.home() / f".{product}" / DEFAULT_DB_FILENAMES.get(product, f"{product}.db")
     if default.exists():
         log.debug("discover_product_db: found %s at default path", product)
         return default
