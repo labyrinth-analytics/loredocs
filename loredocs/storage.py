@@ -2563,6 +2563,16 @@ class VaultStorage:
             lc_conn.row_factory = _sqlite3.Row
             written = 0
             with self._db() as conn:
+                # Prune stale auto-links for this doc (model changed since last run).
+                # Manual links are unaffected. INSERT OR IGNORE below then writes
+                # fresh links, so model-upgraded content self-heals on next save.
+                conn.execute(
+                    """DELETE FROM cross_product_links
+                       WHERE source_product = 'loredocs' AND source_id = ?
+                         AND link_type = 'auto'
+                         AND embedding_model != ?""",
+                    (doc_id, _CROSS_LINK_EMBEDDING_MODEL),
+                )
                 for sid, dist in sorted(best.items(), key=lambda x: x[1])[:_CROSS_LINK_CAP]:
                     if written >= _CROSS_LINK_CAP:
                         break
