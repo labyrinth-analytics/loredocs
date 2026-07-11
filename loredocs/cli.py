@@ -276,12 +276,21 @@ def search(query, vault_name, limit):
 @click.option("--port", default=8766, type=int, show_default=True, help="Port to serve UI on.")
 @click.option("--no-browser", is_flag=True, help="Do not open browser automatically.")
 @click.option("--no-token-warning", is_flag=True, help="Suppress Pro vault startup warning.")
-def ui(port, no_browser, no_token_warning):
+@click.option("--port-file", default=None, help="Write bound port as integer to this path.")
+@click.option("--check", "check_only", is_flag=True, help="Check UI extras and exit (no server).")
+def ui(port, no_browser, no_token_warning, port_file, check_only):
     """Start the LoreDocs web UI (requires loredocs[ui] extra)."""
     import os
     from .server import run_ui
     token = os.environ.get("LOREDOCS_UI_TOKEN")
-    run_ui(port=port, open_browser=not no_browser, token=token, suppress_warning=no_token_warning)
+    run_ui(
+        port=port,
+        open_browser=not no_browser,
+        token=token,
+        suppress_warning=no_token_warning,
+        port_file=port_file,
+        check_only=check_only,
+    )
 
 
 if __name__ == "__main__":
