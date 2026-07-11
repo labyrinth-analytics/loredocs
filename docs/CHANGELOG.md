@@ -4,6 +4,25 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## v0.1.12
+
+### Bug Fixes
+
+- **Cross-product linking to LoreConvo now works.** Database discovery used a
+  single default filename convention (`~/.{product}/{product}.db`) for every
+  product, which is correct for LoreDocs (`loredocs.db`) but wrong for LoreConvo
+  (which uses `sessions.db`). As a result, every cross-product linking tool
+  silently reported "Cross-product linking unavailable" on real installs. Fixed.
+  (SH-12757)
+
+- **Stale auto-discovered links are cleaned up automatically.** If a document's
+  embedding model changes between saves, cross-product links (LoreDocs <->
+  LoreConvo) auto-discovered under the old model are now removed before fresh
+  links are written, instead of accumulating alongside them. Manually created
+  links are unaffected. (SH-10784)
+
+---
+
 ## v0.1.11
 
 ### New Features
