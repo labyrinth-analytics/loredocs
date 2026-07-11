@@ -1,4 +1,4 @@
-# LoreDocs v0.1.11
+# LoreDocs v0.1.12
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -360,44 +360,22 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
-## v0.1.11
+## v0.1.12
 
-### New Features
+### Bug Fixes
 
-- **Token-budget injection tools.** `vault_inject`, `vault_prime`, and `vault_inject_by_tag`
-  now accept `max_tokens`, `safety_factor`, `cap_behavior`, `session_token`, and
-  `max_single_doc_tokens` parameters. Documents are ranked by FTS5 relevance and priority,
-  then packed greedily within an effective token cap (`max_tokens * safety_factor`). The
-  default cap is 100,000 tokens (configurable via `LOREDOCS_INJECTION_DEFAULT_CAP_TOKENS`).
-  Use `cap_behavior="strict"` to error rather than truncate; default is `"best_effort"`.
-  (SH-12014 / SH-11800)
+- **Cross-product linking to LoreConvo now works.** Database discovery used a
+  single default filename convention (`~/.{product}/{product}.db`) for every
+  product, which is correct for LoreDocs (`loredocs.db`) but wrong for LoreConvo
+  (which uses `sessions.db`). As a result, every cross-product linking tool
+  silently reported "Cross-product linking unavailable" on real installs. Fixed.
+  (SH-12757)
 
-- **Per-session injection cache.** Each call to an injection tool with a `session_token`
-  uses an in-process LRU cache so repeated calls with the same parameters return
-  instantly. Cache entries are invalidated whenever a document in the vault is updated.
-  Disabled automatically in multi-worker deployments.
-
-- **Token estimation preview.** New `vault_estimate_tokens` tool shows the estimated
-  token count for each document in a vault before you inject, helping you choose a
-  suitable `max_tokens` budget. Uses tiktoken (if installed via `loredocs[token-count]`)
-  or a char-based fallback.
-
-- **Vault-level injection cap.** New `vault_get_injection_cap` and (admin-gated)
-  `vault_set_injection_cap` tools let operators store a per-vault default token cap
-  that applies to all injection calls for that vault. Admin operations require
-  `LOREDOCS_ENABLE_CAP_TOOLS=1` and a strong `LOREDOCS_ADMIN_TOKEN`.
-
-- **Session token helper.** New `vault_get_session_token` tool returns a UUID to use
-  as the `session_token` parameter across injection calls, enabling cache scoping.
-
-- **Server capabilities report.** New `vault_get_server_capabilities` tool reports
-  the active token estimator, session cache state, cap settings, and admin token
-  configuration.
-
-### Optional dependency
-
-- `loredocs[token-count]` installs `tiktoken==0.7.0` for improved token estimation
-  accuracy (+-15% vs +-50% for the char-based fallback).
+- **Stale auto-discovered links are cleaned up automatically.** If a document's
+  embedding model changes between saves, cross-product links (LoreDocs <->
+  LoreConvo) auto-discovered under the old model are now removed before fresh
+  links are written, instead of accumulating alongside them. Manually created
+  links are unaffected. (SH-10784)
 
 <!-- WHATS_NEW:END -->
 
