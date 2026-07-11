@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.name }} - LoreDocs{% endblock %}
+{% block content %}
+<nav class="breadcrumb">
+  <a href="/">Vaults</a> &rsaquo;
+  <a href="/vault/{{ doc.vault_id }}">{{ doc.vault_name }}</a> &rsaquo;
+  {{ doc.name }}
+</nav>
+<h1>{{ doc.name }}</h1>
+<p class="meta">{{ doc.category }} &middot; updated {{ doc.updated_at }}</p>
+<div class="doc-content">
+  {{ content | safe }}
+</div>
+{% endblock %}
