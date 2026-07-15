@@ -12,12 +12,14 @@ Usage:
 
 import hmac
 import json
+import logging
 import os
 import re
 import sys
 import time
 import uuid
 import warnings
+import importlib.metadata
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -541,6 +543,65 @@ async def app_lifespan(app):
     _mcp_server_accepting_connections = True
     yield {"storage": storage}
     _mcp_server_accepting_connections = False
+
+
+logger = logging.getLogger(__name__)
+
+_EGG_INFO_CANDIDATES = (
+    Path("loredocs.egg-info"),
+    Path("loredocs/loredocs.egg-info"),
+)
+
+
+def _check_egg_info_conflict() -> None:
+    """Warn if a stale egg-info directory may shadow installed metadata.
+
+    Runs at server startup. Does not raise, since editable dev installs
+    legitimately have an egg-info on disk; we only flag version mismatch.
+    """
+    product = "loredocs"
+    try:
+        installed_version = importlib.metadata.version(product)
+    except importlib.metadata.PackageNotFoundError:
+        logger.debug("loredocs not installed via pip; skipping egg-info check")
+        return
+
+    for egg_info_path in _EGG_INFO_CANDIDATES:
+        if not egg_info_path.is_dir():
+            continue
+        pkg_info = egg_info_path / "PKG-INFO"
+        if not pkg_info.is_file():
+            logger.warning(
+                "stale loredocs.egg-info detected at %s (missing PKG-INFO). "
+                "This may shadow installed metadata. "
+                "Consider deleting it or running 'pip install -e .' to update.",
+                egg_info_path,
+            )
+            continue
+        egg_version = None
+        for line in pkg_info.read_text(encoding="ascii", errors="replace").splitlines():
+            if line.startswith("Version:"):
+                egg_version = line.split(":", 1)[1].strip()
+                break
+        if egg_version is None:
+            logger.warning(
+                "stale loredocs.egg-info detected at %s (no Version field in PKG-INFO). "
+                "This may shadow installed metadata.",
+                egg_info_path,
+            )
+        elif egg_version != installed_version:
+            logger.warning(
+                "stale loredocs.egg-info detected at %s. "
+                "egg-info version: %s, installed version: %s. "
+                "This may shadow installed metadata. "
+                "Consider deleting it or running 'pip install -e .' to update.",
+                egg_info_path, egg_version, installed_version,
+            )
+        else:
+            logger.debug(
+                "egg-info found at %s (version %s) matches installed version",
+                egg_info_path, egg_version,
+            )
 
 
 mcp = FastMCP(
@@ -2938,6 +2999,7 @@ def run_ui(port: int, open_browser: bool, token: Optional[str] = None, suppress_
 def main():
     """Run the LoreDocs MCP server."""
     _compat_emit(_compat_check())
+    _check_egg_info_conflict()
     from . import idle_watchdog
     # Reap this process if the client parks it idle, freeing resources.
     idle_watchdog.install(mcp, env_var="LOREDOCS_IDLE_TIMEOUT")
