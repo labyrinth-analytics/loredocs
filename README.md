@@ -1,4 +1,4 @@
-# LoreDocs v0.1.12
+# LoreDocs v0.1.13
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -360,22 +360,13 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
-## v0.1.12
+## v0.1.13
 
-### Bug Fixes
+### Security
 
-- **Cross-product linking to LoreConvo now works.** Database discovery used a
-  single default filename convention (`~/.{product}/{product}.db`) for every
-  product, which is correct for LoreDocs (`loredocs.db`) but wrong for LoreConvo
-  (which uses `sessions.db`). As a result, every cross-product linking tool
-  silently reported "Cross-product linking unavailable" on real installs. Fixed.
-  (SH-12757)
-
-- **Stale auto-discovered links are cleaned up automatically.** If a document's
-  embedding model changes between saves, cross-product links (LoreDocs <->
-  LoreConvo) auto-discovered under the old model are now removed before fresh
-  links are written, instead of accumulating alongside them. Manually created
-  links are unaffected. (SH-10784)
+- **Updated click to 8.3.3 (CVE-2026-7246).** Bumped the `click` dependency
+  from 8.3.1 to 8.3.3 to pick up the fix for CVE-2026-7246. No functional or
+  API changes; this is a security-only patch release.
 
 <!-- WHATS_NEW:END -->
 

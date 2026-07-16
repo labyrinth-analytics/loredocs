@@ -4,6 +4,16 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## v0.1.13
+
+### Security
+
+- **Updated click to 8.3.3 (CVE-2026-7246).** Bumped the `click` dependency
+  from 8.3.1 to 8.3.3 to pick up the fix for CVE-2026-7246. No functional or
+  API changes; this is a security-only patch release.
+
+---
+
 ## v0.1.12
 
 ### Bug Fixes
