@@ -34,7 +34,7 @@ from .storage import (
     VaultStorage, CROSS_LINK_SCHEMA_VERSION, discover_product_db, DiscoveryError,
     _CROSS_LINK_EMBEDDING_MODEL,
 )
-from .tiers import TierLimitError, get_tier, set_tier, TIER_LIMITS, TIER_PRO
+from .tiers import TierLimitError, get_tier, legacy_tier_notice, set_tier, TIER_LIMITS, TIER_PRO
 from .license import get_license_status
 from .onboard_tool import run_onboard as _run_onboard
 from .compat_check import check as _compat_check, emit_startup_warnings as _compat_emit
@@ -2699,6 +2699,10 @@ async def vault_tier_status(
             "Pro tier removes all limits. Use `vault_set_tier` with `tier='pro'` "
             "to activate your license after purchase.",
         ]
+
+    notice = legacy_tier_notice(storage.root)
+    if notice:
+        lines += ["", "## Migration Notice", "", notice]
 
     return "\n".join(lines)
 

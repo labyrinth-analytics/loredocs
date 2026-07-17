@@ -149,36 +149,32 @@ def validate_license_key(key: str) -> dict:
 
 
 def is_pro_licensed(env_value: Optional[str] = None) -> bool:
-    """Check whether the current environment has a valid Pro license.
+    """Check whether the current environment/durable store has a valid Pro license.
 
     Reads LOREDOCS_PRO from the environment if env_value is not provided.
 
     Returns:
-        True if Pro is unlocked (valid key or dev bypass).
+        True if Pro is unlocked (valid key, dev bypass, or a durably-stored key).
         False if free tier should apply.
     """
-    if env_value is None:
-        env_value = os.environ.get("LOREDOCS_PRO", "").strip()
-
-    if not env_value:
-        return False
-
-    # Dev bypass for internal agents only.
-    # LAB_DEV_MODE=1 must ALSO be set -- it is not included in public .mcp.json files.
-    dev_mode = os.environ.get("LAB_DEV_MODE", "").strip() == "1"
-    if dev_mode and env_value and not env_value.startswith(_KEY_PREFIX):
-        return True
-
-    # Validate as a real license key
-    try:
-        validate_license_key(env_value)
-        return True
-    except LicenseError:
-        return False
+    return get_license_status(env_value)["is_pro"]
 
 
 def get_license_status(env_value: Optional[str] = None) -> dict:
     """Return a dict describing the current license status.
+
+    Precedence (SH-13079 durable persistence, r3):
+        1. LOREDOCS_PRO env var (real key or LAB_DEV_MODE=1 dev bypass) --
+           skipped if an explicit `license clear` tombstone is active for this
+           product. On successful validation here, the key is durably
+           persisted to ~/.loredocs/license.json via persist_from_env() so a
+           GUI-only client's config regeneration can't drop it again.
+        2. ~/.loredocs/license.json (own file, then a read-only cross-file
+           check of ~/.loreconvo/license.json for a lore_suite-scoped key),
+           falling back to the 72h grace-period cache on a corrupted/unreadable
+           primary file.
+        3. (LoreDocs only, handled in tiers.get_tier(), not here) the legacy
+           config.json['tier'] fallback, bounded per SH-13079 disposition.
 
     Returns dict with keys:
         is_pro       -- bool
@@ -186,26 +182,53 @@ def get_license_status(env_value: Optional[str] = None) -> dict:
         product      -- from payload (if licensed)
         exp          -- expiry (if licensed)
         email        -- customer email (if licensed, if present)
-        error        -- error message (if invalid_key)
+        error        -- error message (if invalid_key -- env var was present but
+                        failed validation, and no valid file-based key exists)
     """
+    try:
+        from . import license_store
+    except ImportError:
+        import license_store  # noqa: F401 -- direct import fallback
+
     if env_value is None:
         env_value = os.environ.get("LOREDOCS_PRO", "").strip()
-
-    if not env_value:
-        return {"is_pro": False, "mode": "free"}
 
     dev_mode = os.environ.get("LAB_DEV_MODE", "").strip() == "1"
     if dev_mode and env_value and not env_value.startswith(_KEY_PREFIX):
         return {"is_pro": True, "mode": "dev_bypass"}
 
-    try:
-        payload = validate_license_key(env_value)
-        return {
-            "is_pro": True,
-            "mode": "licensed",
-            "product": payload.get("product"),
-            "exp": payload.get("exp"),
-            "email": payload.get("email"),
-        }
-    except LicenseError as e:
-        return {"is_pro": False, "mode": "invalid_key", "error": str(e)}
+    cleared = license_store.is_cleared("loredocs")
+    env_invalid_error = None
+
+    if env_value and not cleared:
+        try:
+            payload = validate_license_key(env_value)
+            license_store.persist_from_env("loredocs", env_value)
+            return {
+                "is_pro": True,
+                "mode": "licensed",
+                "product": payload.get("product"),
+                "exp": payload.get("exp"),
+                "email": payload.get("email"),
+            }
+        except LicenseError as e:
+            env_invalid_error = str(e)
+
+    file_key = license_store.read_key("loredocs")
+    if file_key:
+        try:
+            payload = validate_license_key(file_key)
+            return {
+                "is_pro": True,
+                "mode": "licensed",
+                "product": payload.get("product"),
+                "exp": payload.get("exp"),
+                "email": payload.get("email"),
+            }
+        except LicenseError:
+            pass  # defensive -- read_key() already validates before returning
+
+    if env_invalid_error is not None:
+        return {"is_pro": False, "mode": "invalid_key", "error": env_invalid_error}
+
+    return {"is_pro": False, "mode": "free"}
