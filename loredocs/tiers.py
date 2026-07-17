@@ -15,7 +15,9 @@ Pro tier: unlimited on all dimensions.
 
 import json
 import os
+import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -96,31 +98,138 @@ def _save_config(root: Path, config: dict) -> None:
     path.write_text(json.dumps(config, indent=2), encoding="utf-8")
 
 
+_LEGACY_TIER_GRACE_DAYS = 30
+_legacy_warned = set()  # dedupe the structured WARN per (root, expired) per process
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _legacy_grace_expired(started_at: str) -> bool:
+    try:
+        ts = datetime.fromisoformat(started_at)
+    except (ValueError, TypeError):
+        return True  # unparseable timestamp -- fail closed to Free, not indefinite Pro
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    age_days = (datetime.now(timezone.utc) - ts).total_seconds() / 86400.0
+    return age_days > _LEGACY_TIER_GRACE_DAYS
+
+
 def get_tier(root: Path) -> str:
-    """Return the current tier ('free' or 'pro').
+    """Return the current tier ('free' or 'pro'). See get_tier_detail() for the
+    resolution source (license vs. the bounded legacy config.json fallback)."""
+    tier, _source = get_tier_detail(root)
+    return tier
+
+
+def get_tier_detail(root: Path) -> tuple:
+    """Return (tier, source). source is one of:
+        'license'               -- signature-verified (env var or durable file store)
+        'legacy_config_grace'   -- config.json['tier']=='pro', no verified key yet,
+                                    within the SH-13079 bounded grace window
+        'legacy_config_expired' -- same, but the grace window has elapsed -- Free
+        'free'                  -- no Pro grant of any kind
 
     Pro mode requires a valid Labyrinth Analytics license key set in the
-    LOREDOCS_PRO environment variable (format: LAB-...).
+    LOREDOCS_PRO environment variable (format: LAB-...) or durably persisted
+    to ~/.loredocs/license.json (see license_store.py).
 
     For internal agents: set both LOREDOCS_PRO=1 and LAB_DEV_MODE=1 in the
     internal .mcp.json to bypass key validation.  The public plugin .mcp.json
     files must NOT include LAB_DEV_MODE.
 
-    Fallback: if LOREDOCS_PRO is not set, read tier from config.json
-    (allows the vault_set_tier tool to persist tier transitions).
+    Legacy fallback (SH-13079 r4 CRITICAL disposition -- FIXED IN IMPLEMENTATION):
+    if no verified key resolves Pro, config.json['tier']=='pro' still grants Pro,
+    but only for a bounded, monitored grace window measured from the first time
+    this code observes the flag with no verified key present -- not indefinitely.
+    A signature-less flag hand-edited into config.json by anyone with filesystem
+    write access can no longer grant permanent, unauthenticated Pro. The window is
+    an absolute per-install wall-clock timestamp (not a global ship-date/version
+    cutover), so there is nothing ambiguous to compute at expiry, closing the
+    round-3 "ambiguous cutover" objection without reopening the round-4 "indefinite
+    bypass" one. See docs/agent-reports/architecture/proposals/
+    loreconvo_loredocs_durable_license_persistence_20260713.md PART:migration for
+    the proposal's own (rejected-by-this-disposition) "never removed" design.
     """
     # Support both package import (relative) and direct module import (absolute).
     try:
         from .license import is_pro_licensed
     except ImportError:
         from license import is_pro_licensed  # noqa: F401 -- direct import fallback
+
     if is_pro_licensed():
-        return TIER_PRO
+        return TIER_PRO, "license"
+
     config = _load_config(root)
     tier = config.get("tier", TIER_FREE)
     if tier not in VALID_TIERS:
-        return TIER_FREE
-    return tier
+        return TIER_FREE, "free"
+    if tier != TIER_PRO:
+        return tier, "free"
+
+    started = config.get("legacy_tier_grace_started_at")
+    if not started:
+        config["legacy_tier_grace_started_at"] = _now_iso()
+        _save_config(root, config)
+        started = config["legacy_tier_grace_started_at"]
+
+    if _legacy_grace_expired(started):
+        _log_legacy_tier_once(root, expired=True)
+        return TIER_FREE, "legacy_config_expired"
+
+    _log_legacy_tier_once(root, expired=False)
+    return TIER_PRO, "legacy_config_grace"
+
+
+def _log_legacy_tier_once(root: Path, *, expired: bool) -> None:
+    """Structured WARN, deduped per (root, expired) per process -- SH-13079
+    PART:migration's 'logs a structured WARN ... useful for support diagnosis'."""
+    key = (str(root), expired)
+    if key in _legacy_warned:
+        return
+    _legacy_warned.add(key)
+    if expired:
+        print(
+            f"[warn] loredocs tiers: {root}/config.json legacy tier='pro' grace period "
+            f"expired (> {_LEGACY_TIER_GRACE_DAYS}d with no verified license key) -- "
+            "reverted to Free. Run `loredocs-cli license set LAB-...` or set "
+            "LOREDOCS_PRO and restart to restore Pro.",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"[warn] loredocs tiers: {root}/config.json relies on the deprecated, "
+            "unsigned tier fallback (no verified license key found). Run "
+            "`loredocs-cli license set LAB-...` or set LOREDOCS_PRO and restart to "
+            "upgrade to durable, signature-verified Pro persistence.",
+            file=sys.stderr,
+        )
+
+
+def legacy_tier_notice(root: Path) -> Optional[str]:
+    """User-facing remediation message (SH-13079 PART:migration) for CLI/MCP
+    surfaces to display. None unless the account is currently on, or was just
+    dropped from, the legacy config.json fallback."""
+    _tier, source = get_tier_detail(root)
+    if source == "legacy_config_grace":
+        return (
+            "Your Pro status is currently tracked by an older, unsigned method. Run "
+            "`loredocs-cli license set LAB-...`, or set LOREDOCS_PRO via your MCP "
+            "client's server configuration and restart it, to upgrade to durable, "
+            "signature-verified Pro persistence before your grace period ends. If you "
+            "don't have your key, contact support@labyrinthanalyticsconsulting.com."
+        )
+    if source == "legacy_config_expired":
+        return (
+            "Your previous Pro status (tracked by an older, unsigned method) has "
+            f"expired after {_LEGACY_TIER_GRACE_DAYS} days with no verified license "
+            "key. Run `loredocs-cli license set LAB-...`, or set LOREDOCS_PRO via your "
+            "MCP client's server configuration and restart it. If you don't have your "
+            "key, contact support@labyrinthanalyticsconsulting.com."
+        )
+    return None
 
 
 def set_tier(root: Path, tier: str) -> None:
