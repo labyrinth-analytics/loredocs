@@ -4,6 +4,32 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## v0.1.14
+
+### Added: Durable Pro license persistence
+
+Your Pro license is now stored durably in a per-user file
+(`~/.loredocs/license.json`, owner-only permissions) instead of depending on an
+environment variable being present in every shell. Once activated, Pro persists
+across restarts and new sessions. The license is resolved in a stable order: an
+environment variable takes precedence, then the file store, and a key supplied
+via the environment is written through to the file store automatically so it
+survives after the variable goes away. A short grace-period cache keeps Pro
+working through brief license-validation outages.
+
+Legacy installs that were granting Pro from an unverified local tier flag now
+get a bounded 30-day grace window instead of indefinite access; after that a
+verified key is required. (SH-13079)
+
+### Bug Fixes
+
+- **Fixed a false MCP compatibility warning.** The startup compatibility guard
+  compared against the wrong pinned version (1.27.0 vs the 1.27.2 constant),
+  which could surface a spurious version-mismatch warning on load. The pin and
+  the constant now agree. (SH-12969)
+
+---
+
 ## v0.1.13
 
 ### Security
