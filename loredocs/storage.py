@@ -1397,10 +1397,21 @@ class VaultStorage:
             version_count = row["version_count"]
 
             # If content is changing, version the current file first
+            version_rotated = False
             if content is not None:
                 if current_file.exists():
                     # Tier check: verify we haven't hit the version limit
-                    self.enforcer.check_version_count(version_count, doc_name=row["name"])
+                    try:
+                        self.enforcer.check_version_count(version_count, doc_name=row["name"])
+                    except TierLimitError:
+                        # On free tier at cap: rotate out oldest version and continue
+                        oldest_file = doc_dir / "history" / f"v1{ext}"
+                        if oldest_file.exists():
+                            oldest_file.unlink()
+                            logger.debug(f"Rotated out oldest version for '{row['name']}'")
+                            version_rotated = True
+                        else:
+                            raise
                     history_file = doc_dir / "history" / f"v{version_count}{ext}"
                     shutil.copy2(current_file, history_file)
                     version_count += 1
@@ -1491,7 +1502,13 @@ class VaultStorage:
             except Exception:
                 pass
         # Return fresh metadata
-        return self.get_document(doc_id)
+        result = self.get_document(doc_id)
+        if version_rotated and result:
+            result['version_rotated_warning'] = (
+                'Free-tier version cap reached; oldest version rotated out. '
+                'Upgrade to Pro for unlimited version history.'
+            )
+        return result
 
     def remove_document(self, doc_id: str) -> bool:
         """Soft-delete a document. Returns True if found."""
