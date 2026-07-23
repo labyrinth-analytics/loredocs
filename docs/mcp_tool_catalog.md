@@ -1,6 +1,6 @@
 # LoreDocs MCP Tool Catalog
 
-LoreDocs provides 42 MCP tools that Claude calls during your sessions. You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
+LoreDocs provides 46 MCP tools that Claude calls during your sessions. You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
 
 > **Version 0.1.8:** Added file-based document ingest to `vault_add_doc` (read documents from disk with the `path` parameter).
 
@@ -192,7 +192,7 @@ Find all documents linked to a given document. Shows linked documents from any v
 
 ---
 
-## Search and Context Injection (8 tools)
+## Search and Context Injection (12 tools)
 
 ### `vault_search`
 
@@ -271,6 +271,46 @@ Get suggestions for documents that may need attention: outdated documents, docum
 **When Claude uses it:** When you ask "what needs attention in my vault?" or "any documents I should review?"
 
 **Key parameters:** `vault_id` (optional)
+
+---
+
+### `vault_estimate_tokens`
+
+Previews the token count of a vault injection without actually injecting the documents. Use it to check the cost of a large injection before spending context on it.
+
+**When Claude uses it:** Before a broad injection, when you ask "how much context would that use?"
+
+**Key parameters:** `vault_name`, `query` (optional), `max_single_doc_tokens` (optional)
+
+---
+
+### `vault_get_injection_cap`
+
+Returns the stored per-vault injection token cap, or reports that no cap is set.
+
+**When Claude uses it:** When you ask what the injection limit is for a vault, or before adjusting how much context a vault may consume.
+
+**Key parameters:** `vault_name`
+
+---
+
+### `vault_get_session_token`
+
+Generates a fresh session token (UUID4) for use with `vault_inject` and `vault_prime`, which use it to track per-session injection budgets.
+
+**When Claude uses it:** Automatically, at the start of a session that will inject vault context.
+
+**Key parameters:** none
+
+---
+
+### `vault_get_server_capabilities`
+
+Returns a summary of this server's injection capabilities and token-estimation settings, including whether the admin cap tools are enabled.
+
+**When Claude uses it:** For diagnostics, when injection behaves unexpectedly or you ask what this server supports.
+
+**Key parameters:** none
 
 ---
 
@@ -472,19 +512,23 @@ Return LoreDocs documents linked to a given LoreConvo session. Searches both dir
 | 24 | `vault_inject_summary` | Generate vault summary for context |
 | 25 | `vault_prime` | Pre-load vault context into session |
 | 26 | `vault_suggest` | Suggestions for documents needing attention |
-| 27 | `vault_tag_doc` | Add or remove tags |
-| 28 | `vault_bulk_tag` | Bulk tag multiple documents |
-| 29 | `vault_categorize` | Set document category |
-| 30 | `vault_set_priority` | Set document priority |
-| 31 | `vault_add_note` | Add a note to a document |
-| 32 | `vault_doc_history` | View version history |
-| 33 | `vault_doc_restore` | Restore a previous version |
-| 34 | `vault_import_dir` | Import files from a directory |
-| 35 | `vault_export` | Export vault to a directory |
-| 36 | `vault_export_manifest` | Export vault manifest |
-| 37 | `vault_tier_status` | Check tier and usage |
-| 38 | `vault_set_tier` | Activate a tier |
-| 39 | `get_license_tier` | Check current tier and license key status |
-| 40 | `vault_link_session` | Create a manual link from a LoreConvo session to a LoreDocs document (Pro) |
-| 41 | `vault_get_session_links` | Return LoreConvo sessions linked to a LoreDocs document (Pro) |
-| 42 | `vault_get_linked_sessions` | Return LoreDocs documents linked to a given LoreConvo session (Pro) |
+| 27 | `vault_estimate_tokens` | Preview injection token cost without injecting |
+| 28 | `vault_get_injection_cap` | Show the per-vault injection token cap |
+| 29 | `vault_get_session_token` | Generate a session token for injection budgeting |
+| 30 | `vault_get_server_capabilities` | Report injection and token-estimation capabilities |
+| 31 | `vault_tag_doc` | Add or remove tags |
+| 32 | `vault_bulk_tag` | Bulk tag multiple documents |
+| 33 | `vault_categorize` | Set document category |
+| 34 | `vault_set_priority` | Set document priority |
+| 35 | `vault_add_note` | Add a note to a document |
+| 36 | `vault_doc_history` | View version history |
+| 37 | `vault_doc_restore` | Restore a previous version |
+| 38 | `vault_import_dir` | Import files from a directory |
+| 39 | `vault_export` | Export vault to a directory |
+| 40 | `vault_export_manifest` | Export vault manifest |
+| 41 | `vault_tier_status` | Check tier and usage |
+| 42 | `vault_set_tier` | Activate a tier |
+| 43 | `get_license_tier` | Check current tier and license key status |
+| 44 | `vault_link_session` | Create a manual link from a LoreConvo session to a LoreDocs document (Pro) |
+| 45 | `vault_get_session_links` | Return LoreConvo sessions linked to a LoreDocs document (Pro) |
+| 46 | `vault_get_linked_sessions` | Return LoreDocs documents linked to a given LoreConvo session (Pro) |
