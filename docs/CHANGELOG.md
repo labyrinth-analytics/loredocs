@@ -4,6 +4,27 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## v0.1.15
+
+### Improved: free-tier saves no longer fail at the version-history cap
+
+On the free tier, saving a document that had already reached its version-history
+limit used to fail. Now the save always succeeds: LoreDocs removes the oldest
+stored version to make room, keeps your latest change, and returns a note that a
+version was rotated out. Your current document is never lost. Upgrade to Pro for
+unlimited version history.
+
+### Docs: accurate MCP tool listing
+
+The documentation now lists the correct number of MCP tools LoreDocs provides
+(46, previously shown as 42), including several that were already available but
+missing from the reference, such as previewing the token cost of a vault
+injection before spending context on it and reporting the server's injection
+capabilities. This part of the release updates documentation only; nothing
+changes in how LoreDocs runs.
+
+---
+
 ## v0.1.14
 
 ### Added: Durable Pro license persistence

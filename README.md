@@ -1,4 +1,4 @@
-# LoreDocs v0.1.14
+# LoreDocs v0.1.15
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -360,29 +360,24 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
-## v0.1.14
+## v0.1.15
 
-### Added: Durable Pro license persistence
+### Improved: free-tier saves no longer fail at the version-history cap
 
-Your Pro license is now stored durably in a per-user file
-(`~/.loredocs/license.json`, owner-only permissions) instead of depending on an
-environment variable being present in every shell. Once activated, Pro persists
-across restarts and new sessions. The license is resolved in a stable order: an
-environment variable takes precedence, then the file store, and a key supplied
-via the environment is written through to the file store automatically so it
-survives after the variable goes away. A short grace-period cache keeps Pro
-working through brief license-validation outages.
+On the free tier, saving a document that had already reached its version-history
+limit used to fail. Now the save always succeeds: LoreDocs removes the oldest
+stored version to make room, keeps your latest change, and returns a note that a
+version was rotated out. Your current document is never lost. Upgrade to Pro for
+unlimited version history.
 
-Legacy installs that were granting Pro from an unverified local tier flag now
-get a bounded 30-day grace window instead of indefinite access; after that a
-verified key is required. (SH-13079)
+### Docs: accurate MCP tool listing
 
-### Bug Fixes
-
-- **Fixed a false MCP compatibility warning.** The startup compatibility guard
-  compared against the wrong pinned version (1.27.0 vs the 1.27.2 constant),
-  which could surface a spurious version-mismatch warning on load. The pin and
-  the constant now agree. (SH-12969)
+The documentation now lists the correct number of MCP tools LoreDocs provides
+(46, previously shown as 42), including several that were already available but
+missing from the reference, such as previewing the token cost of a vault
+injection before spending context on it and reporting the server's injection
+capabilities. This part of the release updates documentation only; nothing
+changes in how LoreDocs runs.
 
 <!-- WHATS_NEW:END -->
 
