@@ -308,6 +308,114 @@ All vault data is stored locally at `~/.loredocs/`. Nothing is sent to any cloud
 
 ---
 
+## Backing up your data
+
+**Back up the entire `~/.loredocs/` directory.** A backup of the database file alone
+(`loredocs.db`) is not enough -- it restores an index that points at missing files.
+
+### What lives where
+
+```
+~/.loredocs/
+    loredocs.db          <- index, search metadata, and version counts only
+    config.json          <- server configuration
+    docs.lance/          <- semantic index (Pro tier only)
+    vaults/
+        {vault-id}/
+            docs/
+                {doc-id}/
+                    current.md      <- live document content
+                    metadata.json
+                    extracted.txt   <- full-text search extraction
+                    history/
+                        v1.md       <- previous versions (filesystem only)
+                        v2.md
+```
+
+- `loredocs.db` holds the index, tags, search metadata, and counts of how many
+  versions a document has. It does NOT hold the document text itself.
+- `vaults/{vault-id}/docs/{doc-id}/current.*` holds the actual content of each document.
+- `vaults/{vault-id}/docs/{doc-id}/history/` holds every previous version. Version
+  history is filesystem-only -- it is not stored in the database. If you restore the
+  database without the filesystem, history is gone.
+
+### How to back up
+
+**Simplest: tar the directory**
+
+```zsh
+tar -czf loredocs-backup-$(date +%Y%m%d).tar.gz ~/.loredocs
+```
+
+**Incremental: rsync to another location**
+
+```zsh
+rsync -a --delete ~/.loredocs/ /Volumes/Backup/loredocs/
+```
+
+**Time Machine (macOS):** Time Machine backs up `~/.loredocs/` automatically if your
+home directory is included in the backup. No extra configuration is needed.
+
+**Important -- back up cold when possible.** LoreDocs uses SQLite WAL mode.
+While the server is running, there may be `-shm` and `-wal` sidecar files next
+to `loredocs.db`. Copying those files while they are in use can produce a
+corrupt backup. To back up safely:
+
+1. Stop your AI client (Claude Code, Cursor, etc.) to close the MCP connection.
+2. Wait a few seconds for SQLite to checkpoint and remove the sidecar files.
+3. Run your backup command.
+4. Restart your client.
+
+Alternatively, use the CLI export (see below) -- it produces a portable archive
+that is always safe to copy.
+
+### Supported migration path: CLI export and import
+
+The safest way to move or restore your vault data is with the built-in export and
+import tools. Ask Claude to run them, or use the `loredocs-cli` command:
+
+**Export a vault to a directory:**
+
+```
+Export my "my-notes" vault to ~/loredocs-export/my-notes
+```
+
+This calls `vault_export`, which writes each document to a file you can read
+without LoreDocs installed.
+
+**Export a manifest (all vaults, machine-readable):**
+
+```
+Export a manifest of all my vaults to ~/loredocs-export/manifest.json
+```
+
+This calls `vault_export_manifest`, which writes a JSON file listing every vault,
+document, tag, and category. Use this to audit or migrate your data.
+
+**Import from a directory:**
+
+```
+Import the directory ~/loredocs-export/my-notes into a vault called "my-notes"
+```
+
+This calls `vault_import_dir`, which reads every file in the directory and creates
+documents in the target vault.
+
+### Version history
+
+Each time you update a document, LoreDocs saves the previous version to the
+`history/` folder under that document's directory. You can view and restore
+versions using:
+
+- `vault_doc_history` -- lists all saved versions of a document
+- `vault_doc_restore` -- restores a document to a specific previous version
+
+Version history lives only on the filesystem. It is not replicated in the database
+and is not included in a `vault_export`. To preserve history, back up the full
+`~/.loredocs/` directory.
+
+---
+
 ## Security note for Pro users
 
 When you enable the Pro tier and build the semantic index, LoreDocs creates a
