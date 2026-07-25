@@ -1,13 +1,12 @@
 {
   "mcpServers": {
     "loredocs": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/.venv/bin/python3",
+      "command": "uvx",
       "args": [
-        "-m",
-        "loredocs.server"
+        "loredocs==0.1.15"
       ],
       "env": {
-        "PYTHONPATH": "${CLAUDE_PLUGIN_ROOT}"
+        "LOREDOCS_PRO": ""
       }
     }
   }
