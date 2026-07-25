@@ -4,8 +4,10 @@ Chunk-aware document index: documents are split at paragraph boundaries
 (max ~256 tokens per chunk). Each chunk gets its own embedding. Search
 returns doc_ids deduped by best-scoring chunk.
 
-All lancedb, sentence-transformers, and pyarrow imports are lazy -- free-tier
-users who have not installed Pro deps will never trigger them.
+lancedb, fastembed, and pyarrow are BASE dependencies since 2026-07-25 (spec
+amendment A1) -- there is no separate Pro install. Their imports stay lazy so a
+free-tier user never loads them or downloads the embedding model: the semantic
+path is gated on the Pro license, not on whether the packages are present.
 
 ADR: docs/agent-reports/architecture/proposals/lancedb_hybrid_search_evaluation_20260511.md
 Stage: 2B (LoreDocs). Follows Stage 2A (LoreConvo, hybrid_search.py).
@@ -107,9 +109,21 @@ class DocLanceIndex:
 
     def _get_model(self):
         if self._model is None:
-            from sentence_transformers import SentenceTransformer  # noqa: lazy Pro dep
-            self._model = SentenceTransformer('BAAI/bge-small-en-v1.5')
+            from fastembed import TextEmbedding  # ONNX runtime, no torch (spec A1)
+            _log.info(
+                "Loading embedding model BAAI/bge-small-en-v1.5; the first run "
+                "downloads it (~90MB) and may take a minute."
+            )
+            self._model = TextEmbedding('BAAI/bge-small-en-v1.5')
         return self._model
+
+    def _embed_one(self, text):
+        """Embed a single string -> list[float] of dim 384."""
+        return next(iter(self._get_model().embed([text]))).tolist()
+
+    def _embed_many(self, texts, batch_size=32):
+        """Embed many strings -> list of list[float], one per input, dim 384."""
+        return [v.tolist() for v in self._get_model().embed(texts, batch_size=batch_size)]
 
     def _get_db(self):
         if self._db is None:
@@ -166,8 +180,7 @@ class DocLanceIndex:
             if not chunks:
                 return True
 
-            model = self._get_model()
-            embeddings = model.encode(chunks, show_progress_bar=False, batch_size=32)
+            embeddings = self._embed_many(chunks)
 
             rows = [{
                 'doc_id': doc_id,
@@ -175,7 +188,7 @@ class DocLanceIndex:
                 'vault_id': vault_id,
                 'name': name or '',
                 'chunk_text': chunk[:2000],
-                'vector': embeddings[i].tolist(),
+                'vector': embeddings[i],
             } for i, chunk in enumerate(chunks)]
 
             table = self._open_table()
@@ -217,7 +230,7 @@ class DocLanceIndex:
             return []
 
         try:
-            q_vec = self._get_model().encode(query).tolist()
+            q_vec = self._embed_one(query)
 
             where_clause: Optional[str] = None
             if vault_id:
@@ -260,14 +273,13 @@ class DocLanceIndex:
         if not valid:
             return 0
 
-        model = self._get_model()
         all_rows: list = []
         for doc in valid:
             prefix = f"{doc.get('name', '')}. " if doc.get('name') else ""
             chunks = _chunk_text(prefix + doc['text'])
             if not chunks:
                 continue
-            embeddings = model.encode(chunks, show_progress_bar=False, batch_size=32)
+            embeddings = self._embed_many(chunks)
             for i, chunk in enumerate(chunks):
                 all_rows.append({
                     'doc_id': doc['doc_id'],
@@ -275,7 +287,7 @@ class DocLanceIndex:
                     'vault_id': doc.get('vault_id', ''),
                     'name': doc.get('name', ''),
                     'chunk_text': chunk[:2000],
-                    'vector': embeddings[i].tolist(),
+                    'vector': embeddings[i],
                 })
 
         if not all_rows:
