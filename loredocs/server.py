@@ -1411,7 +1411,13 @@ async def vault_search(
 
     setup_tip = None
     if params.semantic:
-        status = storage.enforcer.status_dict()
+        # status_dict has required (vault_count, total_bytes) args -- see the
+        # vault_tier_status call site. Omitting them raised TypeError on every
+        # semantic search since 2026-05-15 (SH-13450 BUG 6).
+        status = storage.enforcer.status_dict(
+            len(storage.list_vaults(include_archived=False)),
+            storage.get_total_storage_bytes(),
+        )
         if not status.get("is_pro"):
             setup_tip = (
                 "Semantic search requires LoreDocs Pro. "
@@ -1497,7 +1503,13 @@ async def vault_rebuild_index(ctx: Context, confirm: bool = False) -> str:
         return "Error: Set confirm=true to start the rebuild."
 
     storage = _get_storage(ctx)
-    status = storage.enforcer.status_dict()
+    # Same missing-args defect as vault_search (SH-13450 BUG 6). This one is
+    # doubly load-bearing: vault_rebuild_index is the remediation the 0.1.16
+    # CHANGELOG tells users to run after the fastembed swap.
+    status = storage.enforcer.status_dict(
+        len(storage.list_vaults(include_archived=False)),
+        storage.get_total_storage_bytes(),
+    )
     if not status.get("is_pro"):
         return (
             "Error: vault_rebuild_index requires LoreDocs Pro. "
