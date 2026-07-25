@@ -6,16 +6,26 @@
 
 ## Prerequisites
 
-- **Python 3.10 or newer** (macOS/Linux)
+- **uv** (which provides `uvx`) -- this is the only thing you need to install
 - One of: Claude Code, Cursor, OpenAI Codex, or Hermes Agent installed
 
-Check your Python version:
+LoreDocs runs through `uvx`, which downloads a pinned copy of the server and
+manages its own Python. You do not need to create a virtual environment, and you
+do not need a particular system Python.
+
+Install uv if you do not have it:
 
 ```bash
-python3 --version
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-If you see 3.10 or higher, you are good to go.
+Check it is available:
+
+```bash
+uvx --version
+```
+
+If that prints a version, you are good to go.
 
 ---
 
@@ -48,7 +58,7 @@ bash install.sh
 ```
 
 The installer will:
-1. Create a Python virtual environment at `.venv/`
+1. Check that `uv` is available (nothing is pip-installed)
 2. Install the LoreDocs package and all dependencies
 3. Verify the entry point binary was created
 4. Create the database directory at `~/.loredocs/`
@@ -58,8 +68,7 @@ You should see output ending with `Installation complete!`.
 ### Manual install (if you prefer):
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install .
+uv run --with . loredocs
 ```
 
 ---
@@ -72,11 +81,10 @@ After installation, register LoreDocs with Claude Code using the `claude mcp add
 claude mcp add --scope user \
   "--env=LOREDOCS_PRO=<your-license-key>" \
   loredocs -- \
-  /path/to/loredocs/.venv/bin/python \
-  -m loredocs.server
+  uvx loredocs==<version>
 ```
 
-Replace `/path/to/loredocs` with the actual path to your LoreDocs installation. To find it, run `pwd` from inside the loredocs directory.
+Replace `<version>` with the version you want to pin to (for example `0.1.15`). There is no path to substitute: uvx resolves the package itself.
 
 The `--env=LOREDOCS_PRO=<your-license-key>` flag is optional -- omit it if you are using the free tier. The `--scope user` flag registers LoreDocs for all Claude Code sessions (not just the current project).
 
@@ -119,8 +127,8 @@ Cursor uses the same MCP protocol as Claude Code. Configure it by creating a `.c
 {
   "mcpServers": {
     "loredocs": {
-      "command": "python",
-      "args": ["-m", "loredocs.server"],
+      "command": "uvx",
+      "args": ["loredocs==<version>"],
       "env": {
         "LOREDOCS_PRO": "your-license-key"
       }
@@ -141,15 +149,15 @@ Codex uses a TOML config file at `~/.codex/config.toml`. Add a `[mcp_servers.lor
 
 ```toml
 [mcp_servers.loredocs]
-command = "/path/to/loredocs/.venv/bin/python3"
-args = ["-m", "loredocs.server"]
+command = "uvx"
+args = ["loredocs==<version>"]
 
 [mcp_servers.loredocs.env]
 CODEX_HOME = "/Users/your-username/.codex"  # Required by Codex to locate its own config when running MCP servers as subprocesses
 LOREDOCS_PRO = "your-license-key"
 ```
 
-Replace `/path/to/loredocs` with the absolute path where you installed LoreDocs. Replace `your-username` with your macOS username and `your-license-key` with your Pro license key. Omit the `LOREDOCS_PRO` line if you are using the free tier.
+Replace `<version>` with the version you want to pin to, `your-username` with your macOS username, and `your-license-key` with your Pro license key. Omit the `LOREDOCS_PRO` line if you are using the free tier. There is no install path to substitute -- uvx resolves the package itself.
 
 **macOS note:** `~/.Codex/config.toml` (capital C) resolves to the same location on a case-insensitive filesystem. The canonical path is lowercase `~/.codex/config.toml`.
 
@@ -164,16 +172,15 @@ Hermes Agent uses its own YAML config file at `~/.hermes/config.yaml` -- it does
 ```yaml
 mcp_servers:
   loredocs:
-    command: /path/to/loredocs/.venv/bin/python3
+    command: uvx
     args:
-      - -m
-      - loredocs.server
+      - loredocs==<version>
     enabled: true
     env:
       LOREDOCS_PRO: your-license-key
 ```
 
-Replace `/path/to/loredocs` with the absolute path where you installed LoreDocs. Replace `your-license-key` with your Pro license key. Omit the `LOREDOCS_PRO` line if you are using the free tier.
+Replace `<version>` with the version you want to pin to and `your-license-key` with your Pro license key. Omit the `LOREDOCS_PRO` line if you are using the free tier.
 
 Restart Hermes Agent after saving the file. LoreDocs MCP tools will be available in the next Hermes session.
 
@@ -279,14 +286,16 @@ Claude will use the file-based ingest feature to load the document directly from
 
 **"Module not found" or "command not found" error**
 
-This means the install did not complete correctly. Delete the `.venv/` folder and
-reinstall:
+Usually the pinned environment is incomplete or stale. Refresh it -- uvx rebuilds
+the environment from scratch:
 
 ```bash
-cd /path/to/loredocs
-rm -rf .venv
-bash install.sh
+uvx --refresh loredocs==<version>
 ```
+
+Use the same version your client is configured with (see `.mcp.json`). There is
+no `.venv/` to delete: since the unified-uvx release, nothing is pip-installed
+into the source tree.
 
 **`$HOME` or `~` not expanding in settings.json**
 
