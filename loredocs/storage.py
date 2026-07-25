@@ -701,13 +701,12 @@ def _auto_link_doc_embeddings(
 
     try:
         table = lance_index._open_table()
-        model = lance_index._get_model()
         # Use first 256 tokens of extracted text for the query (same as semantic search)
         extracted_row = conn.execute(
             "SELECT name FROM documents WHERE id = ?", (doc_id,)
         ).fetchone()
         query_text = extracted_row[0] if extracted_row else ""
-        q_vec = model.encode([query_text])[0].tolist()
+        q_vec = lance_index._embed_one(query_text)
 
         raw = table.search(
             q_vec,
@@ -2556,10 +2555,13 @@ class VaultStorage:
 
         try:
             import lancedb as _lancedb
-            from sentence_transformers import SentenceTransformer as _ST
+            from fastembed import TextEmbedding as _TE  # ONNX, no torch (spec A1)
 
-            model = _ST(_CROSS_LINK_EMBEDDING_MODEL)
-            q_vec = model.encode(doc_text).tolist()
+            # Same BGE-small model as before, ONNX-quantized. Vectors differ
+            # slightly from the old torch fp32 output, which is why the 0.1.16
+            # CHANGELOG recommends a one-time vault_rebuild_index.
+            model = _TE(_CROSS_LINK_EMBEDDING_MODEL)
+            q_vec = next(iter(model.embed([doc_text]))).tolist()
 
             lc_lance_db = _lancedb.connect(str(lc_lance_dir))
             table = lc_lance_db.open_table("sessions")
