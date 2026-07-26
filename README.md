@@ -4,7 +4,7 @@ Your AI project's knowledge base. Organized, searchable, version-tracked.
 
 LoreDocs gives Claude persistent access to your project documentation -- specs, guides, architecture decisions, reference docs -- so it never loses context between sessions. Works with Claude Code, Cursor, OpenAI Codex, and Hermes Agent.
 
-> **Available on the Anthropic Marketplace.** Install directly from Claude, or via PyPI: `uvx loredocs`
+> Install directly from Claude Code's plugin marketplace, or via PyPI: `uvx loredocs`
 
 ## Quick Start
 
