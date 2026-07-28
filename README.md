@@ -1,4 +1,4 @@
-# LoreDocs v0.1.16
+# LoreDocs v0.1.17
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -360,74 +360,26 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
-## v0.1.16 (2026-07-26)
+## v0.1.17 (2026-07-28)
 
-### Installs and updates now work the way you would expect
+### Fixed: Idle-watchdog now releases resources cleanly instead of killing the server
 
-LoreDocs used to run from a Python virtual environment created in the source
-tree, or from `uvx loredocs@latest`. Neither pinned what actually ran: `@latest`
-resolves against a cache that can be stale, so a server could keep running an
-old version indefinitely, and the venv's interpreter is a symlink to a system
-Python that breaks if that Python is upgraded or removed.
+The idle-watchdog timeout (30 minutes with no MCP messages) would force-exit the
+stdio server process when the timeout fired. Some clients (Claude Desktop, early
+Claude Code versions) park stdio servers open while they're idle instead of
+closing the pipe when they're done, causing the process to stay open, lock the
+database, and leak system resources.
 
-The plugin now ships a configuration pinned to an exact version, and the server
-runs through `uvx` with its own managed Python. Installing or updating the
-plugin is what changes your version, and nothing else does. There is no virtual
-environment to create, break, or repair.
+Starting in v0.1.17, the watchdog closes its database connection and drops its
+cached Lance semantic-search index, then returns cleanly instead of exiting the
+process. The server stays parked, but releases the resources it was holding.
+Clients that do close the pipe promptly are not affected. Clients that park the
+connection will now stay stable and will not block other Claude instances from
+accessing the database.
 
-Leftover packages from an older pip install are harmless and can be ignored.
-
-### Fixed: semantic search and index rebuild were broken for Pro users
-
-`vault_search` with `semantic=true` and `vault_rebuild_index` both failed
-outright for anyone on Pro, returning an internal error instead of results.
-This affected every Pro user of those two tools and had been present since
-v0.1.4. Both work now.
-
-If you are on Pro and semantic search has never returned anything useful, this
-is why. Run `vault_rebuild_index` once after upgrading (see below) and it will
-start working.
-
-### Fixed: diagnostics no longer hide the reason for a failure
-
-`get_server_info` and the `loredocs-compat-check` command reported that
-something was wrong without saying what: the underlying error text was being
-discarded. It is now included in the output. A missing `packaging` dependency
-was also causing the compatibility check to disable itself silently; that
-dependency is now declared, so the check runs and reports a real version.
-
-### One install, every tier: semantic search now works out of the box
-
-Semantic search used to be a separate install step. It needed the `[pro]`
-extra, which pulled in PyTorch: a large download, a second environment to keep
-up to date, and a common source of "why isn't semantic search working?"
-
-Semantic search now ships in the standard install. The same embedding model as
-before (BAAI/bge-small-en-v1.5) runs on ONNX Runtime instead of PyTorch, which
-is roughly a third of the download size. There is one install path and one
-environment for everyone. Pro is now purely a license flag: nothing extra to
-install to unlock it.
-
-`pip install loredocs[pro]` still works and is now equivalent to a plain
-install, so existing scripts do not break.
-
-**Recommended one-time step:** run `vault_rebuild_index` after upgrading. The
-new runtime produces very slightly different vectors than the old one, so an
-index built before this release will gradually drift out of step with documents
-added afterwards. Rebuilding brings everything back onto the same footing.
-Keyword search is unaffected and needs nothing.
-
-The first semantic search after upgrading downloads the model (about 90MB) and
-may take a minute. After that it is cached.
-
-### Updated: MCP SDK
-
-The bundled MCP SDK moves to 1.28.1, which carries fixes for three advisories in
-the versions LoreDocs previously pinned (CVE-2026-52870, CVE-2026-52869,
-CVE-2026-59950). None of them could affect LoreDocs: all three concern network
-transports and a multi-client task feature that LoreDocs does not use, since it
-runs over stdio as a single-client local server. The update means a security
-scan of your install comes back clean.
+If you were using the workaround environment variable `LOREDOCS_IDLE_TIMEOUT=86400`
+(1 day) to avoid the server exit, you can remove it — the fix handles the timeout
+without needing a workaround.
 
 <!-- WHATS_NEW:END -->
 
