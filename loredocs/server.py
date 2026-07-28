@@ -38,6 +38,7 @@ from .tiers import TierLimitError, get_tier, legacy_tier_notice, set_tier, TIER_
 from .license import get_license_status
 from .onboard_tool import run_onboard as _run_onboard
 from .compat_check import check as _compat_check, emit_startup_warnings as _compat_emit
+from . import trust_framing
 
 
 # ---------------------------------------------------------------------------
@@ -369,6 +370,7 @@ def _do_injection(
     cap_behavior: str,
     max_single_doc_tokens: Optional[int],
     vault_name: str,
+    session_nonce: str,
 ) -> Dict[str, Any]:
     """Apply token cap logic and build injection output.
 
@@ -502,6 +504,10 @@ def _do_injection(
     for doc, content in injected:
         parts.append(f"=== {doc['name']} ({doc['doc_id']}) ===")
         parts.append(f"Priority: {doc['priority']}")
+        # Structural non-elevation (SH-13436): docs_provenance_tag() returns
+        # the same string for every priority value, so this line carries no
+        # priority-derived trust signal a caller could set via vault_add_doc.
+        parts.append(f"Provenance: {trust_framing.docs_provenance_tag(doc['priority'])}")
         parts.append("")
         parts.append(content)
         parts.append("")
@@ -510,7 +516,11 @@ def _do_injection(
         injected_ids.append(doc["doc_id"])
 
     cap_exceeded = overflow_tokens > 0
-    text = "\n".join(parts)
+    # Untrusted-content boundary (SH-13436): wraps only the assembled
+    # document text, not the operational footer lines appended by the
+    # caller (cache-hit/omitted-count/overflow), same treatment as project
+    # instructions get in LoreConvo -- O(1) overhead, not per-document.
+    text = trust_framing.wrap_untrusted("\n".join(parts), session_nonce=session_nonce)
     if effective_cap is not None:
         inaccurate = "" if _tiktoken_available else " (estimates may be inaccurate without tiktoken)"
         sys.stderr.write(
@@ -1876,6 +1886,12 @@ def _run_vault_injection(
     if err:
         return err
 
+    # SH-13436: nonce for the untrusted-content wrapper. Uses session_token
+    # when the caller supplied one (same param already used as the cache key
+    # input), else a fresh random value per call -- LoreDocs' injection tools
+    # are pull-based with no guaranteed external session identifier.
+    session_nonce = trust_framing.derive_session_nonce(session_token)
+
     v = _resolve_vault(storage, vault_name)
     if not v:
         return f"[LOREDOCS-ERROR] Vault '{vault_name}' not found."
@@ -1918,14 +1934,14 @@ def _run_vault_injection(
                     "content": content,
                 })
         # Re-apply injection (idempotent since we have the exact id list)
-        result = _do_injection(docs, effective_cap, cap_behavior, max_single_doc_tokens, vault_name)
+        result = _do_injection(docs, effective_cap, cap_behavior, max_single_doc_tokens, vault_name, session_nonce)
     else:
         cache_label = ""
         if tags is not None:
             docs = storage.get_docs_for_injection_by_tags(vault_id, list(tags), limit=500)
         else:
             docs = storage.get_docs_for_injection(vault_id, query=query or "", limit=500)
-        result = _do_injection(docs, effective_cap, cap_behavior, max_single_doc_tokens, vault_name)
+        result = _do_injection(docs, effective_cap, cap_behavior, max_single_doc_tokens, vault_name, session_nonce)
         # Store cache entry
         cache_entry = _InjectionCacheEntry(
             injected_doc_ids=result["injected_doc_ids"],
