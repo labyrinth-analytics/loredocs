@@ -2,11 +2,18 @@
 
 Reaps abandoned / parked server processes. A stdio MCP server is supposed to
 exit when the client closes the pipe, but some clients (notably the Claude
-desktop app) keep the pipe open and park the server, so processes accumulate
-for days and tie up resources (and database handles).
+desktop app and Claude Code) keep the pipe open and park the server instead of
+re-spawning it on the next tool call. Exiting the process on idle (the
+original design) assumed the client would re-spawn; it does not -- Claude
+Code/Desktop mark a stdio server that exits while the pipe is still open as
+FAILED and never restart it, so every real interactive session with more than
+an idle-timeout gap between tool calls permanently lost the server (SH-13610).
 
-This watchdog bounds that: if no MCP message arrives for the idle timeout, the
-process exits cleanly. The client re-spawns the server on its next tool call.
+The fix (SH-13610): on idle expiry, RELEASE resources instead of exiting (drop
+any cached Lance index handle so it reopens lazily) and stay alive, so parked
+clients keep a working connection. A much longer backstop timeout, if
+configured, still hard-exits as a last resort for processes that are
+genuinely abandoned, so long-idle processes do not accumulate forever.
 """
 
 import os
@@ -14,7 +21,8 @@ import sys
 import threading
 import time
 
-DEFAULT_IDLE_TIMEOUT = 1800.0  # 30 minutes
+DEFAULT_IDLE_TIMEOUT = 1800.0  # 30 minutes: triggers a resource release, not exit.
+DEFAULT_BACKSTOP_TIMEOUT = 86400.0  # 24 hours: last-resort process exit.
 
 
 def resolve_timeout(env_var, default=DEFAULT_IDLE_TIMEOUT):
@@ -33,22 +41,28 @@ def resolve_timeout(env_var, default=DEFAULT_IDLE_TIMEOUT):
 
 
 class IdleWatchdog:
-    """Tracks last-activity time and exits the process once idle too long."""
+    """Tracks last-activity time; releases idle resources, and (optionally,
+    after a much longer backstop timeout) exits the process as a last resort.
+    """
 
-    def __init__(self, timeout, clock=time.monotonic, exit_func=None,
-                 check_interval=None):
+    def __init__(self, timeout, clock=time.monotonic, release_func=None,
+                 exit_func=None, backstop_timeout=None, check_interval=None):
         self.timeout = timeout
+        self.backstop_timeout = backstop_timeout
         self._clock = clock
+        self._release_func = release_func if release_func is not None else (lambda: None)
         self._exit_func = exit_func if exit_func is not None else (lambda: os._exit(0))
         self._check_interval = check_interval or min(60.0, max(1.0, timeout / 10.0))
         self._lock = threading.Lock()
         self._last = clock()
+        self._released = False
         self._thread = None
 
     def touch(self):
         """Record activity now, resetting the idle clock."""
         with self._lock:
             self._last = self._clock()
+            self._released = False
 
     def idle_seconds(self):
         with self._lock:
@@ -57,18 +71,47 @@ class IdleWatchdog:
     def expired(self):
         return self.idle_seconds() >= self.timeout
 
+    def backstop_expired(self):
+        if self.backstop_timeout is None:
+            return False
+        return self.idle_seconds() >= self.backstop_timeout
+
+    def _safe_log(self, message):
+        try:
+            sys.stderr.write(message)
+            sys.stderr.flush()
+        except Exception:
+            # stderr may be a broken pipe/socket once the client parks or
+            # drops the connection. Logging must never block the release/exit
+            # action -- a raise here would kill this thread and leak the
+            # process forever.
+            pass
+
     def _run(self):
         while True:
             time.sleep(self._check_interval)
-            if self.expired():
-                sys.stderr.write(
-                    "[idle-watchdog] no MCP activity for %.0fs (>= %.0fs); "
-                    "exiting to release resources\n"
-                    % (self.idle_seconds(), self.timeout)
+
+            if self.backstop_expired():
+                self._safe_log(
+                    "[idle-watchdog] no MCP activity for %.0fs (>= backstop "
+                    "%.0fs); exiting as a last resort\n"
+                    % (self.idle_seconds(), self.backstop_timeout)
                 )
-                sys.stderr.flush()
                 self._exit_func()
                 return
+
+            if self.expired():
+                with self._lock:
+                    already_released = self._released
+                    self._released = True
+                if already_released:
+                    continue
+                self._safe_log(
+                    "[idle-watchdog] no MCP activity for %.0fs (>= %.0fs); "
+                    "releasing idle resources (process stays alive)\n"
+                    % (self.idle_seconds(), self.timeout)
+                )
+                self._release_func()
 
     def start(self):
         if self._thread is None:
@@ -80,15 +123,30 @@ class IdleWatchdog:
 
 
 def install(mcp, env_var, default_timeout=DEFAULT_IDLE_TIMEOUT,
-            clock=time.monotonic, exit_func=None, start=True):
+            clock=time.monotonic, release_func=None, exit_func=None,
+            backstop_env_var=None, default_backstop_timeout=DEFAULT_BACKSTOP_TIMEOUT,
+            start=True):
     """Attach an IdleWatchdog to a FastMCP server.
 
     Wraps the low-level server's message handler so every inbound MCP message
     resets the idle timer, then (by default) starts the watchdog thread.
     Returns the watchdog so callers/tests can inspect it.
+
+    release_func is called once per idle period once `timeout` elapses with no
+    activity (e.g. dropping a cached Lance index handle); the process keeps
+    running. If backstop_env_var is given, a much longer backstop timeout is
+    resolved from that env var (falling back to default_backstop_timeout) and
+    exit_func is called as a last resort once idle time reaches it. Leaving
+    backstop_env_var as None disables the hard-exit path entirely.
     """
     timeout = resolve_timeout(env_var, default_timeout)
-    watchdog = IdleWatchdog(timeout, clock=clock, exit_func=exit_func)
+    backstop_timeout = None
+    if backstop_env_var is not None:
+        backstop_timeout = resolve_timeout(backstop_env_var, default_backstop_timeout)
+    watchdog = IdleWatchdog(
+        timeout, clock=clock, release_func=release_func, exit_func=exit_func,
+        backstop_timeout=backstop_timeout,
+    )
 
     server = mcp._mcp_server  # low-level Server; mcp version is pinned
     original_handle_message = server._handle_message

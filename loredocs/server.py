@@ -540,6 +540,15 @@ async def app_lifespan(app):
     root_override = os.environ.get("LOREDOCS_ROOT")
     root = Path(root_override) if root_override else None
     storage = VaultStorage(root=root)
+    from . import idle_watchdog
+    # Release the cached Lance index (and stay alive) when the client parks
+    # this process idle -- Claude Code/Desktop do not re-spawn a stdio server
+    # that exits, so exiting on idle permanently lost the server (SH-13610).
+    idle_watchdog.install(
+        mcp, env_var="LOREDOCS_IDLE_TIMEOUT",
+        release_func=storage.release_idle_resources,
+        backstop_env_var="LOREDOCS_IDLE_BACKSTOP_TIMEOUT",
+    )
     _mcp_server_accepting_connections = True
     yield {"storage": storage}
     _mcp_server_accepting_connections = False
@@ -3020,9 +3029,8 @@ def main():
     """Run the LoreDocs MCP server."""
     _compat_emit(_compat_check())
     _check_egg_info_conflict()
-    from . import idle_watchdog
-    # Reap this process if the client parks it idle, freeing resources.
-    idle_watchdog.install(mcp, env_var="LOREDOCS_IDLE_TIMEOUT")
+    # Idle watchdog is installed in app_lifespan() once VaultStorage exists
+    # (its release_func needs the storage instance -- SH-13610).
     mcp.run()
 
 

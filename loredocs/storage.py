@@ -915,6 +915,17 @@ class VaultStorage:
             self._lance_index = DocLanceIndex(lance_dir)
         return self._lance_index
 
+    def release_idle_resources(self) -> None:
+        """Drop the cached Lance index handle while idle (SH-13610).
+
+        Called by the idle watchdog instead of exiting the process. VaultStorage
+        already opens/closes a fresh sqlite connection per operation (see _db()),
+        so there is no held DB lock to release here; this only drops the cached
+        Lance index reference so a long-idle process is not pinning it. The next
+        Pro search/index call recreates it lazily via _get_lance_index().
+        """
+        self._lance_index = None
+
     def _lance_write_safe(self, doc_id: str, vault_id: str, name: str, text: str) -> None:
         """Index a document in Lance (Pro only). Errors are logged, never raised."""
         if get_tier(self.root) != TIER_PRO:
