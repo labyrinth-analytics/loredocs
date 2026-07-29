@@ -4,6 +4,21 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## Unreleased
+
+### Changed: Tool output format change -- recalled-content trust boundary
+
+`vault_inject`, `vault_prime`, and `vault_inject_by_tag` now wrap the
+returned document text in an explicit untrusted-data delimiter (HTML
+comment, with a per-call nonce) before returning it, with a provenance
+line per document ("vault doc -- unverified authorship", identical
+regardless of the document's `priority`).
+
+This is a framing/boundary-integrity fix (SH-13436), not a claim to solve
+prompt injection. The injected text format has never been a documented,
+stable contract for these tools; any external tooling parsing it
+structurally should expect this and future format changes.
+
 ## v0.1.17 (2026-07-28)
 
 ### Fixed: Idle-watchdog now releases resources cleanly instead of killing the server
