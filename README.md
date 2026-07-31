@@ -1,4 +1,4 @@
-# LoreDocs v0.1.17
+# LoreDocs v0.1.18
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -360,26 +360,20 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
-## v0.1.17 (2026-07-28)
+## v0.1.18 (2026-07-31)
 
-### Fixed: Idle-watchdog now releases resources cleanly instead of killing the server
+### Changed: Tool output format change -- recalled-content trust boundary
 
-The idle-watchdog timeout (30 minutes with no MCP messages) would force-exit the
-stdio server process when the timeout fired. Some clients (Claude Desktop, early
-Claude Code versions) park stdio servers open while they're idle instead of
-closing the pipe when they're done, causing the process to stay open, lock the
-database, and leak system resources.
+`vault_inject`, `vault_prime`, and `vault_inject_by_tag` now wrap the
+returned document text in an explicit untrusted-data delimiter (HTML
+comment, with a per-call nonce) before returning it, with a provenance
+line per document ("vault doc -- unverified authorship", identical
+regardless of the document's `priority`).
 
-Starting in v0.1.17, the watchdog closes its database connection and drops its
-cached Lance semantic-search index, then returns cleanly instead of exiting the
-process. The server stays parked, but releases the resources it was holding.
-Clients that do close the pipe promptly are not affected. Clients that park the
-connection will now stay stable and will not block other Claude instances from
-accessing the database.
-
-If you were using the workaround environment variable `LOREDOCS_IDLE_TIMEOUT=86400`
-(1 day) to avoid the server exit, you can remove it — the fix handles the timeout
-without needing a workaround.
+This is a framing/boundary-integrity fix (SH-13436), not a claim to solve
+prompt injection. The injected text format has never been a documented,
+stable contract for these tools; any external tooling parsing it
+structurally should expect this and future format changes.
 
 <!-- WHATS_NEW:END -->
 
