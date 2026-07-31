@@ -4,7 +4,7 @@ What changed in each release, written for users (not developers).
 
 ---
 
-## Unreleased
+## v0.1.18 (2026-07-31)
 
 ### Changed: Tool output format change -- recalled-content trust boundary
 
