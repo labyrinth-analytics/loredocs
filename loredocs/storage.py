@@ -385,6 +385,12 @@ def _init_db(db_path: Path) -> None:
             file_size_bytes INTEGER DEFAULT 0,
             version_count INTEGER DEFAULT 1,
             deleted INTEGER DEFAULT 0,
+            origin_system TEXT DEFAULT NULL,
+            origin_id TEXT DEFAULT NULL,
+            -- CHECK for new DBs only; ALTER TABLE ADD COLUMN cannot add CHECK.
+            -- Application-layer enforcement via _validate_origin_system() covers
+            -- existing DBs that get origin_system via migration.
+            CHECK (origin_system IS NULL OR (origin_system != '' AND LENGTH(origin_system) > 0)),
             FOREIGN KEY (vault_id) REFERENCES vaults(id) ON DELETE CASCADE
         );
 
@@ -438,6 +444,247 @@ def _init_db(db_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Schema migrations (safe to run on every startup)
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Notion import bridge -- provenance data model (SH-13220, proposal r5)
+# PART:data-model: schema migration + provenance model
+# ---------------------------------------------------------------------------
+
+VALID_ORIGIN_SYSTEMS = frozenset({"notion"})
+# Extended as new importers land: VALID_ORIGIN_SYSTEMS | {"obsidian", "evernote", ...}
+
+ORIGIN_ID_MAX_BYTES = 255
+
+
+class MigrationConformanceError(Exception):
+    """Raised when a migration conformance pass detects data that would violate
+    a new constraint.  The migration is ABORTED; no schema changes are applied.
+    The operator must resolve the conflict explicitly (e.g. --force-dedup).
+    """
+
+    def __init__(self, message, duplicates=None, count=0):
+        super().__init__(message)
+        self.duplicates = duplicates or []
+        self.count = count
+
+
+def _validate_origin_system(origin_system):
+    """Validate origin_system before any INSERT/UPDATE that writes a non-NULL
+    value.  Enforces registry membership AND rejects empty string.
+
+    NULL is the local-origin sentinel and is always valid.
+    Raises ValueError on invalid values.
+    """
+    if origin_system is None:
+        return  # NULL = locally created; always valid
+    if origin_system == '':
+        raise ValueError(
+            "origin_system must be a non-empty string or NULL; "
+            "empty string is not valid (would bypass dedup index)"
+        )
+    if origin_system not in VALID_ORIGIN_SYSTEMS:
+        raise ValueError(
+            f"Unknown origin_system {origin_system!r}. "
+            f"Valid values: {sorted(VALID_ORIGIN_SYSTEMS)}. "
+            f"Adding a new importer? Extend VALID_ORIGIN_SYSTEMS first."
+        )
+
+
+def normalize_origin_id(origin_system, raw_id):
+    """Canonical origin_id normalization.  All importers must call this before
+    storage.
+
+    Notion: lowercase UUID without dashes (32 hex chars).
+    HTTP-URL-based systems: lowercase URL, query strings stripped.
+    Opaque ID systems: lowercase string, max 255 chars.
+    """
+    if origin_system == "notion":
+        clean = raw_id.replace("-", "").lower()
+        if len(clean) != 32 or not all(c in "0123456789abcdef" for c in clean):
+            raise ValueError(f"Invalid Notion UUID: {raw_id!r}")
+        return clean
+    import urllib.parse
+    lowered = raw_id.lower()
+    encoded = urllib.parse.quote(lowered, safe="a-z0-9_.~-")
+    if len(encoded.encode("utf-8")) > ORIGIN_ID_MAX_BYTES:
+        raise ValueError(
+            f"origin_id for {origin_system} exceeds "
+            f"{ORIGIN_ID_MAX_BYTES} bytes: {repr(raw_id)[:80]}"
+        )
+    return encoded
+
+
+def _column_exists(conn, table, column):
+    """Check if a column exists in a table using PRAGMA table_info.
+
+    Uses PRAGMA table_info (binary existence test), NOT sqlite_master DDL
+    substring search which breaks on column renames, case variation, and
+    manual schema drift.
+    """
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    # Each row: (cid, name, type, notnull, dflt_value, pk)
+    return any(row[1] == column for row in rows)
+
+
+def _bootstrap_schema_migrations(conn):
+    """One-time bootstrap when schema_migrations table is absent.
+
+    Uses PRAGMA table_info for column existence; NOT sqlite_master DDL
+    substring search.
+
+    [r5/H7 RISK-ACCEPT] Bootstrap infers v1-v3 from single-column existence
+    tests.  Reopen condition: first field report of mis-bootstrapped
+    schema_migrations, or any future migration whose detection is NOT a
+    single-column existence test, requires a per-version fingerprint design.
+    """
+    v1_applied = _column_exists(conn, 'documents', 'last_cross_linked_at')
+    # v2 and v3 had no schema changes; all databases from v0.1.5+ qualify
+    v2_applied = v1_applied  # v2 required v1 first
+    v3_applied = v1_applied  # v3 required v1 first
+    with conn:
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS schema_migrations "
+            "(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
+        )
+        for version, applied in [(1, v1_applied), (2, v2_applied), (3, v3_applied)]:
+            if applied:
+                conn.execute(
+                    "INSERT OR IGNORE INTO schema_migrations(version, applied_at) "
+                    "VALUES (?, datetime('now'))",
+                    (version,)
+                )
+
+
+def _migrate_notion_provenance(conn, force_dedup=False):
+    """Add origin_system, origin_id columns, conformance pass, UNIQUE index.
+
+    Version 4 migration.  Uses SAVEPOINT for explicit transaction control
+    so DDL (ALTER TABLE, CREATE INDEX) is transactional.  Python's sqlite3
+    module in its default (legacy) isolation mode may auto-commit DDL
+    outside explicit transactions; SAVEPOINT starts an implicit
+    transaction if none is active, making DDL rollback possible on
+    failure.
+
+    [r5/H1] Count-first-then-decide: the conformance pass SELECT COUNTs
+    duplicate tuples BEFORE any delete.  If count > 0, ABORT with
+    MigrationConformanceError instead of silently deleting user documents.
+    Only --force-dedup performs the dedup DELETE (keep MIN(rowid)).
+    """
+    conn.execute("SAVEPOINT notion_prov")
+    try:
+        # Add columns only if they don't already exist.  Fresh DBs get
+        # them from _init_db CREATE TABLE; existing DBs get them here.
+        if not _column_exists(conn, 'documents', 'origin_system'):
+            conn.execute(
+                "ALTER TABLE documents ADD COLUMN origin_system TEXT DEFAULT NULL"
+            )
+        if not _column_exists(conn, 'documents', 'origin_id'):
+            conn.execute(
+                "ALTER TABLE documents ADD COLUMN origin_id TEXT DEFAULT NULL"
+            )
+
+        # [r5/H1] Conformance COUNT -- detect duplicate (vault_id,
+        # origin_system, origin_id) tuples BEFORE the UNIQUE constraint.
+        # No delete is ever issued implicitly.
+        dup_count = conn.execute(
+            "SELECT COUNT(*) FROM documents "
+            "WHERE origin_system IS NOT NULL "
+            "  AND rowid NOT IN ("
+            "    SELECT MIN(rowid) FROM documents "
+            "    WHERE origin_system IS NOT NULL "
+            "    GROUP BY vault_id, origin_system, origin_id"
+            ")"
+        ).fetchone()[0]
+
+        if dup_count > 0 and not force_dedup:
+            # Gather the offending tuples for the error message, then
+            # raise.  The SAVEPOINT rollback undoes the ALTER TABLE
+            # statements -- no schema change persists.
+            dup_rows = conn.execute(
+                "SELECT vault_id, origin_system, origin_id, COUNT(*) as n "
+                "FROM documents WHERE origin_system IS NOT NULL "
+                "GROUP BY vault_id, origin_system, origin_id "
+                "HAVING COUNT(*) > 1"
+            ).fetchall()
+            duplicates = [
+                {
+                    "vault_id": r[0],
+                    "origin_system": r[1],
+                    "origin_id": r[2],
+                    "row_count": r[3],
+                }
+                for r in dup_rows
+            ]
+            raise MigrationConformanceError(
+                f"Migration v4 aborted: {dup_count} duplicate "
+                f"(vault_id, origin_system, origin_id) tuple(s) would "
+                f"violate the new UNIQUE index. "
+                f"Run 'loredocs migrate --force-dedup' to deduplicate "
+                f"(keep MIN(rowid)) and retry. "
+                f"Affected tuples: {duplicates[:10]}",
+                duplicates=duplicates,
+                count=dup_count,
+            )
+
+        if dup_count > 0 and force_dedup:
+            # Explicit opt-in: deduplicate keeping MIN(rowid).
+            conn.execute(
+                "DELETE FROM documents "
+                "WHERE origin_system IS NOT NULL "
+                "AND rowid NOT IN ("
+                "  SELECT MIN(rowid) FROM documents "
+                "  WHERE origin_system IS NOT NULL "
+                "  GROUP BY vault_id, origin_system, origin_id"
+                ")"
+            )
+
+        # UNIQUE partial index: safe after conformance pass.
+        # Partial scope (WHERE origin_system IS NOT NULL) means NULL
+        # origin_system rows (locally created docs) are excluded from
+        # dedup.
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_origin_unique "
+            "ON documents(vault_id, origin_system, origin_id) "
+            "WHERE origin_system IS NOT NULL"
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO schema_migrations(version, applied_at) "
+            "VALUES (4, datetime('now'))"
+        )
+        conn.execute("RELEASE SAVEPOINT notion_prov")
+    except Exception:
+        # Roll back ALL changes (ALTER TABLE, CREATE INDEX, version row)
+        # so no partial v4 state persists.  This is the transactional
+        # guarantee: either all steps commit or none do.
+        try:
+            conn.execute("ROLLBACK TO SAVEPOINT notion_prov")
+            conn.execute("RELEASE SAVEPOINT notion_prov")
+        except Exception:
+            pass  # Best-effort rollback; original error is re-raised
+        raise
+
+
+def _run_migrations_locked(conn, force_dedup=False):
+    """Run versioned migrations using the schema_migrations tracking table.
+
+    Bootstrap assigns versions 1-3 based on column existence when
+    schema_migrations is absent.  After bootstrap, apply any missing
+    migrations in version order.
+    """
+    has_migrations_table = conn.execute(
+        "SELECT name FROM sqlite_master "
+        "WHERE type='table' AND name='schema_migrations'"
+    ).fetchone() is not None
+    if not has_migrations_table:
+        _bootstrap_schema_migrations(conn)
+    applied = {
+        row[0] for row in conn.execute(
+            "SELECT version FROM schema_migrations"
+        )
+    }
+    if 4 not in applied:
+        _migrate_notion_provenance(conn, force_dedup=force_dedup)
+
 
 def _migrate_db(db_path: Path) -> None:
     """Apply incremental schema migrations that are safe to run repeatedly."""
@@ -578,6 +825,13 @@ def _migrate_db(db_path: Path) -> None:
                 "ALTER TABLE vaults ADD COLUMN injection_cap_tokens INTEGER DEFAULT NULL "
                 "CHECK(injection_cap_tokens IS NULL OR injection_cap_tokens > 0)"
             )
+
+    # v0.9: Notion import bridge provenance (SH-13220, proposal r5)
+    # Schema-migrations-tracked migration: origin_system, origin_id,
+    # UNIQUE partial index, conformance pass.  Runs via the versioned
+    # migration system (_run_migrations_locked) which bootstraps
+    # schema_migrations from column existence when absent.
+    _run_migrations_locked(conn)
 
     conn.commit()
     conn.close()
