@@ -57,6 +57,13 @@ pro = [
 token-count = [
     "tiktoken==0.7.0",
 ]
+notion = [
+    # Notion import bridge (SH-13222): vault_import_notion MCP tool + CLI.
+    # Optional extra -- the server runs without it; the tool is conditionally
+    # registered via _notion_extra_available() at startup.
+    "notion-client==2.3.0",
+    "keyring==23.13.1",
+]
 
 [project.scripts]
 loredocs = "loredocs.server:main"
