@@ -175,6 +175,8 @@ plan -- Pro does not add any cloud component.
 | Embedding-based document relationships (`vault_find_related`) | Keyword co-occurrence only | Keyword + embedding auto-links |
 | Cross-product session linking (`vault_link_session` + 2 more) | -- | Yes (also requires LoreConvo Pro) |
 
+[Upgrade to Pro -- $9/month](https://buy.stripe.com/00w3cndEw0l5b8fek17N601)
+
 Free tier limits are enforced before writes; Pro removes them. Check your current tier
 and usage anytime with `vault_tier_status`. Activate a Pro license with `vault_set_tier`.
 
