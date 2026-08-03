@@ -34,7 +34,15 @@ from .storage import (
     VaultStorage, CROSS_LINK_SCHEMA_VERSION, discover_product_db, DiscoveryError,
     _CROSS_LINK_EMBEDDING_MODEL,
 )
-from .tiers import TierLimitError, get_tier, legacy_tier_notice, set_tier, TIER_LIMITS, TIER_PRO
+from .tiers import (
+    LOREDOCS_UPGRADE_URL,
+    TierLimitError,
+    get_tier,
+    legacy_tier_notice,
+    set_tier,
+    TIER_LIMITS,
+    TIER_PRO,
+)
 from .license import get_license_status
 from .onboard_tool import run_onboard as _run_onboard
 from .compat_check import check as _compat_check, emit_startup_warnings as _compat_emit
@@ -754,7 +762,8 @@ async def vault_create(
             linked_projects=params.linked_projects,
         )
     except TierLimitError as exc:
-        return f"Error: {exc}"
+        hint = f" {exc.upgrade_hint}" if exc.upgrade_hint else ""
+        return f"Error: {exc}{hint}"
     # Add setup_tip on first vault if Config vault doesn't already exist
     vault_count = len(storage.list_vaults(include_archived=False))
     config_exists = storage.find_vault_by_name("Config") is not None
@@ -1068,7 +1077,8 @@ async def vault_open_workspace(
             workspace_path=resolved,
         )
     except TierLimitError as exc:
-        return f"Error: {exc}"
+        hint = f" {exc.upgrade_hint}" if exc.upgrade_hint else ""
+        return f"Error: {exc}{hint}"
 
     return json.dumps({
         "status": "created",
@@ -1155,7 +1165,8 @@ async def vault_add_doc(
             notes=params.notes,
         )
     except TierLimitError as exc:
-        return f"Error: {exc}"
+        hint = f" {exc.upgrade_hint}" if exc.upgrade_hint else ""
+        return f"Error: {exc}{hint}"
     if result:
         return json.dumps(result, indent=2)
     return "Error: Could not add document."
@@ -2781,13 +2792,13 @@ async def vault_set_tier(ctx: Context, tier: str) -> str:
                 return (
                     "Error: Invalid or expired license key in LOREDOCS_PRO. "
                     + status.get("error", "")
-                    + " Get a new key at labyrinthanalyticsconsulting.com."
+                    + f" Get a new key by upgrading at {LOREDOCS_UPGRADE_URL}."
                 )
             return (
                 "Error: No Pro license key found. "
                 "Set LOREDOCS_PRO=<your-license-key> in your environment and "
                 "restart the server, then call vault_set_tier again. "
-                "Get a license key at labyrinthanalyticsconsulting.com."
+                f"Get a license key by upgrading at {LOREDOCS_UPGRADE_URL}."
             )
 
     prev_tier = get_tier(storage.root)
@@ -2827,14 +2838,18 @@ def get_license_tier() -> dict:
     Use this to confirm whether the Pro license key is loaded and valid.
 
     Returns a dict with keys:
-        is_pro  -- bool, True if Pro tier is active
-        mode    -- "licensed" | "dev_bypass" | "free" | "invalid_key"
-        product -- product name from the license payload (if licensed)
-        exp     -- expiry date or "never" (if licensed)
-        email   -- customer email (if licensed and present)
-        error   -- error message (if mode is "invalid_key")
+        is_pro      -- bool, True if Pro tier is active
+        mode        -- "licensed" | "dev_bypass" | "free" | "invalid_key"
+        product     -- product name from the license payload (if licensed)
+        exp         -- expiry date or "never" (if licensed)
+        email       -- customer email (if licensed and present)
+        error       -- error message (if mode is "invalid_key")
+        upgrade_url -- Stripe checkout link (present when not already Pro)
     """
-    return get_license_status()
+    status = get_license_status()
+    if not status.get("is_pro"):
+        status["upgrade_url"] = LOREDOCS_UPGRADE_URL
+    return status
 
 
 # ---------------------------------------------------------------------------

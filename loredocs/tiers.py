@@ -31,6 +31,11 @@ TIER_PRO = "pro"
 
 VALID_TIERS = {TIER_FREE, TIER_PRO}
 
+try:
+    from .license import LOREDOCS_UPGRADE_URL
+except ImportError:
+    from license import LOREDOCS_UPGRADE_URL  # noqa: F401 -- direct import fallback
+
 
 @dataclass
 class TierLimits:
@@ -273,8 +278,9 @@ class TierEnforcer:
 
     def _upgrade_hint(self) -> str:
         return (
-            "Upgrade to Pro for unlimited usage. "
-            "Use vault_set_tier with tier='pro' to activate your license."
+            "Upgrade to Pro for unlimited usage: "
+            f"{LOREDOCS_UPGRADE_URL} -- then use vault_set_tier with tier='pro' "
+            "to activate your license."
         )
 
     def check_vault_count(self, current_vault_count: int) -> None:
@@ -351,7 +357,7 @@ class TierEnforcer:
         )
         storage_used_mb = round(total_bytes / (1024 * 1024), 2)
 
-        return {
+        result = {
             "tier": tier,
             "vault_count": vault_count,
             "vault_limit": lim.max_vaults,
@@ -363,3 +369,6 @@ class TierEnforcer:
             "versions_per_doc_limit": lim.max_versions_per_doc,
             "is_pro": tier == TIER_PRO,
         }
+        if tier != TIER_PRO:
+            result["upgrade_url"] = LOREDOCS_UPGRADE_URL
+        return result
