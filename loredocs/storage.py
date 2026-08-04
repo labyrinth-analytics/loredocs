@@ -813,18 +813,80 @@ def _migrate_db(db_path: Path) -> None:
             "ALTER TABLE documents ADD COLUMN last_cross_linked_at TEXT DEFAULT NULL"
         )
 
-    # v0.8: injection cap per vault (SH-12014)
-    # The vaults CREATE TABLE now includes injection_cap_tokens; only existing installs need ALTER.
+    # v0.8: injection cap per vault (SH-12014, r4 proposal SH-13602)
+    # [r4/T6a] SQLite version floor check -- fail LOUD, never assume.
+    # ALTER TABLE ADD COLUMN with inline CHECK requires SQLite >= 3.25.0.
+    _SQLITE_FLOOR = (3, 25, 0)
+    if sqlite3.sqlite_version_info < _SQLITE_FLOOR:
+        raise RuntimeError(
+            f"[LOREDOCS-MIGRATE-ERROR] SQLite {sqlite3.sqlite_version} is below the "
+            f"minimum {'.'.join(map(str, _SQLITE_FLOOR))} required for the "
+            f"injection_cap_tokens migration. Upgrade Python/SQLite before starting."
+        )
+
+    # The vaults CREATE TABLE now includes injection_cap_tokens; only existing
+    # installs need ALTER.  Fresh installs never need the ALTER at all.
     vault_cols_v8 = {row[1] for row in conn.execute("PRAGMA table_info(vaults)")}
+
+    # Check if vaults table exists (fresh install: the CREATE TABLE above
+    # already includes the col)
+    tbl = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='vaults'"
+    ).fetchone()
+
     if "injection_cap_tokens" not in vault_cols_v8:
-        # Check if vaults table exists (fresh install: the CREATE TABLE above already includes the col)
-        tbl = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='vaults'").fetchone()
         if tbl:
-            logger.info("[LOREDOCS-MIGRATE] Adding injection_cap_tokens column to vaults table")
+            logger.info(
+                "[LOREDOCS-MIGRATE] Adding injection_cap_tokens column to vaults table"
+            )
             conn.execute(
                 "ALTER TABLE vaults ADD COLUMN injection_cap_tokens INTEGER DEFAULT NULL "
                 "CHECK(injection_cap_tokens IS NULL OR injection_cap_tokens > 0)"
             )
+    else:
+        # [r4/T6c] Column already present: verify the CHECK constraint came
+        # with it.  A prior crashed/partial migration attempt (or a manual
+        # ALTER) can leave the column present WITHOUT the constraint -- a
+        # half-migrated state with no clean re-entry.  DETECT + hard-fail +
+        # documented runbook entry.  NO auto-heal (ratified decision).
+        #
+        # [r4/T6b] Pre-detection cleanup diagnostics: if the column exists
+        # without CHECK, report any invalid values (non-integer or <= 0)
+        # that would violate the constraint if it were present.  This is
+        # diagnostic only -- the hard-fail below prevents starting with
+        # an unconstrained column.  Recovery is via the TROUBLESHOOTING.md
+        # runbook (table rebuild).
+        if tbl:
+            create_sql_row = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='vaults'"
+            ).fetchone()
+            if create_sql_row:
+                create_sql = create_sql_row[0] or ""
+                # Check for the CHECK constraint in the CREATE TABLE SQL.
+                # Normalize whitespace for the comparison.
+                normalized = create_sql.replace(" ", "").replace("\n", "")
+                if (
+                    "injection_cap_tokens" in create_sql
+                    and "CHECK(injection_cap_tokens" not in normalized
+                ):
+                    # [r4/T6b] Diagnostic: count invalid values before hard-fail
+                    try:
+                        invalid_count = conn.execute(
+                            "SELECT COUNT(*) FROM vaults WHERE "
+                            "injection_cap_tokens IS NOT NULL AND "
+                            "(typeof(injection_cap_tokens) != 'integer' "
+                            "OR injection_cap_tokens <= 0)"
+                        ).fetchone()[0]
+                    except sqlite3.OperationalError:
+                        invalid_count = 0
+                    raise RuntimeError(
+                        "[LOREDOCS-MIGRATE-ERROR] vaults.injection_cap_tokens exists "
+                        "WITHOUT its CHECK constraint (half-migrated schema, likely "
+                        "from a crashed migration). Manual recovery required -- see "
+                        "the 'Half-migrated injection_cap_tokens schema' runbook entry "
+                        "in TROUBLESHOOTING.md. Refusing to start with an unconstrained "
+                        f"cap column. ({invalid_count} invalid value(s) detected.)"
+                    )
 
     # v0.9: Notion import bridge provenance (SH-13220, proposal r5)
     # Schema-migrations-tracked migration: origin_system, origin_id,
