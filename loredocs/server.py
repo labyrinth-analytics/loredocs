@@ -197,6 +197,20 @@ def _build_cache_key(
 # Admin token security (SH-12014 / Gap 1)
 # ---------------------------------------------------------------------------
 
+# [r4/L62] admin_token call parameter must never be logged, echoed, or
+# forwarded to any analytics/telemetry path. Any tool-argument logging or
+# debugging facility MUST redact this parameter by name.
+def _redact_admin_token(args: dict) -> dict:
+    """Return a copy of args with admin_token replaced by '<redacted>'.
+
+    Used by any logging or debugging path that processes tool arguments.
+    Unit test asserts the redaction.
+    """
+    redacted = dict(args)
+    if "admin_token" in redacted:
+        redacted["admin_token"] = "<redacted>"
+    return redacted
+
 _WEAK_TOKENS = frozenset({
     "admin", "test", "password", "secret", "12345", "loredocs",
     "loredocs_admin", "changeme", "token",
@@ -1916,6 +1930,29 @@ def _run_vault_injection(
     if effective_cap is not None and effective_cap < 100:
         effective_cap = 100  # floor: never cap below 100 tokens
 
+    # [r4/L38] Resolution log with source= field + uncapped WARN
+    if effective_cap_raw is not None:
+        if max_tokens is not None:
+            cap_source = "param"
+        elif vault_cap is not None:
+            cap_source = "vault"
+        elif os.environ.get("LOREDOCS_INJECTION_CAP_TOKENS") and \
+             int(os.environ.get("LOREDOCS_INJECTION_CAP_TOKENS", "0")) > 0:
+            cap_source = "env"
+        else:
+            cap_source = "default"
+        sys.stderr.write(
+            f"[LOREDOCS-INJECT] cap={effective_cap_raw} "
+            f"(effective={effective_cap} after {safety_factor*100:.0f}% safety factor; "
+            f"source: {cap_source})\n"
+        )
+    else:
+        # Uncapped: LOREDOCS_INJECTION_DEFAULT_CAP_TOKENS=0 and no other cap configured
+        sys.stderr.write(
+            f"[LOREDOCS-WARN] {vault_name}: injection is uncapped "
+            f"(LOREDOCS_INJECTION_DEFAULT_CAP_TOKENS=0 and no other cap configured).\n"
+        )
+
     tags_frozen: "Optional[frozenset[str]]" = frozenset(tags) if tags is not None else None
     cache_key = _build_cache_key(
         session_token, vault_name, max_tokens, tags_frozen, query or "", vault_max_updated_at
@@ -2267,7 +2304,24 @@ async def vault_get_server_capabilities(ctx: Context) -> str:
     return "\n".join(lines)
 
 
+# [r4/T3] Hard-fail on LOREDOCS_ENABLE_CAP_TOOLS=1 with absent/weak admin token.
+# An operator who explicitly opted into admin tooling must get a loud, immediate
+# failure rather than a server that runs with the opted-in capability silently
+# missing. This is a binding constraint from SH-13140 disposition.
 if os.environ.get("LOREDOCS_ENABLE_CAP_TOOLS") == "1":
+    if not os.environ.get("LOREDOCS_ADMIN_TOKEN"):
+        sys.exit(
+            "[LOREDOCS-STARTUP-ERROR] LOREDOCS_ENABLE_CAP_TOOLS=1 set but "
+            "LOREDOCS_ADMIN_TOKEN is missing. Set a strong token "
+            "(openssl rand -hex 32) or unset LOREDOCS_ENABLE_CAP_TOOLS."
+        )
+    if not _admin_token_valid():
+        sys.exit(
+            "[LOREDOCS-STARTUP-ERROR] LOREDOCS_ENABLE_CAP_TOOLS=1 set but "
+            "LOREDOCS_ADMIN_TOKEN is weak. Generate: "
+            "openssl rand -hex 32"
+        )
+
     @mcp.tool(
         title="Set Vault Injection Cap",
         name="vault_set_injection_cap",
