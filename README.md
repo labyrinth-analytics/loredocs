@@ -35,7 +35,7 @@ Or inside an existing session:
 /plugin add /path/to/loredocs
 ```
 
-Once loaded, Claude has access to all 46 LoreDocs MCP tools automatically. Ask Claude to "create a vault for this project" or "find the architecture doc" and it uses the tools on its own.
+Once loaded, Claude has access to all 48 LoreDocs MCP tools automatically. Ask Claude to "create a vault for this project" or "find the architecture doc" and it uses the tools on its own.
 
 ### Cowork (Desktop App)
 
@@ -200,7 +200,7 @@ and usage anytime with `vault_tier_status`. Activate a Pro license with `vault_s
 
 ## MCP Tools
 
-LoreDocs provides 46 MCP tools by default (47 with LOREDOCS_ENABLE_CAP_TOOLS=1) organized by function:
+LoreDocs provides 48 MCP tools by default (49 with LOREDOCS_ENABLE_CAP_TOOLS=1) organized by function:
 
 ### Vault Management (8 tools)
 | Tool | What it does |
@@ -258,10 +258,12 @@ LoreDocs provides 46 MCP tools by default (47 with LOREDOCS_ENABLE_CAP_TOOLS=1) 
 | `vault_estimate_tokens` | Estimate the token count an injection call would use before running it |
 | `vault_get_server_capabilities` | Report which injection/token-budget features this server build supports |
 
-### Import/Export (3 tools)
+### Import/Export (5 tools)
 | Tool | What it does |
 |------|-------------|
 | `vault_import_dir` | Import a directory of files into a vault |
+| `vault_import_notion` | Import Notion pages and databases into a vault (one-time, no live sync) |
+| `vault_import_notion_setup` | Report Notion import readiness and how to enable it (read-only) |
 | `vault_export` | Export a document to a file on disk |
 | `vault_export_manifest` | Export vault metadata as a JSON manifest |
 
