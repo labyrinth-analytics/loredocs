@@ -29,7 +29,7 @@ dependencies = [
     "python-docx==1.2.0",
     "openpyxl==3.1.5",
     "python-pptx==1.0.2",
-    "cryptography==49.0.0",
+    "cryptography==50.0.0",
     "packaging==25.0",
     # Semantic search moved from the [pro] extra to base on 2026-07-25
     # (spec amendment A1). fastembed runs BAAI/bge-small-en-v1.5 on
