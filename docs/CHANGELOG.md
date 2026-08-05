@@ -4,6 +4,40 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## v0.1.19 (2026-08-04)
+
+### Added: Import from Notion
+
+A new `vault_import_notion` MCP tool (and matching `loredocs import notion` CLI
+command) imports Notion pages and databases into a vault. This is an
+import-once-and-own model: pages are fetched and stored as LoreDocs documents
+at import time, and there is no live sync -- changes made in Notion afterward
+do not propagate automatically. Large imports are resumable from a checkpoint
+file if interrupted partway through. Requires a Notion integration token,
+which can be stored securely in your OS keychain with `loredocs
+set-notion-token` (and removed with `clear-notion-token`); `loredocs
+check-notion` reports whether your setup is ready to import.
+
+### Changed: Safer startup and logging for the optional admin cap tools
+
+If you run LoreDocs with `LOREDOCS_ENABLE_CAP_TOOLS=1` (the optional admin
+tooling, off by default), the server now refuses to start if the required
+admin token is missing or weak, instead of running with that protection
+silently absent. The admin token is also now redacted from any logging path.
+Separately, the schema migration that added per-vault injection caps is more
+defensive: it detects and hard-fails on a half-migrated database (documented
+in the new `TROUBLESHOOTING.md`) rather than risking silent data corruption.
+None of this changes default `vault_inject`/`vault_prime`/`vault_inject_by_tag`
+behavior for the normal (non-admin-tooling) usage path.
+
+### Fixed: Free-tier upgrade messages now link to a working checkout page
+
+Hitting a Free-tier limit, or calling `get_tier`/`get_license_tier`, used to
+point you at a bare domain or an email address instead of a working upgrade
+link. Both now link directly to the Stripe checkout page, and a bug that
+silently dropped the upgrade link from three tier-limit error messages is
+fixed.
+
 ## v0.1.18 (2026-07-31)
 
 ### Changed: Tool output format change -- recalled-content trust boundary
