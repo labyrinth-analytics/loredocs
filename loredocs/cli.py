@@ -522,5 +522,34 @@ def check_notion(runtime):
         click.echo(f"[INFO] Or via uvx: uvx --with loredocs[notion] loredocs-mcp")
 
 
+@cli.group()
+def license():
+    """Manage LoreDocs Pro license."""
+    pass
+
+
+@license.command(name="clear")
+@click.option("--suite", is_flag=True, default=False,
+              help="Also clear suite-wide Pro from sibling product")
+def license_clear(suite):
+    """Clear the LoreDocs Pro license (and optionally the sibling product's suite key).
+
+    Re-run with --suite to clear suite-wide Pro from both products.
+    """
+    from loredocs import license_store
+
+    try:
+        warnings = license_store.clear_key("loredocs", suite_too=suite)
+    except Exception as e:
+        click.echo(f"error: {e}", err=True)
+        sys.exit(1)
+
+    if not warnings:
+        click.echo("Cleared.")
+    else:
+        for warning in warnings:
+            click.echo(warning)
+
+
 if __name__ == "__main__":
     cli()
