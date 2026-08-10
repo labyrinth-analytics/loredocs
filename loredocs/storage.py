@@ -23,6 +23,7 @@ import hashlib
 import json
 import logging
 import os
+import platform
 import re
 import shutil
 import sqlite3
@@ -664,6 +665,48 @@ def _migrate_notion_provenance(conn, force_dedup=False):
         raise
 
 
+def _get_connection_file_path(conn) -> str:
+    """Extract the on-disk path for the 'main' database from an open connection.
+
+    Returns empty string for in-memory databases. Deriving the migration lock
+    path from the connection itself (rather than trusting a caller-supplied
+    path argument) means the lock always targets the file the connection is
+    actually writing to.
+    """
+    rows = conn.execute("PRAGMA database_list").fetchall()
+    for row in rows:
+        if row[1] == "main":
+            return row[2]
+    raise RuntimeError("No 'main' database found in connection's database list")
+
+
+def _acquire_migration_lock(lock_fd):
+    """Cross-platform exclusive lock: fcntl.flock on POSIX, msvcrt.locking on Windows.
+
+    Mirrors CheckpointManager's platform split (notion_checkpoint.py). LK_LOCK
+    blocks until the lock is acquired (up to 10 one-second retries on Windows,
+    then raises OSError); flock blocks until acquired on POSIX. No busy-loop
+    needed on either platform.
+    """
+    if platform.system() == "Windows":
+        import msvcrt
+        lock_fd.seek(0)
+        msvcrt.locking(lock_fd.fileno(), msvcrt.LK_LOCK, 1)
+    else:
+        import fcntl
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+
+
+def _release_migration_lock(lock_fd):
+    if platform.system() == "Windows":
+        import msvcrt
+        lock_fd.seek(0)
+        msvcrt.locking(lock_fd.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+
+
 def _run_migrations_locked(conn, force_dedup=False):
     """Run versioned migrations using the schema_migrations tracking table.
 
@@ -891,9 +934,24 @@ def _migrate_db(db_path: Path) -> None:
     # v0.9: Notion import bridge provenance (SH-13220, proposal r5)
     # Schema-migrations-tracked migration: origin_system, origin_id,
     # UNIQUE partial index, conformance pass.  Runs via the versioned
-    # migration system (_run_migrations_locked) which bootstraps
-    # schema_migrations from column existence when absent.
-    _run_migrations_locked(conn)
+    # migration system (_run_migrations_locked), guarded by a cross-process
+    # exclusive lock so two processes upgrading the same v0.1.7 DB at once
+    # cannot both attempt the v4 migration (SH-13223, PART:migration).
+    # Lock path is derived from the connection's actual file path, not
+    # db_path directly, so the lock always targets what the connection
+    # is really writing to.
+    file_path = _get_connection_file_path(conn)
+    if file_path:
+        lock_path = file_path + ".migrationlock"
+        with open(lock_path, "w") as lock_fd:
+            _acquire_migration_lock(lock_fd)
+            try:
+                _run_migrations_locked(conn)
+            finally:
+                _release_migration_lock(lock_fd)
+    else:
+        # In-memory database: no file for a second process to contend on.
+        _run_migrations_locked(conn)
 
     conn.commit()
     conn.close()
