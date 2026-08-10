@@ -35,6 +35,24 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .tiers import TierEnforcer, TierLimitError, get_tier, TIER_PRO  # noqa: F401 (re-exported)
+from .version_storage import (
+    HistoryDivergedError, RecoveryAbortedError, DocumentLockedError,
+    LockUnusableError, HistoryBudgetExceededError,
+    DocumentLock, DocContext, DocContextManager,
+    SIDECAR_SCHEMA_VERSION, JOURNAL_SCHEMA_VERSION, MAX_SIDECAR_SIZE,
+    TOMBSTONE_MULTIPLIER, CLOUD_SYNC_PREFIXES,
+    FREE_RETENTION_DEPTH, FREE_HISTORY_BUDGET_MB,
+    PRO_RETENTION_DEPTH, PRO_HISTORY_BUDGET_MB,
+    _hash_file, _safe_write_json, _safe_write_bytes, _fsync_dir,
+    _parse_version_number, _content_file_glob, _sidecar_glob,
+    _fs_max_version, _sidecar_max_version, _all_evidenced_numbers,
+    _read_highwater, _write_highwater, _read_reset_floor,
+    _read_intent_journal, _write_intent_journal, _delete_intent_journal,
+    _check_lock_health, _compute_retention_depth, _compute_history_budget,
+    _vault_history_bytes, _should_warn_substrate, _timestamp_suffix,
+    _validate_sidecar, _write_sidecar, _stamp_rotated_at,
+    doc_context_cm,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1255,6 +1273,29 @@ class VaultStorage:
         # Lance index: lazy init, Pro only
         self._lance_index = None
 
+        # r6/SH-100432: DocContextManager -- the choke point for all
+        # document operations (read and write).  It acquires per-document
+        # locks, replays stale intent journals, computes the 5-source
+        # version allocator, and checks divergence.
+        tier = get_tier(self.root)
+        self._ctx_mgr = DocContextManager(
+            self.vaults_dir, self.db_path, tier, self.enforcer,
+        )
+
+        # r6/C2: one-time startup warning if the vault root is under a
+        # known cloud-sync directory.  Path-prefix match only -- nothing
+        # branches on the result.
+        sub = _should_warn_substrate(self.root)
+        if sub is not None:
+            logger.warning(
+                "LoreDocs vault root (%s) is under a cloud-sync directory "
+                "(%s). Cloud-sync substrates can split writes, roll back "
+                "version history, and cause divergence. Consider moving "
+                "the vault root to a non-synced directory. This is a "
+                "one-time advisory; no functionality is changed.",
+                self.root, sub,
+            )
+
     @contextmanager
     def _db(self):
         """Context manager for database connections."""
@@ -1687,6 +1728,8 @@ class VaultStorage:
             "updated_at": now,
             "file_size_bytes": len(content),
             "version_count": 1,
+            "_derived": True,
+            "_comment": "Derived from DB. DB is source of truth.",
         }
         (doc_dir / "metadata.json").write_text(
             json.dumps(meta, indent=2), encoding="utf-8"
@@ -1762,114 +1805,426 @@ class VaultStorage:
                         tags: Optional[List[str]] = None,
                         category: Optional[str] = None,
                         priority: Optional[str] = None,
-                        notes: Optional[str] = None) -> Optional[Dict[str, Any]]:
+                        notes: Optional[str] = None,
+                        author: Optional[str] = None,
+                        session_id: Optional[str] = None,
+                        note: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Update a document. Auto-versions the previous file if content changes.
+
+        Implements the r6 proposal write ordering (SH-100432):
+        1. Read DB row for doc_id.
+        2. If content is changing:
+           a. Determine new ext from filename.
+           b. Compute retention depth and do rotation.
+           c. Check vault history budget.
+           d. Acquire _doc_context (write=True).
+           e. Write new bytes to current.new{ext_new} (temp + fsync).
+           f. Write .intent.json.
+           g. Write .highwater (BEFORE content creation in history).
+           h. Step 3a: Archive current -> history/v{from_version}{ext_old}.
+           i. Step 3b: Write v{from_version}.meta.json sidecar.
+           j. Step 3c: If rotation happened, unlink rotated content file.
+           k. Step 3d: Verify current.new hash, os.replace to current{ext_new}.
+           l. Step 3e: If ext changed, unlink current{ext_old}.
+           m. Step 3f: Rewrite extracted.txt.
+           n. Step 4: Rewrite metadata.json with _derived: true.
+           o. Step 5: DB update + FTS + vault timestamp.
+           p. Step 6: Delete .intent.json.
+        3. If only metadata changed, just do the DB update + metadata.json.
+        4. Return result dict.
+
         Returns updated metadata, or None if not found.
         """
+        # 1. Read the DB row for doc_id.
         with self._db() as conn:
             row = conn.execute(
                 "SELECT * FROM documents WHERE id = ? AND deleted = 0", (doc_id,)
             ).fetchone()
             if not row:
                 return None
-
             vault_id = row["vault_id"]
-            now = self._now()
-            doc_dir = self.vaults_dir / vault_id / "docs" / doc_id
-            ext = row["file_extension"]
-            current_file = doc_dir / f"current{ext}"
+            ext_old = row["file_extension"]
             version_count = row["version_count"]
+            doc_name = row["name"]
 
-            # If content is changing, version the current file first
-            version_rotated = False
-            if content is not None:
-                if current_file.exists():
-                    # Tier check: verify we haven't hit the version limit
+        now = self._now()
+        doc_dir = self.vaults_dir / vault_id / "docs" / doc_id
+        history_dir = doc_dir / "history"
+        history_dir.mkdir(parents=True, exist_ok=True)
+
+        version_rotated = False
+        rotate_version = None
+
+        if content is not None:
+            # 2a. Determine new ext from filename if provided.
+            ext_new = ext_old
+            if filename:
+                ext_new = Path(filename).suffix.lower()
+
+            # 2b. Compute retention depth and do rotation (P4 fix).
+            # depth = total versions retained (including current).
+            # History files = depth - 1. Rotation happens when
+            # present_count >= depth - 1 (we're about to add one more).
+            tier = get_tier(self.root)
+            depth = _compute_retention_depth(tier, self.enforcer)
+            max_history = depth - 1
+            content_files = sorted(_content_file_glob(history_dir),
+                                   key=lambda p: _parse_version_number(p.name) or 0)
+            present_count = len(content_files)
+            rotated_versions = []
+            while present_count >= max_history:
+                lowest = content_files[0]
+                low_version = _parse_version_number(lowest.name)
+                if low_version is None:
+                    break
+                try:
+                    lowest.unlink()
+                    rotated_versions.append(low_version)
+                    logger.debug(
+                        "Rotated out v%d for doc '%s' (retention depth=%d)",
+                        low_version, doc_name, depth,
+                    )
+                except OSError as exc:
+                    logger.warning(
+                        "Failed to rotate v%d: %s", low_version, exc,
+                    )
+                    break
+                content_files = _content_file_glob(history_dir)
+                present_count = len(content_files)
+            if rotated_versions:
+                version_rotated = True
+                rotate_version = rotated_versions[0]
+
+            # 2c. Check vault history budget (r6/ops-cost).
+            tier = get_tier(self.root)
+            cap = _compute_history_budget(tier)
+            current_history_bytes = _vault_history_bytes(
+                self.vaults_dir, vault_id
+            )
+            if current_history_bytes + len(content) > cap:
+                raise HistoryBudgetExceededError(
+                    f"Vault history budget exceeded: current="
+                    f"{current_history_bytes} bytes, new content="
+                    f"{len(content)} bytes, cap={cap} bytes. "
+                    f"Remove old versions or upgrade tier."
+                )
+
+            # 2d. Acquire _doc_context (write=True).
+            # This takes the lock, replays stale journals, computes
+            # next_version, and checks divergence (raises on divergence).
+            ctx = self._ctx_mgr.acquire(
+                doc_id, vault_id, ext_old, version_count, write=True,
+            )
+            try:
+                from_version = version_count  # current version to archive
+                to_version = ctx.next_version  # new version number
+
+                # Compute hash of current file (for journal).
+                current_old = doc_dir / f"current{ext_old}"
+                sha256_old = ""
+                if current_old.is_file():
                     try:
-                        self.enforcer.check_version_count(version_count, doc_name=row["name"])
-                    except TierLimitError:
-                        # On free tier at cap: rotate out oldest version and continue
-                        oldest_file = doc_dir / "history" / f"v1{ext}"
-                        if oldest_file.exists():
-                            oldest_file.unlink()
-                            logger.debug(f"Rotated out oldest version for '{row['name']}'")
-                            version_rotated = True
+                        sha256_old = _hash_file(current_old)
+                    except OSError:
+                        sha256_old = ""
+
+                # Compute hash of new content (for journal + verification).
+                sha256_new = hashlib.sha256(content).hexdigest()
+
+                # 2e. Write new bytes to current.new{ext_new} (temp + fsync).
+                current_new_path = doc_dir / f"current.new{ext_new}"
+                _safe_write_bytes(current_new_path, content, mode=0o600)
+
+                # 2f. Write .intent.json with all the fields.
+                journal_payload = {
+                    "op": "update",
+                    "doc_id": doc_id,
+                    "from_version": from_version,
+                    "to_version": to_version,
+                    "ext_old": ext_old,
+                    "ext_new": ext_new,
+                    "sha256_old": sha256_old,
+                    "sha256_new": sha256_new,
+                    "rotate_version": rotate_version,
+                    "started_at": now,
+                }
+                _write_intent_journal(doc_dir, journal_payload)
+
+                # 2g. Write .highwater with the new version number
+                # (BEFORE content creation in history).
+                _write_highwater(history_dir, to_version)
+
+                # Step 3a: Archive current -> history/v{from_version}{ext_old}
+                # If absent or hash mismatch, stage to .partial, verify,
+                # os.replace. If destination has different hash: rename
+                # to v{N}.conflict-{ts}{ext} (r6/C3).
+                dest_path = history_dir / f"v{from_version}{ext_old}"
+                need_archive = True
+                if dest_path.is_file():
+                    try:
+                        if _hash_file(dest_path) == sha256_old:
+                            need_archive = False
+                    except OSError:
+                        pass
+
+                if need_archive and current_old.is_file():
+                    partial_path = history_dir / f".v{from_version}.partial{ext_old}"
+                    try:
+                        content_bytes = current_old.read_bytes()
+                        _safe_write_bytes(partial_path, content_bytes, mode=0o600)
+                        staged_hash = _hash_file(partial_path)
+                        if staged_hash != sha256_old:
+                            # Hash mismatch on staged file -- check
+                            # destination for conflict (r6/C3).
+                            if dest_path.is_file():
+                                ts = _timestamp_suffix()
+                                conflict_path = history_dir / f"v{from_version}.conflict-{ts}{ext_old}"
+                                os.replace(str(dest_path), str(conflict_path))
+                                logger.warning(
+                                    "History conflict at %s: existing file "
+                                    "hash differs. Renamed to %s (r6/C3).",
+                                    dest_path, conflict_path,
+                                )
+                            os.replace(str(partial_path), str(dest_path))
+                            _fsync_dir(history_dir)
                         else:
-                            raise
-                    history_file = doc_dir / "history" / f"v{version_count}{ext}"
-                    shutil.copy2(current_file, history_file)
-                    version_count += 1
+                            os.replace(str(partial_path), str(dest_path))
+                            _fsync_dir(history_dir)
+                    except Exception:
+                        try:
+                            partial_path.unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                        raise
 
-                if filename:
-                    new_ext = Path(filename).suffix.lower()
-                    if new_ext != ext:
-                        current_file.unlink(missing_ok=True)
-                        ext = new_ext
-                        current_file = doc_dir / f"current{ext}"
+                # Step 3b: Write v{from_version}.meta.json sidecar.
+                sidecar_path = history_dir / f"v{from_version}.meta.json"
+                if not sidecar_path.is_file():
+                    try:
+                        dest_stat = dest_path.stat()
+                        dest_size = dest_stat.st_size
+                    except OSError:
+                        dest_size = 0
+                    _write_sidecar(
+                        history_dir,
+                        version=from_version,
+                        doc_id=doc_id,
+                        ext=ext_old,
+                        size_bytes=dest_size,
+                        op="update",
+                        saved_at=now,
+                        author=author,
+                        session_id=session_id,
+                        note=note,
+                    )
 
-                current_file.write_bytes(content)
+                # Step 3c: If rotation happened, unlink rotated content
+                # file (already unlinked above), stamp rotated_at.
+                if rotated_versions:
+                    for rv in rotated_versions:
+                        _stamp_rotated_at(history_dir, rv)
 
-                # Re-extract text
-                extracted = extract_text(current_file)
-                (doc_dir / "extracted.txt").write_text(extracted, encoding="utf-8")
+                # Step 3d: Verify current.new hash, os.replace to
+                # current{ext_new}. If mismatch: orphan, delete journal,
+                # raise RecoveryAbortedError.
+                current_dest_path = doc_dir / f"current{ext_new}"
+                try:
+                    new_hash = _hash_file(current_new_path)
+                except OSError:
+                    new_hash = ""
+                if new_hash != sha256_new:
+                    ts = _timestamp_suffix()
+                    orphan_path = doc_dir / f"current.new.orphan-{ts}{ext_new}"
+                    try:
+                        os.replace(str(current_new_path), str(orphan_path))
+                    except OSError:
+                        orphan_path = current_new_path
+                    _delete_intent_journal(doc_dir)
+                    raise RecoveryAbortedError(
+                        f"current.new hash mismatch during update of "
+                        f"doc {doc_id}. Expected {sha256_new[:16]}..., "
+                        f"got {new_hash[:16]}... Orphan at: {orphan_path}. "
+                        f"Run vault_verify(doc_id='{doc_id}', repair=True)."
+                    )
+                os.replace(str(current_new_path), str(current_dest_path))
+                _fsync_dir(doc_dir)
 
+                # Step 3e: If ext changed, unlink current{ext_old}.
+                if ext_old and ext_new and ext_old != ext_new:
+                    old_current = doc_dir / f"current{ext_old}"
+                    if old_current.is_file():
+                        try:
+                            old_current.unlink()
+                        except Exception as exc:
+                            logger.warning(
+                                "Failed to unlink old current%s: %s",
+                                ext_old, exc,
+                            )
+
+                # Step 3f: Rewrite extracted.txt.
+                extracted = extract_text(current_dest_path)
+                _safe_write_bytes(
+                    doc_dir / "extracted.txt",
+                    extracted.encode("utf-8"),
+                    mode=0o600,
+                )
+
+                # Step 4: Rewrite metadata.json with _derived: true.
+                meta = {
+                    "id": doc_id,
+                    "vault_id": vault_id,
+                    "name": name if name is not None else doc_name,
+                    "original_filename": filename if filename else row["original_filename"],
+                    "file_extension": ext_new,
+                    "category": category if category is not None else row["category"],
+                    "priority": priority if priority is not None else row["priority"],
+                    "tags": tags if tags is not None else _parse_json_list(row["tags"]),
+                    "notes": notes if notes is not None else row["notes"],
+                    "created_at": row["created_at"],
+                    "updated_at": now,
+                    "file_size_bytes": len(content),
+                    "version_count": to_version,
+                    "_derived": True,
+                    "_comment": "Derived from DB. DB is source of truth.",
+                }
+                _safe_write_json(
+                    doc_dir / "metadata.json", meta, mode=0o600,
+                )
+
+                # Step 5: DB update + FTS + vault timestamp.
+                new_version_count = to_version
                 file_size = len(content)
-            else:
-                file_size = row["file_size_bytes"]
-                extracted = None
+                final_ext = ext_new
+            finally:
+                self._ctx_mgr.release(ctx)
 
-            # Build update query
-            updates = {"updated_at": now, "version_count": version_count}
-            if name is not None:
-                updates["name"] = name
-            if tags is not None:
-                updates["tags"] = json.dumps(tags)
-            if category is not None:
-                updates["category"] = category
-            if priority is not None:
-                updates["priority"] = priority
-            if notes is not None:
-                updates["notes"] = notes
-            if content is not None:
-                updates["file_size_bytes"] = file_size
-                updates["file_extension"] = ext
+            # DB update (outside the lock to avoid holding it during DB I/O).
+            with self._db() as conn:
+                updates = {
+                    "updated_at": now,
+                    "version_count": new_version_count,
+                    "file_size_bytes": file_size,
+                    "file_extension": final_ext,
+                }
+                if name is not None:
+                    updates["name"] = name
+                if tags is not None:
+                    updates["tags"] = json.dumps(tags)
+                if category is not None:
+                    updates["category"] = category
+                if priority is not None:
+                    updates["priority"] = priority
+                if notes is not None:
+                    updates["notes"] = notes
                 if filename:
                     updates["original_filename"] = filename
 
-            set_clause = ", ".join(f"{k} = ?" for k in updates)
-            values = list(updates.values()) + [doc_id]
-            conn.execute(
-                f"UPDATE documents SET {set_clause} WHERE id = ?", values
-            )
+                set_clause = ", ".join(f"{k} = ?" for k in updates)
+                values = list(updates.values()) + [doc_id]
+                conn.execute(
+                    f"UPDATE documents SET {set_clause} WHERE id = ?", values
+                )
 
-            # Update FTS index
-            conn.execute("DELETE FROM doc_fts WHERE doc_id = ?", (doc_id,))
-            final_name = name if name is not None else row["name"]
-            final_tags = tags if tags is not None else _parse_json_list(row["tags"])
-            final_notes = notes if notes is not None else row["notes"]
-            if extracted is None:
+                # Update FTS index
+                conn.execute("DELETE FROM doc_fts WHERE doc_id = ?", (doc_id,))
+                final_name = name if name is not None else doc_name
+                final_tags = tags if tags is not None else _parse_json_list(row["tags"])
+                final_notes = notes if notes is not None else row["notes"]
+                conn.execute(
+                    """INSERT INTO doc_fts (doc_id, vault_id, name, content, tags, notes)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (doc_id, vault_id, final_name, extracted,
+                     " ".join(final_tags), final_notes)
+                )
+
+                # Update vault timestamp
+                conn.execute(
+                    "UPDATE vaults SET updated_at = ? WHERE id = ?", (now, vault_id)
+                )
+
+                # Re-index co-occurrences and auto-link (best-effort)
+                try:
+                    _insert_doc_cooccurrences(conn, doc_id, final_name, final_tags, extracted)
+                    _auto_link_doc_cooccurrences(conn, doc_id)
+                except Exception:
+                    pass
+
+            # Step 6: Delete .intent.json.
+            _delete_intent_journal(doc_dir)
+
+        else:
+            # 3. Only metadata changed (no content).
+            file_size = row["file_size_bytes"]
+            extracted = None
+
+            with self._db() as conn:
+                updates = {"updated_at": now}
+                if name is not None:
+                    updates["name"] = name
+                if tags is not None:
+                    updates["tags"] = json.dumps(tags)
+                if category is not None:
+                    updates["category"] = category
+                if priority is not None:
+                    updates["priority"] = priority
+                if notes is not None:
+                    updates["notes"] = notes
+
+                set_clause = ", ".join(f"{k} = ?" for k in updates)
+                values = list(updates.values()) + [doc_id]
+                conn.execute(
+                    f"UPDATE documents SET {set_clause} WHERE id = ?", values
+                )
+
+                # Update FTS index
+                conn.execute("DELETE FROM doc_fts WHERE doc_id = ?", (doc_id,))
+                final_name = name if name is not None else doc_name
+                final_tags = tags if tags is not None else _parse_json_list(row["tags"])
+                final_notes = notes if notes is not None else row["notes"]
                 extracted_path = doc_dir / "extracted.txt"
                 extracted = extracted_path.read_text(encoding="utf-8") if extracted_path.exists() else ""
+                conn.execute(
+                    """INSERT INTO doc_fts (doc_id, vault_id, name, content, tags, notes)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (doc_id, vault_id, final_name, extracted,
+                     " ".join(final_tags), final_notes)
+                )
 
-            conn.execute(
-                """INSERT INTO doc_fts (doc_id, vault_id, name, content, tags, notes)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (doc_id, vault_id, final_name, extracted,
-                 " ".join(final_tags), final_notes)
+                # Update vault timestamp
+                conn.execute(
+                    "UPDATE vaults SET updated_at = ? WHERE id = ?", (now, vault_id)
+                )
+
+                # Re-index co-occurrences and auto-link (best-effort)
+                try:
+                    _insert_doc_cooccurrences(conn, doc_id, final_name, final_tags, extracted)
+                    _auto_link_doc_cooccurrences(conn, doc_id)
+                except Exception:
+                    pass
+
+            # Rewrite metadata.json with _derived: true.
+            meta = {
+                "id": doc_id,
+                "vault_id": vault_id,
+                "name": final_name,
+                "original_filename": row["original_filename"],
+                "file_extension": ext_old,
+                "category": category if category is not None else row["category"],
+                "priority": priority if priority is not None else row["priority"],
+                "tags": final_tags,
+                "notes": final_notes,
+                "created_at": row["created_at"],
+                "updated_at": now,
+                "file_size_bytes": file_size,
+                "version_count": version_count,
+                "_derived": True,
+                "_comment": "Derived from DB. DB is source of truth.",
+            }
+            _safe_write_json(
+                doc_dir / "metadata.json", meta, mode=0o600,
             )
 
-            # Update vault timestamp
-            conn.execute(
-                "UPDATE vaults SET updated_at = ? WHERE id = ?", (now, vault_id)
-            )
-
-            # Re-index co-occurrences and auto-link (best-effort)
-            try:
-                _insert_doc_cooccurrences(conn, doc_id, final_name, final_tags, extracted)
-                _auto_link_doc_cooccurrences(conn, doc_id)
-            except Exception:
-                pass
-
+        # Post-DB: Lance indexing + cross-product linking.
         if content is not None or name is not None:
             self._lance_write_safe(doc_id, vault_id, final_name, extracted)
             # Phase 2a: embedding-based auto-link (Pro only, errors never propagate)
@@ -1885,6 +2240,7 @@ class VaultStorage:
                 self.cross_link_doc(doc_id, vault_id)
             except Exception:
                 pass
+
         # Return fresh metadata
         result = self.get_document(doc_id)
         if version_rotated and result:
@@ -1910,14 +2266,20 @@ class VaultStorage:
         return deleted
 
     def get_document(self, doc_id: str) -> Optional[Dict[str, Any]]:
-        """Get document metadata by ID."""
+        """Get document metadata by ID.
+
+        Includes a ``divergence`` field (r6/SH-100432): None if the
+        version history is clean, or a dict with ``kind``, ``detail``,
+        and ``remedy`` keys if divergence is detected.  For reads,
+        divergence is reported but does not block (r6/H2).
+        """
         with self._db() as conn:
             row = conn.execute(
                 "SELECT * FROM documents WHERE id = ? AND deleted = 0", (doc_id,)
             ).fetchone()
             if not row:
                 return None
-            return {
+            result = {
                 "id": row["id"],
                 "vault_id": row["vault_id"],
                 "name": row["name"],
@@ -1932,6 +2294,27 @@ class VaultStorage:
                 "file_size_bytes": row["file_size_bytes"],
                 "version_count": row["version_count"],
             }
+
+        # r6: report divergence for reads (non-blocking).
+        divergence = None
+        try:
+            ctx = self._ctx_mgr.acquire(
+                doc_id, row["vault_id"], row["file_extension"],
+                row["version_count"], write=False,
+            )
+            try:
+                divergence = ctx.divergence
+            finally:
+                self._ctx_mgr.release(ctx)
+        except Exception as exc:
+            # On any lock/divergence error during a read, report None
+            # rather than blocking the read.  The caller can use
+            # vault_verify to inspect.
+            logger.debug(
+                "divergence check failed for doc %s: %s", doc_id, exc,
+            )
+        result["divergence"] = divergence
+        return result
 
     def get_document_content(self, doc_id: str) -> Optional[str]:
         """Read the extracted text content of a document."""
@@ -2362,39 +2745,631 @@ class VaultStorage:
     # Version history
     # -------------------------------------------------------------------
 
-    def get_doc_history(self, doc_id: str) -> Optional[List[Dict[str, Any]]]:
-        """Get version history for a document. Returns list of versions."""
+    def get_doc_history(self, doc_id: str) -> Optional[Dict[str, Any]]:
+        """Get version history for a document. Returns list of versions.
+
+        Implements the r6 proposal (SH-100432):
+        1. Read DB row for vault_id, file_extension, version_count.
+        2. Acquire _doc_context (write=False) -- reads hold lock in
+           shared mode.
+        3. Glob history/v* content files and v{N}.meta.json sidecars.
+        4. For each version number 1..max_evidenced:
+           - content file exists: status="present", read sidecar for
+             annotation.
+           - no content file but sidecar has rotated_at: status="rotated".
+           - no content file and no rotation record: status="missing".
+        5. Mark current version (highest present content file ==
+           current{ext}).
+        6. Include divergence field from DocContext.
+        7. Fix the file_size_bytes=0 bug for current version.
+        """
         with self._db() as conn:
             row = conn.execute(
-                "SELECT vault_id, file_extension, version_count FROM documents WHERE id = ? AND deleted = 0",
+                "SELECT vault_id, file_extension, version_count, "
+                "file_size_bytes FROM documents "
+                "WHERE id = ? AND deleted = 0",
                 (doc_id,)
             ).fetchone()
             if not row:
                 return None
+            vault_id = row["vault_id"]
+            ext = row["file_extension"]
+            version_count = row["version_count"]
+            db_file_size = row["file_size_bytes"]
 
-            history_dir = self.vaults_dir / row["vault_id"] / "docs" / doc_id / "history"
-            versions = []
-            for i in range(1, row["version_count"]):
-                version_file = history_dir / f"v{i}{row['file_extension']}"
-                if version_file.exists():
-                    stat = version_file.stat()
-                    versions.append({
-                        "version": i,
-                        "file_size_bytes": stat.st_size,
-                        "modified_at": datetime.fromtimestamp(
-                            stat.st_mtime, tz=timezone.utc
-                        ).isoformat(),
-                    })
+        doc_dir = self.vaults_dir / vault_id / "docs" / doc_id
+        history_dir = doc_dir / "history"
 
-            # Current version
-            versions.append({
-                "version": row["version_count"],
-                "file_size_bytes": 0,  # will be filled from db
+        # 2. Acquire _doc_context (write=False) for divergence check.
+        divergence = None
+        try:
+            ctx = self._ctx_mgr.acquire(
+                doc_id, vault_id, ext, version_count, write=False,
+            )
+            try:
+                divergence = ctx.divergence
+            finally:
+                self._ctx_mgr.release(ctx)
+        except Exception as exc:
+            # On lock/divergence error during a read, report None.
+            logger.debug(
+                "divergence check failed for doc %s history: %s",
+                doc_id, exc,
+            )
+
+        # 3. Glob content files and sidecars.
+        content_files = _content_file_glob(history_dir)
+        sidecar_files = _sidecar_glob(history_dir)
+
+        # Build version-number -> content_file and version_number ->
+        # sidecar maps.
+        content_map: Dict[int, Path] = {}
+        for cf in content_files:
+            v = _parse_version_number(cf.name)
+            if v is not None:
+                content_map[v] = cf
+
+        sidecar_map: Dict[int, Path] = {}
+        for sc in sidecar_files:
+            v = _parse_version_number(sc.name)
+            if v is not None:
+                sidecar_map[v] = sc
+
+        # 4. Determine max_evidenced version number.
+        all_evidenced = _all_evidenced_numbers(history_dir)
+        max_evidenced = max(all_evidenced) if all_evidenced else 0
+        # Include the current version (from DB) in the range.
+        check_max = max(max_evidenced, version_count)
+
+        versions: List[Dict[str, Any]] = []
+        current_version_number = version_count
+
+        for v in range(1, check_max + 1):
+            cf = content_map.get(v)
+            sc_path = sidecar_map.get(v)
+
+            if cf is not None:
+                # Content file exists: status="present".
+                try:
+                    stat_info = cf.stat()
+                    size = stat_info.st_size
+                    mtime = datetime.fromtimestamp(
+                        stat_info.st_mtime, tz=timezone.utc
+                    ).isoformat()
+                except OSError:
+                    size = 0
+                    mtime = self._now()
+
+                entry: Dict[str, Any] = {
+                    "version": v,
+                    "status": "present",
+                    "file_size_bytes": size,
+                    "modified_at": mtime,
+                }
+
+                # Read sidecar for annotation (non-blocking on code paths).
+                if sc_path is not None:
+                    sc = _validate_sidecar(sc_path, v)
+                    if sc is not None:
+                        entry["annotation"] = {
+                            "saved_at": sc.get("saved_at"),
+                            "author": sc.get("author"),
+                            "session_id": sc.get("session_id"),
+                            "note": sc.get("note"),
+                            "op": sc.get("op"),
+                            "provenance": sc.get("provenance"),
+                        }
+
+                # Check if this is the current version.
+                current_path = doc_dir / f"current{ext}"
+                if cf.resolve() == current_path.resolve():
+                    entry["current"] = True
+                    current_version_number = v
+                versions.append(entry)
+
+            elif sc_path is not None:
+                # No content file but sidecar exists.
+                sc = _validate_sidecar(sc_path, v)
+                if sc is not None and sc.get("rotated_at"):
+                    # Rotated version.
+                    entry = {
+                        "version": v,
+                        "status": "rotated",
+                        "file_size_bytes": sc.get("size_bytes", 0),
+                        "modified_at": sc.get("rotated_at"),
+                        "annotation": {
+                            "saved_at": sc.get("saved_at"),
+                            "author": sc.get("author"),
+                            "session_id": sc.get("session_id"),
+                            "note": sc.get("note"),
+                            "op": sc.get("op"),
+                            "provenance": sc.get("provenance"),
+                            "rotated_at": sc.get("rotated_at"),
+                        },
+                    }
+                else:
+                    # Sidecar exists but no rotation record.
+                    entry = {
+                        "version": v,
+                        "status": "missing",
+                        "file_size_bytes": sc.get("size_bytes", 0) if sc else 0,
+                        "modified_at": sc.get("saved_at") if sc else self._now(),
+                    }
+                    if sc is not None:
+                        entry["annotation"] = {
+                            "saved_at": sc.get("saved_at"),
+                            "author": sc.get("author"),
+                            "session_id": sc.get("session_id"),
+                            "note": sc.get("note"),
+                            "op": sc.get("op"),
+                            "provenance": sc.get("provenance"),
+                        }
+                versions.append(entry)
+
+            else:
+                # No content file and no sidecar.
+                versions.append({
+                    "version": v,
+                    "status": "missing",
+                    "file_size_bytes": 0,
+                    "modified_at": self._now(),
+                })
+
+        # 5. Ensure the current version is marked. The current version
+        # is the one whose content file matches current{ext}. If no
+        # history content file matches (e.g., version_count is ahead),
+        # add the current version from DB.
+        has_current = any(e.get("current") for e in versions)
+        if not has_current:
+            # The current version is version_count (from DB).
+            # Fix the file_size_bytes=0 bug: use the DB value.
+            current_entry = {
+                "version": version_count,
+                "status": "present",
+                "file_size_bytes": db_file_size,
                 "modified_at": self._now(),
                 "current": True,
+            }
+            # Check if there's already an entry for this version.
+            found = False
+            for e in versions:
+                if e["version"] == version_count:
+                    e["current"] = True
+                    e["file_size_bytes"] = db_file_size
+                    e["status"] = "present"
+                    found = True
+                    break
+            if not found:
+                versions.append(current_entry)
+
+        # 6. Include divergence field.
+        result = {
+            "versions": versions,
+            "divergence": divergence,
+        }
+        return result
+
+    # -------------------------------------------------------------------
+    # Vault verification (r6 / SH-100432)
+    # -------------------------------------------------------------------
+
+    def verify_document(self, doc_id: str, repair: bool = False,
+                        confirm: Optional[str] = None) -> str:
+        """Read-only verification of a single document's version history.
+
+        Reports: stale journals, recovery orphans, missing/invalid/too-new
+        sidecars, missing versions, annotation disagreements,
+        version_count drift, divergence, unrecognized files, conflict
+        files, permissions advisory.
+
+        repair=True: replay stale journals, move invalid/too-new sidecars
+        aside, realign version_count. Never deletes content. Never
+        overwrites.
+
+        confirm gates: 'history-loss', 'history-jump', 'history-rollback',
+        'history-holes', 'lock-unusable'. Each writes a marker file and
+        removes nothing.
+
+        Returns a human-readable report string.
+        """
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT vault_id, file_extension, version_count, name "
+                "FROM documents WHERE id = ? AND deleted = 0",
+                (doc_id,)
+            ).fetchone()
+            if not row:
+                return f"Document {doc_id} not found."
+            vault_id = row["vault_id"]
+            ext = row["file_extension"]
+            version_count = row["version_count"]
+            doc_name = row["name"]
+
+        doc_dir = self.vaults_dir / vault_id / "docs" / doc_id
+        history_dir = doc_dir / "history"
+
+        report_lines: List[str] = []
+        report_lines.append(f"Verify document: {doc_id} ('{doc_name}')")
+        report_lines.append(f"  vault_id: {vault_id}")
+        report_lines.append(f"  ext: {ext}, version_count (DB): {version_count}")
+        report_lines.append("")
+
+        # 1. Check for stale intent journal.
+        journal = _read_intent_journal(doc_dir)
+        if journal is not None:
+            report_lines.append(
+                "  [ISSUE] Stale intent journal found (.intent.json)."
+            )
+            report_lines.append(
+                f"    op={journal.get('op')}, "
+                f"from_version={journal.get('from_version')}, "
+                f"to_version={journal.get('to_version')}"
+            )
+            if repair:
+                # Replay the journal via DocContextManager.
+                try:
+                    ctx = self._ctx_mgr.acquire(
+                        doc_id, vault_id, ext, version_count, write=True,
+                    )
+                    try:
+                        # The acquire() already replays the journal.
+                        report_lines.append(
+                            "  [REPAIR] Journal replayed during acquire."
+                        )
+                    finally:
+                        self._ctx_mgr.release(ctx)
+                except Exception as exc:
+                    report_lines.append(
+                        f"  [REPAIR] Journal replay failed: {exc}"
+                    )
+            report_lines.append("")
+
+        # 2. Check for recovery orphans.
+        orphan_files = []
+        if doc_dir.is_dir():
+            for entry in doc_dir.iterdir():
+                if "current.new.orphan-" in entry.name:
+                    orphan_files.append(entry.name)
+        if orphan_files:
+            report_lines.append(
+                f"  [ISSUE] Recovery orphan(s) found: {orphan_files}"
+            )
+            report_lines.append(
+                "    These are unattributable current.new bytes from a "
+                "failed update. Review and remove manually if not needed."
+            )
+            report_lines.append("")
+
+        # 3. Check lock health.
+        lock_path = doc_dir / ".lock"
+        if lock_path.exists():
+            if not _check_lock_health(lock_path):
+                report_lines.append(
+                    f"  [ISSUE] Lock file at {lock_path} is malformed."
+                )
+                if confirm == "lock-unusable" and repair:
+                    ts = _timestamp_suffix()
+                    unusable_path = doc_dir / f".lock.unusable-{ts}"
+                    try:
+                        os.replace(str(lock_path), str(unusable_path))
+                        report_lines.append(
+                            f"  [REPAIR] Renamed malformed lock to {unusable_path.name}."
+                        )
+                    except OSError as exc:
+                        report_lines.append(
+                            f"  [REPAIR FAILED] Could not rename lock: {exc}"
+                        )
+            report_lines.append("")
+
+        # 4. Acquire context (read-only) for divergence check.
+        divergence = None
+        try:
+            ctx = self._ctx_mgr.acquire(
+                doc_id, vault_id, ext, version_count, write=False,
+            )
+            try:
+                divergence = ctx.divergence
+                fs_max = ctx.fs_max
+                sidecar_max = ctx.sidecar_max
+                highwater = ctx.highwater
+                reset_floor = ctx.reset_floor
+            finally:
+                self._ctx_mgr.release(ctx)
+        except Exception as exc:
+            report_lines.append(f"  [ISSUE] Could not acquire context: {exc}")
+            fs_max = _fs_max_version(history_dir)
+            sidecar_max = _sidecar_max_version(history_dir)
+            highwater = _read_highwater(history_dir)
+            reset_floor = _read_reset_floor(doc_dir)
+
+        report_lines.append(
+            f"  Identity sources: fs_max={fs_max}, sidecar_max={sidecar_max}, "
+            f"highwater={highwater}, reset_floor={reset_floor}, "
+            f"db_count={version_count}"
+        )
+
+        # 5. Report divergence.
+        if divergence is not None:
+            report_lines.append(
+                f"  [DIVERGENCE] kind={divergence['kind']}"
+            )
+            report_lines.append(f"    detail: {divergence['detail']}")
+            report_lines.append(f"    remedy: {divergence['remedy']}")
+
+            # Confirm-gated repairs for divergence.
+            if repair and confirm == divergence["kind"]:
+                if divergence["kind"] in (
+                    "history-loss", "history-jump", "history-rollback",
+                    "history-holes",
+                ):
+                    # Write a .history_reset.json marker file.
+                    reset_data = {
+                        "observed_fs_max": fs_max,
+                        "db_version_count": version_count,
+                        "direction": divergence["kind"],
+                        "reset_at": self._now(),
+                        "confirm": confirm,
+                    }
+                    reset_path = doc_dir / ".history_reset.json"
+                    _safe_write_json(reset_path, reset_data, mode=0o600)
+                    report_lines.append(
+                        f"  [REPAIR] Wrote {reset_path.name} with floor="
+                        f"{max(fs_max, version_count)}."
+                    )
+        else:
+            report_lines.append("  [OK] No divergence detected.")
+        report_lines.append("")
+
+        # 6. Check sidecars.
+        sidecars = _sidecar_glob(history_dir)
+        for sc_path in sidecars:
+            v = _parse_version_number(sc_path.name)
+            if v is None:
+                continue
+            sc = _validate_sidecar(sc_path, v)
+            if sc is None:
+                report_lines.append(
+                    f"  [ISSUE] Invalid sidecar: {sc_path.name}"
+                )
+                if repair:
+                    ts = _timestamp_suffix()
+                    invalid_path = history_dir / f"{sc_path.name}.invalid-{ts}"
+                    try:
+                        os.replace(str(sc_path), str(invalid_path))
+                        report_lines.append(
+                            f"  [REPAIR] Moved invalid sidecar to {invalid_path.name}."
+                        )
+                    except OSError as exc:
+                        report_lines.append(
+                            f"  [REPAIR FAILED] {exc}"
+                        )
+
+            # Check for too-new sidecars (version > max_evidenced + 1).
+            if v > max(fs_max, sidecar_max, version_count) + 1:
+                report_lines.append(
+                    f"  [ISSUE] Too-new sidecar: {sc_path.name} "
+                    f"(version {v} exceeds observed max + 1)"
+                )
+                if repair:
+                    ts = _timestamp_suffix()
+                    superseded_path = history_dir / f"{sc_path.name}.superseded-{ts}"
+                    try:
+                        os.replace(str(sc_path), str(superseded_path))
+                    except OSError as exc:
+                        report_lines.append(
+                            f"  [REPAIR FAILED] {exc}"
+                        )
+        report_lines.append("")
+
+        # 7. Check for missing versions (holes).
+        all_evidenced = _all_evidenced_numbers(history_dir)
+        check_max = max(fs_max, sidecar_max, version_count)
+        missing = [n for n in range(1, check_max + 1) if n not in all_evidenced]
+        if missing:
+            if len(missing) <= 20:
+                missing_str = ", ".join(str(n) for n in missing)
+            else:
+                missing_str = ", ".join(str(n) for n in missing[:20]) + "..."
+            report_lines.append(
+                f"  [ISSUE] Missing version numbers: [{missing_str}]"
+            )
+        report_lines.append("")
+
+        # 8. Check for conflict files.
+        if history_dir.is_dir():
+            conflicts = [
+                f.name for f in history_dir.iterdir()
+                if ".conflict-" in f.name
+            ]
+            if conflicts:
+                report_lines.append(
+                    f"  [ISSUE] Conflict files in history: {conflicts}"
+                )
+                report_lines.append(
+                    "    These are byte sequences that differed from the "
+                    "journal. Review and remove manually if not needed."
+                )
+        report_lines.append("")
+
+        # 9. Check for unrecognized files in history.
+        if history_dir.is_dir():
+            # Import the regexes from version_storage for pattern matching.
+            from .version_storage import _RE_CONTENT_FILE, _RE_SIDECAR_FILE
+            infra_names = {".highwater"}
+            for entry in history_dir.iterdir():
+                if entry.name.startswith("."):
+                    if entry.name not in infra_names and not entry.name.startswith(".v"):
+                        report_lines.append(
+                            f"  [WARN] Unrecognized dot-file in history: {entry.name}"
+                        )
+                    continue
+                if not _RE_CONTENT_FILE.match(entry.name) and not _RE_SIDECAR_FILE.match(entry.name):
+                    if ".conflict-" not in entry.name and ".invalid-" not in entry.name:
+                        report_lines.append(
+                            f"  [WARN] Unrecognized file in history: {entry.name}"
+                        )
+        report_lines.append("")
+
+        # 10. version_count drift check.
+        if fs_max > version_count + 1:
+            report_lines.append(
+                f"  [ISSUE] version_count drift: DB={version_count}, "
+                f"fs_max={fs_max}. DB is behind the filesystem."
+            )
+            if repair:
+                # Realign version_count to fs_max.
+                with self._db() as conn:
+                    conn.execute(
+                        "UPDATE documents SET version_count = ? WHERE id = ?",
+                        (fs_max, doc_id),
+                    )
+                report_lines.append(
+                    f"  [REPAIR] Realigned version_count to {fs_max}."
+                )
+        report_lines.append("")
+
+        # 11. Permissions advisory (macOS).
+        if platform.system() == "Darwin":
+            report_lines.append(
+                "  [INFO] macOS: ensure vault directory is not under "
+                "a cloud-synced path (iCloud, Dropbox, OneDrive, "
+                "Google Drive). Cloud sync can split writes and roll "
+                "back version history."
+            )
+
+        return "\n".join(report_lines)
+
+    def verify_vault(self, vault_id: str, repair: bool = False,
+                     confirm: Optional[str] = None) -> str:
+        """Verify all documents in a vault. Calls verify_document for each.
+
+        Returns a human-readable report string.
+        """
+        with self._db() as conn:
+            rows = conn.execute(
+                "SELECT id, name FROM documents WHERE vault_id = ? AND deleted = 0",
+                (vault_id,)
+            ).fetchall()
+
+        if not rows:
+            return f"Vault {vault_id} has no documents or was not found."
+
+        report_lines: List[str] = []
+        report_lines.append(f"Vault verification: {vault_id}")
+        report_lines.append(f"  Documents: {len(rows)}")
+        report_lines.append("")
+
+        for row in rows:
+            doc_report = self.verify_document(
+                row["id"], repair=repair, confirm=confirm
+            )
+            report_lines.append(doc_report)
+            report_lines.append("-" * 40)
+
+        return "\n".join(report_lines)
+
+    def pre_upgrade_scan(self, vault_id: str) -> str:
+        """Read-only pre-upgrade scan. Records .upgrade_scan.json.
+
+        No code branches on the scan result. The scan is recorded for
+        manual review before a LoreDocs version upgrade.
+        """
+        with self._db() as conn:
+            rows = conn.execute(
+                "SELECT id, name, file_extension, version_count "
+                "FROM documents WHERE vault_id = ? AND deleted = 0",
+                (vault_id,)
+            ).fetchall()
+
+        scan_entries: List[Dict[str, Any]] = []
+        for row in rows:
+            doc_id = row["id"]
+            ext = row["file_extension"]
+            version_count = row["version_count"]
+            doc_dir = self.vaults_dir / vault_id / "docs" / doc_id
+            history_dir = doc_dir / "history"
+
+            divergence = None
+            try:
+                ctx = self._ctx_mgr.acquire(
+                    doc_id, vault_id, ext, version_count, write=False,
+                )
+                try:
+                    divergence = ctx.divergence
+                    fs_max = ctx.fs_max
+                    sidecar_max = ctx.sidecar_max
+                    highwater = ctx.highwater
+                finally:
+                    self._ctx_mgr.release(ctx)
+            except Exception:
+                divergence = None
+                fs_max = _fs_max_version(history_dir)
+                sidecar_max = _sidecar_max_version(history_dir)
+                highwater = _read_highwater(history_dir)
+
+            # Check for stale journal.
+            has_journal = (doc_dir / ".intent.json").is_file()
+
+            # Check for orphans.
+            orphans = []
+            if doc_dir.is_dir():
+                orphans = [
+                    f.name for f in doc_dir.iterdir()
+                    if "orphan-" in f.name
+                ]
+
+            scan_entries.append({
+                "doc_id": doc_id,
+                "name": row["name"],
+                "version_count": version_count,
+                "fs_max": fs_max,
+                "sidecar_max": sidecar_max,
+                "highwater": highwater,
+                "divergence": divergence,
+                "has_stale_journal": has_journal,
+                "orphans": orphans,
             })
 
-            return versions
+        scan_data = {
+            "vault_id": vault_id,
+            "scanned_at": self._now(),
+            "documents": scan_entries,
+        }
+
+        # Write .upgrade_scan.json in the vault root.
+        vault_root = self.vaults_dir / vault_id
+        scan_path = vault_root / ".upgrade_scan.json"
+        _safe_write_json(scan_path, scan_data, mode=0o600)
+
+        report_lines: List[str] = []
+        report_lines.append(f"Pre-upgrade scan for vault {vault_id}")
+        report_lines.append(f"  Documents scanned: {len(scan_entries)}")
+        report_lines.append(f"  Scan recorded at: {scan_path}")
+        issues = 0
+        for entry in scan_entries:
+            if entry["divergence"] or entry["has_stale_journal"] or entry["orphans"]:
+                issues += 1
+                report_lines.append(
+                    f"  [ATTENTION] doc {entry['doc_id']} ('{entry['name']}')"
+                )
+                if entry["divergence"]:
+                    report_lines.append(
+                        f"    divergence: {entry['divergence']['kind']}"
+                    )
+                if entry["has_stale_journal"]:
+                    report_lines.append("    stale journal: yes")
+                if entry["orphans"]:
+                    report_lines.append(f"    orphans: {entry['orphans']}")
+        if issues == 0:
+            report_lines.append("  No issues found.")
+        else:
+            report_lines.append(f"  Total documents needing attention: {issues}")
+        report_lines.append("")
+        report_lines.append(
+            "This scan is read-only. No code branches on its results."
+        )
+
+        return "\n".join(report_lines)
 
     # -------------------------------------------------------------------
     # Cross-vault operations
@@ -2476,29 +3451,41 @@ class VaultStorage:
 
         return imported
 
-    def export_vault(self, vault_id: str, output_dir: Path) -> int:
+    def export_vault(self, vault_id: str, output_dir: Path,
+                     include_history: bool = False) -> int:
         """Export all current documents from a vault to a directory.
         Returns number of files exported.
+
+        When include_history=True (r6/SH-100432):
+        - Export each document's history/ directory alongside current.
+        - Include v{N}.meta.json sidecars.
+        - Write an export_manifest.json with divergence info per document.
         """
         output_dir.mkdir(parents=True, exist_ok=True)
         count = 0
 
+        # Collect divergence info for the export manifest.
+        manifest_entries: List[Dict[str, Any]] = []
+
         with self._db() as conn:
             rows = conn.execute(
-                "SELECT id, original_filename, file_extension FROM documents WHERE vault_id = ? AND deleted = 0",
+                "SELECT id, original_filename, file_extension, version_count "
+                "FROM documents WHERE vault_id = ? AND deleted = 0",
                 (vault_id,)
             ).fetchall()
 
             real_output_dir = os.path.realpath(str(output_dir))
             for row in rows:
-                raw_path = self.vaults_dir / vault_id / "docs" / row["id"] / f"current{row['file_extension']}"
+                doc_id = row["id"]
+                ext = row["file_extension"]
+                raw_path = self.vaults_dir / vault_id / "docs" / doc_id / f"current{ext}"
                 if raw_path.exists():
                     # OPP-006: Sanitize original_filename to a plain basename before
                     # constructing the destination path, then confirm it stays inside
                     # output_dir (guards against stored traversal sequences).
                     safe_export_name = os.path.basename(row["original_filename"])
                     if not safe_export_name:
-                        safe_export_name = f"{row['id']}{row['file_extension']}"
+                        safe_export_name = f"{doc_id}{ext}"
                     dest = output_dir / safe_export_name
                     real_dest = os.path.realpath(str(dest))
                     if not real_dest.startswith(real_output_dir + os.sep):
@@ -2507,10 +3494,64 @@ class VaultStorage:
                     counter = 1
                     while dest.exists():
                         stem = Path(safe_export_name).stem
-                        dest = output_dir / f"{stem}_{counter}{row['file_extension']}"
+                        dest = output_dir / f"{stem}_{counter}{ext}"
                         counter += 1
                     shutil.copy2(raw_path, dest)
                     count += 1
+
+                    if include_history:
+                        # Export the history/ directory alongside current.
+                        history_dir = self.vaults_dir / vault_id / "docs" / doc_id / "history"
+                        if history_dir.is_dir():
+                            # Create a per-doc history subdirectory.
+                            stem = Path(safe_export_name).stem
+                            doc_history_dest = output_dir / f"{stem}_history"
+                            hist_counter = 1
+                            while doc_history_dest.exists():
+                                doc_history_dest = output_dir / f"{stem}_history_{hist_counter}"
+                                hist_counter += 1
+                            doc_history_dest.mkdir(parents=True, exist_ok=True)
+
+                            # Copy content files and sidecars.
+                            for cf in _content_file_glob(history_dir):
+                                shutil.copy2(cf, doc_history_dest / cf.name)
+                            for sc in _sidecar_glob(history_dir):
+                                shutil.copy2(sc, doc_history_dest / sc.name)
+
+                            # Copy infrastructure files (.highwater).
+                            hw_path = history_dir / ".highwater"
+                            if hw_path.is_file():
+                                shutil.copy2(hw_path, doc_history_dest / ".highwater")
+
+                        # Collect divergence info for the manifest.
+                        divergence = None
+                        try:
+                            ctx = self._ctx_mgr.acquire(
+                                doc_id, vault_id, ext,
+                                row["version_count"], write=False,
+                            )
+                            try:
+                                divergence = ctx.divergence
+                            finally:
+                                self._ctx_mgr.release(ctx)
+                        except Exception:
+                            divergence = None
+
+                        manifest_entries.append({
+                            "doc_id": doc_id,
+                            "original_filename": safe_export_name,
+                            "version_count": row["version_count"],
+                            "divergence": divergence,
+                        })
+
+        if include_history and manifest_entries:
+            manifest_path = output_dir / "export_manifest.json"
+            manifest = {
+                "vault_id": vault_id,
+                "exported_at": self._now(),
+                "documents": manifest_entries,
+            }
+            _safe_write_json(manifest_path, manifest, mode=0o600)
 
         return count
 

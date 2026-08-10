@@ -33,6 +33,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .storage import (
     VaultStorage, CROSS_LINK_SCHEMA_VERSION, discover_product_db, DiscoveryError,
     _CROSS_LINK_EMBEDDING_MODEL,
+    HistoryDivergedError, RecoveryAbortedError, DocumentLockedError,
+    LockUnusableError, HistoryBudgetExceededError,
 )
 from .tiers import (
     LOREDOCS_UPGRADE_URL,
@@ -886,6 +888,16 @@ async def vault_info(
     if vault["linked_projects"]:
         lines.append(f"- **Linked projects:** {', '.join(vault['linked_projects'])}")
 
+    # r6 integrity line: check if any documents need attention
+    try:
+        verify_result = storage.verify_vault(vault["id"], repair=False)
+        needs_attention = "needs attention" in verify_result or "DIVERGENCE" in verify_result
+        if needs_attention:
+            doc_count = vault["doc_count"]
+            lines.append(f"- **History integrity:** {doc_count} document(s) need attention -- run vault_verify")
+    except Exception:
+        pass  # Don't block vault_info if verify fails
+
     if vault["documents"]:
         lines.append("")
         lines.append("## Documents")
@@ -1196,6 +1208,9 @@ class DocUpdateInput(BaseModel):
     category: Optional[DocCategory] = Field(default=None, description="New category")
     priority: Optional[DocPriority] = Field(default=None, description="New priority/status")
     notes: Optional[str] = Field(default=None, description="New notes")
+    author: Optional[str] = Field(default=None, description="Author of this change (stored in version metadata, max 128 chars)", max_length=128)
+    session_id: Optional[str] = Field(default=None, description="Session ID for provenance tracking (max 64 chars, alphanumeric/._:-)", max_length=64)
+    note: Optional[str] = Field(default=None, description="Change note for this version (stored in version metadata, max 2000 chars)", max_length=2000)
 
 
 @mcp.tool(
@@ -1212,13 +1227,20 @@ async def vault_update_doc(
     category: Optional[DocCategory] = None,
     priority: Optional[DocPriority] = None,
     notes: Optional[str] = None,
+    author: Optional[str] = None,
+    session_id: Optional[str] = None,
+    note: Optional[str] = None,
 ) -> str:
     """Update a document's content or metadata.
 
     If content changes, the previous version is saved automatically in the
     version history. You can restore old versions with vault_doc_restore.
+    The author, session_id, and note params are stored in the version's
+    metadata sidecar for provenance tracking.
     """
-    params = DocUpdateInput(doc_id=doc_id, content=content, name=name, tags=tags, category=category, priority=priority, notes=notes)
+    params = DocUpdateInput(doc_id=doc_id, content=content, name=name, tags=tags,
+                            category=category, priority=priority, notes=notes,
+                            author=author, session_id=session_id, note=note)
     storage = _get_storage(ctx)
     content_bytes = params.content.encode("utf-8") if params.content else None
     result = storage.update_document(
@@ -1229,6 +1251,9 @@ async def vault_update_doc(
         category=params.category.value if params.category else None,
         priority=params.priority.value if params.priority else None,
         notes=params.notes,
+        author=params.author,
+        session_id=params.session_id,
+        note=params.note,
     )
     if result:
         return json.dumps(result, indent=2)
@@ -1817,9 +1842,43 @@ async def vault_doc_restore(ctx: Context, doc_id: str, version: int) -> str:
     vault_id = doc["vault_id"]
     ext = doc["file_extension"]
     doc_dir = storage.vaults_dir / vault_id / "docs" / params.doc_id
-    version_file = doc_dir / "history" / f"v{params.version}{ext}"
+    history_dir = doc_dir / "history"
 
-    if not version_file.exists():
+    # P5/r6 fix: resolve the version file by globbing history/v{N}.* 
+    # (excluding .meta.json sidecars) instead of assuming the current ext.
+    import glob as _glob
+    pattern = str(history_dir / f"v{params.version}.*")
+    candidates = [
+        Path(p) for p in _glob.glob(pattern)
+        if not p.endswith(".meta.json")
+        and ".partial" not in p
+        and ".conflict" not in p
+        and ".invalid" not in p
+        and ".superseded" not in p
+    ]
+    version_file = None
+    for c in candidates:
+        # Verify it's a content file (not a sidecar or other dotfile)
+        name = c.name
+        # Must match v{N}{.ext} pattern
+        if re.match(rf"^v{params.version}\.[A-Za-z0-9]{{1,10}}$", name):
+            version_file = c
+            break
+
+    if not version_file or not version_file.exists():
+        # Check if it was rotated
+        sidecar_path = history_dir / f"v{params.version}.meta.json"
+        if sidecar_path.exists():
+            try:
+                sidecar = json.loads(sidecar_path.read_text())
+                if sidecar.get("rotated_at"):
+                    return (
+                        f"Error: Version {params.version} of document "
+                        f"'{params.doc_id}' was rotated (removed by retention). "
+                        f"Rotated at: {sidecar['rotated_at']}."
+                    )
+            except Exception:
+                pass
         return f"Error: Version {params.version} not found for document '{params.doc_id}'."
 
     content = version_file.read_bytes()
@@ -1831,6 +1890,106 @@ async def vault_doc_restore(ctx: Context, doc_id: str, version: int) -> str:
     if result:
         return f"Document '{doc['name']}' restored to version {params.version}. Previous content saved as v{doc['version_count']}."
     return "Error: Could not restore version."
+
+
+# ===================================================================
+# VAULT VERIFY (r6 / SH-100432)
+# ===================================================================
+
+class VaultVerifyInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    vault: Optional[str] = Field(default=None, description="Vault ID or name to verify. If omitted, verifies all vaults.")
+    doc_id: Optional[str] = Field(default=None, description="Specific document ID to verify. If omitted, verifies all documents in the vault.")
+    repair: bool = Field(default=False, description="If True, performs additive repairs (replay stale journals, move invalid sidecars aside, realign version_count). Never deletes content.")
+    confirm: Optional[str] = Field(default=None, description="Consent string for divergence recovery. One of: 'history-loss', 'history-jump', 'history-rollback', 'history-holes', 'lock-unusable'.")
+    pre_upgrade: bool = Field(default=False, description="If True, runs a read-only pre-upgrade scan instead of the normal verification.")
+
+
+@mcp.tool(
+    title="Verify Vault Integrity",
+    name="vault_verify",
+    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
+)
+async def vault_verify(
+    ctx: Context,
+    vault: Optional[str] = None,
+    doc_id: Optional[str] = None,
+    repair: bool = False,
+    confirm: Optional[str] = None,
+    pre_upgrade: bool = False,
+) -> str:
+    """Verify version-storage integrity for a vault or specific document.
+
+    By default, runs a read-only check that reports:
+    - Stale intent journals (crash recovery left incomplete)
+    - Recovery orphan files
+    - Missing, invalid, or too-new version sidecars
+    - Missing versions (no content file and no rotation record)
+    - Version count disagreement between DB and filesystem
+    - History divergence (loss, jump, rollback, or holes)
+    - Unrecognized files under history/
+    - Conflict files from hash-guarded replay
+    - Per-vault history bytes vs the hard cap
+    - Permissions advisory on the vault root
+
+    With repair=True, performs additive-only repairs:
+    - Replays stale intent journals
+    - Moves invalid/too-new sidecars aside (renames, never deletes)
+    - Realigns documents.version_count with the filesystem
+
+    The confirm parameter gates divergence recovery operations.
+    Each confirm value writes one marker file and removes nothing.
+
+    With pre_upgrade=True, runs a read-only pre-upgrade scan that
+    records .upgrade_scan.json. Safe to run before upgrading LoreDocs.
+    """
+    params = VaultVerifyInput(vault=vault, doc_id=doc_id, repair=repair,
+                              confirm=confirm, pre_upgrade=pre_upgrade)
+    storage = _get_storage(ctx)
+
+    if params.pre_upgrade:
+        if params.vault:
+            v = _resolve_vault(storage, params.vault)
+            if not v:
+                return f"Error: Vault '{params.vault}' not found."
+            return storage.pre_upgrade_scan(v["id"])
+        else:
+            # Scan all vaults
+            vaults = storage.list_vaults()
+            results = []
+            for v in vaults:
+                results.append(storage.pre_upgrade_scan(v["id"]))
+            return "\n\n---\n\n".join(results)
+
+    if params.doc_id:
+        # Verify single document
+        try:
+            return storage.verify_document(
+                params.doc_id,
+                repair=params.repair,
+                confirm=params.confirm,
+            )
+        except HistoryDivergedError as exc:
+            return f"History divergence detected: {exc}\nUse vault_verify with confirm='{exc.kind.replace('history-', '')}' to acknowledge and resume numbering past the divergent range."
+        except RecoveryAbortedError as exc:
+            return f"Recovery aborted: {exc}\nThe document has unattributable bytes. See vault_verify output for the orphan file path."
+        except DocumentLockedError as exc:
+            return f"Document is locked: {exc}"
+        except LockUnusableError as exc:
+            return f"Lock file is unusable: {exc}\nUse vault_verify with confirm='lock-unusable' to rename it aside and create a fresh one."
+    elif params.vault:
+        v = _resolve_vault(storage, params.vault)
+        if not v:
+            return f"Error: Vault '{params.vault}' not found."
+        return storage.verify_vault(v["id"], repair=params.repair, confirm=params.confirm)
+    else:
+        # Verify all vaults
+        vaults = storage.list_vaults()
+        results = []
+        for v in vaults:
+            results.append(storage.verify_vault(v["id"], repair=params.repair, confirm=params.confirm))
+        return "\n\n---\n\n".join(results)
 
 
 # ===================================================================
