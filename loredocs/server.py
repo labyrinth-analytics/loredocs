@@ -3094,7 +3094,7 @@ def run_ui(port: int, open_browser: bool, token: Optional[str] = None, suppress_
                         f"WARNING: {pro_vault_count} Pro/Team vault(s) detected. "
                         "Set LOREDOCS_UI_TOKEN=<token> for additional protection "
                         "against local process access. Example: "
-                        "LOREDOCS_UI_TOKEN=$(openssl rand -hex 16) loredocs ui\n"
+                        "LOREDOCS_UI_TOKEN=$(openssl rand -hex 16) python -m loredocs.cli ui\n"
                     )
             conn.close()
         except sqlite3.OperationalError:
@@ -3385,7 +3385,7 @@ def vault_import_notion_setup() -> dict:
         "python": python,
         "install_command": install_cmd,
         "hint": hint,
-        "cli_diagnostic": "loredocs check-notion",
+        "cli_diagnostic": "python -m loredocs.cli check-notion",
     }
 
 

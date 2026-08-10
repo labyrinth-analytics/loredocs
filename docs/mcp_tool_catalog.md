@@ -1,6 +1,6 @@
 # LoreDocs MCP Tool Catalog
 
-LoreDocs provides 46 MCP tools that Claude calls during your sessions. You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
+LoreDocs provides 48 MCP tools that Claude calls during your sessions. You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
 
 > **Version 0.1.8:** Added file-based document ingest to `vault_add_doc` (read documents from disk with the `path` parameter).
 
@@ -398,6 +398,39 @@ Bulk import all supported files from a directory into a vault. Supported file ty
 
 ---
 
+### `vault_import_notion_setup`
+
+Report whether this machine is ready to import from Notion: whether a Notion
+integration token is available and whether the optional import dependencies are
+installed. Run it before `vault_import_notion` to get an actionable message
+instead of a failure mid-import.
+
+**When Claude uses it:** When you say "can I import from Notion?" or before
+starting an import.
+
+**Key parameters:** none
+
+---
+
+### `vault_import_notion`
+
+Import Notion pages and databases into a vault. This is an import-once-and-own
+model: pages are fetched and stored as LoreDocs documents at import time. There
+is no live sync -- later edits in Notion do not propagate. Large imports are
+resumable from a checkpoint file if interrupted.
+
+Requires a Notion integration token. Store it in your OS keychain with
+`python -m loredocs.cli set-notion-token` (remove it with `clear-notion-token`);
+`python -m loredocs.cli check-notion` reports readiness.
+
+**When Claude uses it:** When you say "import my Notion workspace into this
+vault."
+
+**Key parameters:** `vault_id` (required), plus the page/database scope to
+import
+
+---
+
 ### `vault_export`
 
 Export all documents from a vault to a local directory.
@@ -532,3 +565,5 @@ Return LoreDocs documents linked to a given LoreConvo session. Searches both dir
 | 44 | `vault_link_session` | Create a manual link from a LoreConvo session to a LoreDocs document (Pro) |
 | 45 | `vault_get_session_links` | Return LoreConvo sessions linked to a LoreDocs document (Pro) |
 | 46 | `vault_get_linked_sessions` | Return LoreDocs documents linked to a given LoreConvo session (Pro) |
+| 47 | `vault_import_notion_setup` | Check Notion import readiness (token, dependencies) |
+| 48 | `vault_import_notion` | Import Notion pages and databases into a vault |

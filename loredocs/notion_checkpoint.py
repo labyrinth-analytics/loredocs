@@ -181,7 +181,7 @@ def resolve_notion_token():
     raise NotionTokenMissingError(
         "NOTION_TOKEN not found in environment or OS keychain.\n"
         "  Option 1: export NOTION_TOKEN=secret_xxx\n"
-        "  Option 2: python3 -m loredocs set-notion-token  (stores in OS keychain)"
+        "  Option 2: python3 -m loredocs.cli set-notion-token  (stores in OS keychain)"
     )
 
 
