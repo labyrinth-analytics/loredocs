@@ -1,4 +1,4 @@
-# LoreDocs v0.1.19
+# LoreDocs v0.1.20
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -364,39 +364,37 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
-## v0.1.19 (2026-08-04)
+## v0.1.20 (2026-08-09)
 
-### Added: Import from Notion
+### New: Clear your Pro license from the bundled fallback CLI
 
-A new `vault_import_notion` MCP tool (and matching `loredocs import notion` CLI
-command) imports Notion pages and databases into a vault. This is an
-import-once-and-own model: pages are fetched and stored as LoreDocs documents
-at import time, and there is no live sync -- changes made in Notion afterward
-do not propagate automatically. Large imports are resumable from a checkpoint
-file if interrupted partway through. Requires a Notion integration token,
-which can be stored securely in your OS keychain with `loredocs
-set-notion-token` (and removed with `clear-notion-token`); `loredocs
-check-notion` reports whether your setup is ready to import.
+```
+python -m loredocs.cli license clear
+```
 
-### Changed: Safer startup and logging for the optional admin cap tools
+Removes the stored Pro license key from this machine. If you have suite-wide
+Pro shared with LoreConvo, add `--suite` to clear it from both. The command
+reports anything it could not clear rather than failing quietly.
 
-If you run LoreDocs with `LOREDOCS_ENABLE_CAP_TOOLS=1` (the optional admin
-tooling, off by default), the server now refuses to start if the required
-admin token is missing or weak, instead of running with that protection
-silently absent. The admin token is also now redacted from any logging path.
-Separately, the schema migration that added per-vault injection caps is more
-defensive: it detects and hard-fails on a half-migrated database (documented
-in the new `TROUBLESHOOTING.md`) rather than risking silent data corruption.
-None of this changes default `vault_inject`/`vault_prime`/`vault_inject_by_tag`
-behavior for the normal (non-admin-tooling) usage path.
+This is part of the bundled fallback CLI, which is there for when the MCP
+server is not available. Invoke it with `python -m loredocs.cli` -- the
+`loredocs` command itself starts the MCP server, not the CLI. (The separate
+`loredocs-cli` package is a different product and does not include this
+command.) LoreConvo v0.10.0 gained the matching
+`python -m loreconvo.cli license clear`.
 
-### Fixed: Free-tier upgrade messages now link to a working checkout page
+### Fixed: Diagnostic messages pointed at commands that do not run
 
-Hitting a Free-tier limit, or calling `get_tier`/`get_license_tier`, used to
-point you at a bare domain or an email address instead of a working upgrade
-link. Both now link directly to the Stripe checkout page, and a bug that
-silently dropped the upgrade link from three tier-limit error messages is
-fixed.
+Several messages told you to run `loredocs check-notion`, `loredocs ui`, or
+`python3 -m loredocs set-notion-token`. None of those work: `loredocs` is the
+MCP server entry point, and the package has no `__main__`, so the second form
+errors with "cannot be directly executed". All now give the working form,
+`python -m loredocs.cli <command>`.
+
+### Fixed: Security update
+
+Updated the `cryptography` dependency from 49.0.0 to 50.0.0 to pick up a fix
+for CVE-2026-69247.
 
 <!-- WHATS_NEW:END -->
 
