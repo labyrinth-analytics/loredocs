@@ -4,6 +4,38 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## v0.1.20 (2026-08-09)
+
+### New: Clear your Pro license from the bundled fallback CLI
+
+```
+python -m loredocs.cli license clear
+```
+
+Removes the stored Pro license key from this machine. If you have suite-wide
+Pro shared with LoreConvo, add `--suite` to clear it from both. The command
+reports anything it could not clear rather than failing quietly.
+
+This is part of the bundled fallback CLI, which is there for when the MCP
+server is not available. Invoke it with `python -m loredocs.cli` -- the
+`loredocs` command itself starts the MCP server, not the CLI. (The separate
+`loredocs-cli` package is a different product and does not include this
+command.) LoreConvo v0.10.0 gained the matching
+`python -m loreconvo.cli license clear`.
+
+### Fixed: Diagnostic messages pointed at commands that do not run
+
+Several messages told you to run `loredocs check-notion`, `loredocs ui`, or
+`python3 -m loredocs set-notion-token`. None of those work: `loredocs` is the
+MCP server entry point, and the package has no `__main__`, so the second form
+errors with "cannot be directly executed". All now give the working form,
+`python -m loredocs.cli <command>`.
+
+### Fixed: Security update
+
+Updated the `cryptography` dependency from 49.0.0 to 50.0.0 to pick up a fix
+for CVE-2026-69247.
+
 ## v0.1.19 (2026-08-04)
 
 ### Added: Import from Notion
