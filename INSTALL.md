@@ -282,6 +282,49 @@ Claude will use the file-based ingest feature to load the document directly from
 
 ---
 
+## Supported Storage Substrates
+
+LoreDocs stores document content as plain files on disk with atomic write
+ordering (temp + rename, never writing into a destination path).
+
+| Vault root location | Support | Guarantee |
+|---|---|---|
+| Local disk (APFS, ext4, NTFS on a local volume) | Supported | A substrate that misreports writes can lose the most recent save, but can never destroy or corrupt a version already on disk. |
+| Cloud-sync folder (Dropbox, iCloud Drive, OneDrive, Google Drive) | Best-effort | Newest save may be lost or resurrected by the sync client. |
+| Network mount (SMB, NFS, sshfs) | Best-effort | Advisory locks may be no-ops, so concurrent clients can lose an update. |
+| Container bind mount / WSL cross-OS path | Best-effort | Same guarantees as the underlying filesystem. |
+
+A one-time warning is emitted when a vault root is detected under a known
+cloud-sync directory. Suppress with `LOREDOCS_SUPPRESS_SUBSTRATE_WARNING=1`.
+
+The `metadata.json` file in each document directory is strictly derived from
+the SQLite database. The database is the source of truth. Do not edit
+`metadata.json` directly.
+
+## Pre-Upgrade Verification
+
+Before upgrading LoreDocs, run a read-only integrity scan to check for
+legacy vault anomalies:
+
+```
+vault_verify --pre-upgrade
+```
+
+This checks every document for version-number divergence, gaps in the version
+sequence, and unrecognized files. It writes `.upgrade_scan.json` (a report,
+not state) and does not modify any data. Anomalous documents are write-refused
+after upgrade until you acknowledge them with `vault_verify --repair`.
+
+## Mixed-Version Client Warning
+
+Sharing a `~/.loredocs` directory between a pre-0.1.18 and a 0.1.21+ client
+is **unsupported**. The older client does not take the per-document lock and
+retains the pre-fix version-write bug, so concurrent mixed-version operation
+can lose one archived version. Run `vault_verify` to detect any resulting
+divergence.
+
+---
+
 ## Troubleshooting
 
 **"Module not found" or "command not found" error**

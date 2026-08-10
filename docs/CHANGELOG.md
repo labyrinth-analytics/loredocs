@@ -4,6 +4,67 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## v0.1.21 (2026-08-10)
+
+### New: Version-storage integrity
+
+LoreDocs now guarantees that a crash, disk-full, or power loss can never
+destroy or corrupt a version already on disk. Every mutation uses atomic
+write ordering (temp + rename), and an intent journal enables hash-guarded
+crash recovery.
+
+**Five-source version allocator.** Version numbers are monotonically
+increasing across content files, per-version metadata sidecars, the DB
+counter, a reset marker, and a highwater mark. A backup/restore that rolls
+back multiple sources together is caught and reported.
+
+**Per-version metadata.** Each version now has a `history/v{N}.meta.json`
+sidecar recording the save time, author, session ID, change note, and
+operation type. These are display-only -- no code branches on them.
+
+**Divergence detection.** History loss, jump, rollback, and holes are
+detected. Writes refuse on divergence; reads proceed with a `divergence`
+field flagging the issue. Use `vault_verify` to diagnose and repair.
+
+**Retention rotation fixed.** Free-tier version cap (5) now rotates
+correctly: the oldest version is removed and its sidecar kept as a
+tombstone. Version numbers are never renumbered or reissued. Pro tier
+retains 100 versions by default.
+
+**New tool: `vault_verify`.** Reports integrity issues per document:
+stale journals, recovery orphans, missing/invalid sidecars, version count
+drift, divergence, unrecognized files, and permissions advisories. With
+`repair=True`, performs additive-only repairs (never deletes content).
+Use `vault_verify --pre-upgrade` before upgrading to check for legacy
+vault anomalies.
+
+**Restore works across extension changes.** `vault_doc_restore` now
+resolves version files by globbing instead of assuming the current
+extension, so you can restore a version written before an extension change.
+
+**`metadata.json` is now live.** Previously written once and never updated,
+it is now regenerated on every document update. It is strictly derived
+from the SQLite database -- do not edit it directly.
+
+**Provenance tracking.** `vault_update_doc` now accepts optional `author`,
+`session_id`, and `note` parameters, stored in the version's metadata
+sidecar.
+
+### New: Supported substrate table
+
+README.md and INSTALL.md now document which filesystem substrates are
+supported (local disk) vs best-effort (cloud-sync, network mounts, WSL).
+A one-time warning is emitted when a vault root is under a known
+cloud-sync directory.
+
+### Mixed-version client warning
+
+Sharing `~/.loredocs` between pre-0.1.18 and 0.1.21+ clients is
+unsupported. The older client does not take the per-document lock and
+retains the pre-fix version-write bug.
+
+---
+
 ## v0.1.20 (2026-08-09)
 
 ### New: Clear your Pro license from the bundled fallback CLI

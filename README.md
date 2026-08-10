@@ -307,6 +307,46 @@ SQLite. Neither sends anything to an external server.
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) package manager
 - `mcp` and `pydantic` (auto-installed by `uv sync`)
 
+## Supported Storage Substrates
+
+LoreDocs stores document content as plain files on disk. The durability
+guarantee depends on the filesystem substrate:
+
+| Vault root location | Support | Guarantee |
+|---|---|---|
+| Local disk (APFS, ext4, NTFS on a local volume) | Supported | Guarantee holds: a substrate that misreports writes can lose the most recent save, but can never destroy or corrupt a version already on disk. |
+| Cloud-sync folder (Dropbox, iCloud Drive, OneDrive, Google Drive) | Best-effort | Newest save may be lost or resurrected by the sync client. |
+| Network mount (SMB, NFS, sshfs) | Best-effort | Advisory locks may be no-ops, so concurrent clients can lose an update. |
+| Container bind mount / WSL cross-OS path | Best-effort | Same guarantees as the underlying filesystem. |
+
+A one-time warning is emitted when a vault root is detected under a known
+cloud-sync directory. Suppress it with `LOREDOCS_SUPPRESS_SUBSTRATE_WARNING=1`.
+
+The `metadata.json` file in each document directory is strictly derived from
+the SQLite database -- the database is the source of truth. Do not edit
+`metadata.json` directly; changes will be overwritten on the next document
+update.
+
+## Version History Integrity
+
+LoreDocs v0.1.21+ includes version-storage integrity features:
+
+- **Atomic writes**: Every mutation uses temp + rename, never writing into
+  a destination path. A crash or disk-full leaves existing data untouched.
+- **Intent journal**: Crash recovery via hash-guarded, idempotent replay.
+- **Five-source allocator**: Version numbers are monotonically increasing
+  across content files, sidecars, DB counter, reset marker, and highwater.
+- **Divergence detection**: History loss, jump, rollback, and holes are
+  detected and reported. Writes refuse on divergence; reads proceed with
+  a `divergence` field flagging the issue.
+- **Per-version sidecars**: `history/v{N}.meta.json` records save time,
+  author, session ID, change note, and operation type for each version.
+- **Retention rotation**: Free tier retains 5 versions per document; Pro
+  retains 100. Oldest versions are rotated automatically (never renumbered).
+- **vault_verify**: A diagnostic tool that reports integrity issues and can
+  perform additive-only repairs. Run `vault_verify --pre-upgrade` before
+  upgrading LoreDocs to check for legacy vault anomalies.
+
 ## Data and Privacy
 
 LoreDocs is **local-first**. All data lives in `~/.loredocs/` on your machine.
