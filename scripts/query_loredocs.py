@@ -145,6 +145,55 @@ def _resolve_vault(conn, vault_ref):
     return None
 
 
+# -- Tier enforcement (SH-100324: parity with MCP server's vault_add_doc) --
+
+def _check_doc_tier_limits(root, conn, vault_id, content_size, vault_name):
+    """Check LoreDocs Free-tier limits before adding a document.
+
+    Mirrors the TierEnforcer check that the MCP server's vault_add_doc
+    performs. If the loredocs package is not importable, warns and
+    proceeds (graceful degradation for fallback use).
+
+    Returns True if the operation is allowed, False if rejected.
+    """
+    try:
+        from loredocs.tiers import TierEnforcer, TierLimitError
+    except ImportError:
+        print(
+            "WARNING: Could not import loredocs.tiers for tier "
+            "enforcement. Document added without tier cap check. "
+            "Install loredocs package for full tier enforcement.",
+            file=sys.stderr,
+        )
+        return True
+
+    enforcer = TierEnforcer(Path(root))
+
+    # Count current docs in vault
+    row = conn.execute(
+        "SELECT COUNT(*) as c FROM documents WHERE vault_id = ? AND deleted = 0",
+        (vault_id,)
+    ).fetchone()
+    doc_count = row["c"] if row else 0
+
+    # Get total storage
+    row = conn.execute(
+        "SELECT COALESCE(SUM(file_size_bytes), 0) as total "
+        "FROM documents WHERE deleted = 0"
+    ).fetchone()
+    total_bytes = row["total"] if row else 0
+
+    try:
+        enforcer.check_doc_count(doc_count, vault_name=vault_name)
+        enforcer.check_storage(total_bytes, content_size)
+    except TierLimitError as exc:
+        hint = f" {exc.upgrade_hint}" if exc.upgrade_hint else ""
+        print(f"Error: {exc}{hint}")
+        return False
+
+    return True
+
+
 # -- vault_list --
 
 def cmd_list(args):
@@ -322,6 +371,12 @@ def cmd_add_doc(args):
     # Validate filename
     if not filename or '..' in filename or '\x00' in filename or os.path.isabs(filename):
         print("Error: Invalid filename.")
+        conn.close()
+        return
+
+    # SH-100324: Enforce Free-tier doc-per-vault and storage caps
+    # (parity with MCP server's vault_add_doc path)
+    if not _check_doc_tier_limits(root, conn, vault_id, len(content), vault["name"]):
         conn.close()
         return
 
