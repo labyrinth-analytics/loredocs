@@ -3148,207 +3148,205 @@ class ImportNotionInput(BaseModel):
     continuation_token: Optional[str] = Field(default=None, description="Opaque token from prior call")
 
 
-@mcp.tool(
-    title="Import from Notion",
-    name="vault_import_notion",
-    annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True}
-)
-async def vault_import_notion(
-    ctx: Context,
-    vault: str,
-    page_ids: Optional[List[str]] = None,
-    database_ids: Optional[List[str]] = None,
-    tags: Optional[List[str]] = None,
-    category: str = "reference",
-    checkpoint_file: Optional[str] = None,
-    resume: bool = False,
-    max_pages: int = 50,
-    continuation_token: Optional[str] = None,
-) -> str:
-    """
-    Import Notion pages and databases into a LoreDocs vault.
-
-    Uses the import-once-and-own model: pages are fetched once and stored as
-    LoreDocs documents. No live sync dependency.
-
-    Token is read from the NOTION_TOKEN environment variable or OS keychain --
-    it is NEVER passed as a parameter, so it never appears in MCP tool-call logs.
-
-    vault accepts a vault ID (stable across renames, preferred for automation)
-    or a vault name (case-insensitive, for interactive use).
-
-    page_ids and database_ids accept Notion UUIDs (32 hex chars without dashes
-    or 36 chars with dashes). Both null/omitted = rejected (at least one required).
-
-    continuation_token: opaque token from a prior call's return value. When
-    provided, omit page_ids/database_ids/vault/checkpoint_file to resume.
-    The token encodes the vault's primary-key UUID -- recreation under the same
-    name invalidates the token.
-
-    Block depth is capped at LOREDOCS_NOTION_MAX_BLOCK_DEPTH (default 10).
-    Pages hitting the cap are listed in truncated_pages in the return value.
-
-    MCP host cancellation may leave a partial checkpoint. Use the
-    continuation_token from the last successful response to resume, or run a
-    fresh import (deduplication prevents re-import of already-committed pages).
-    """
-    if not _NOTION_AVAILABLE:
-        return f"Error: {_NOTION_DIAG}"
-
-    params = ImportNotionInput(
-        vault=vault, page_ids=page_ids, database_ids=database_ids,
-        tags=tags, category=category, checkpoint_file=checkpoint_file,
-        resume=resume, max_pages=min(max_pages, 200),
-        continuation_token=continuation_token,
+if _NOTION_AVAILABLE:
+    @mcp.tool(
+        title="Import from Notion",
+        name="vault_import_notion",
+        annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True}
     )
+    async def vault_import_notion(
+        ctx: Context,
+        vault: str,
+        page_ids: Optional[List[str]] = None,
+        database_ids: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
+        category: str = "reference",
+        checkpoint_file: Optional[str] = None,
+        resume: bool = False,
+        max_pages: int = 50,
+        continuation_token: Optional[str] = None,
+    ) -> str:
+        """
+        Import Notion pages and databases into a LoreDocs vault.
 
-    storage = _get_storage(ctx)
+        Uses the import-once-and-own model: pages are fetched once and stored as
+        LoreDocs documents. No live sync dependency.
 
-    # Resolve vault
-    try:
-        resolved_vault = _resolve_notion_vault(storage, params.vault)
-    except (VaultNotFoundError, VaultAmbiguousError) as exc:
-        return f"Error: {exc}"
+        Token is read from the NOTION_TOKEN environment variable or OS keychain --
+        it is NEVER passed as a parameter, so it never appears in MCP tool-call logs.
 
-    # Resolve checkpoint file path
-    ckpt_path = params.checkpoint_file or os.environ.get(
-        "LOREDOCS_NOTION_CHECKPOINT",
-        os.path.expanduser("~/.loredocs/notion_checkpoint.json"),
-    )
+        vault accepts a vault ID (stable across renames, preferred for automation)
+        or a vault name (case-insensitive, for interactive use).
 
-    # Handle continuation token
-    remaining_page_ids = params.page_ids or []
-    remaining_db_ids = params.database_ids or []
+        page_ids and database_ids accept Notion UUIDs (32 hex chars without dashes
+        or 36 chars with dashes). Both null/omitted = rejected (at least one required).
 
-    if params.continuation_token:
+        continuation_token: opaque token from a prior call's return value. When
+        provided, omit page_ids/database_ids/vault/checkpoint_file to resume.
+        The token encodes the vault's primary-key UUID -- recreation under the same
+        name invalidates the token.
+
+        Block depth is capped at LOREDOCS_NOTION_MAX_BLOCK_DEPTH (default 10).
+        Pages hitting the cap are listed in truncated_pages in the return value.
+
+        MCP host cancellation may leave a partial checkpoint. Use the
+        continuation_token from the last successful response to resume, or run a
+        fresh import (deduplication prevents re-import of already-committed pages).
+        """
+        params = ImportNotionInput(
+            vault=vault, page_ids=page_ids, database_ids=database_ids,
+            tags=tags, category=category, checkpoint_file=checkpoint_file,
+            resume=resume, max_pages=min(max_pages, 200),
+            continuation_token=continuation_token,
+        )
+
+        storage = _get_storage(ctx)
+
+        # Resolve vault
         try:
-            token_data = _decode_continuation_token(params.continuation_token)
-        except Exception as exc:
-            return f"Error: invalid continuation_token: {_redact_notion_secrets(str(exc))}"
-
-        # Validate token/arg consistency [r5/H3]
-        try:
-            _validate_token_arg_consistency(
-                token_data, resolved_vault.id, ckpt_path,
-                params.page_ids, params.database_ids,
-            )
-        except ValueError as exc:
+            resolved_vault = _resolve_notion_vault(storage, params.vault)
+        except (VaultNotFoundError, VaultAmbiguousError) as exc:
             return f"Error: {exc}"
 
-        remaining_page_ids = token_data.get("remaining_page_ids", [])
-        remaining_db_ids = token_data.get("remaining_db_ids", [])
+        # Resolve checkpoint file path
+        ckpt_path = params.checkpoint_file or os.environ.get(
+            "LOREDOCS_NOTION_CHECKPOINT",
+            os.path.expanduser("~/.loredocs/notion_checkpoint.json"),
+        )
 
-    # Validate that at least one ID source is provided (when not resuming)
-    if not remaining_page_ids and not remaining_db_ids and not params.continuation_token:
-        return '{"error": "At least one page_id or database_id is required", "imported": 0}'
+        # Handle continuation token
+        remaining_page_ids = params.page_ids or []
+        remaining_db_ids = params.database_ids or []
 
-    # Validate Notion UUIDs
-    if remaining_page_ids:
-        try:
-            _validate_notion_ids(remaining_page_ids, "page_ids")
-        except ValueError as exc:
-            return f"Error: {exc}"
-    if remaining_db_ids:
-        try:
-            _validate_notion_ids(remaining_db_ids, "database_ids")
-        except ValueError as exc:
-            return f"Error: {exc}"
-
-    # Cap page count
-    if len(remaining_page_ids) > params.max_pages:
-        remaining_page_ids = remaining_page_ids[:params.max_pages]
-
-    # Set up checkpoint manager
-    ckpt_mgr = CheckpointManager(ckpt_path)
-    checkpoint_data = ckpt_mgr.load() if params.resume else {
-        "schema_version": 1,
-        "run_id": str(uuid.uuid4()),
-        "entries": {},
-    }
-
-    # Create importer
-    importer = NotionImporter(storage, resolved_vault.id)
-
-    all_imported = 0
-    all_skipped = 0
-    all_errors = []
-    all_truncated = []
-
-    try:
-        # Import database pages
-        for db_id in remaining_db_ids:
+        if params.continuation_token:
             try:
-                db_result = importer.import_database(
-                    db_id, tags=params.tags, category=params.category,
+                token_data = _decode_continuation_token(params.continuation_token)
+            except Exception as exc:
+                return f"Error: invalid continuation_token: {_redact_notion_secrets(str(exc))}"
+
+            # Validate token/arg consistency [r5/H3]
+            try:
+                _validate_token_arg_consistency(
+                    token_data, resolved_vault.id, ckpt_path,
+                    params.page_ids, params.database_ids,
+                )
+            except ValueError as exc:
+                return f"Error: {exc}"
+
+            remaining_page_ids = token_data.get("remaining_page_ids", [])
+            remaining_db_ids = token_data.get("remaining_db_ids", [])
+
+        # Validate that at least one ID source is provided (when not resuming)
+        if not remaining_page_ids and not remaining_db_ids and not params.continuation_token:
+            return '{"error": "At least one page_id or database_id is required", "imported": 0}'
+
+        # Validate Notion UUIDs
+        if remaining_page_ids:
+            try:
+                _validate_notion_ids(remaining_page_ids, "page_ids")
+            except ValueError as exc:
+                return f"Error: {exc}"
+        if remaining_db_ids:
+            try:
+                _validate_notion_ids(remaining_db_ids, "database_ids")
+            except ValueError as exc:
+                return f"Error: {exc}"
+
+        # Cap page count
+        if len(remaining_page_ids) > params.max_pages:
+            remaining_page_ids = remaining_page_ids[:params.max_pages]
+
+        # Set up checkpoint manager
+        ckpt_mgr = CheckpointManager(ckpt_path)
+        checkpoint_data = ckpt_mgr.load() if params.resume else {
+            "schema_version": 1,
+            "run_id": str(uuid.uuid4()),
+            "entries": {},
+        }
+
+        # Create importer
+        importer = NotionImporter(storage, resolved_vault.id)
+
+        all_imported = 0
+        all_skipped = 0
+        all_errors = []
+        all_truncated = []
+
+        try:
+            # Import database pages
+            for db_id in remaining_db_ids:
+                try:
+                    db_result = importer.import_database(
+                        db_id, tags=params.tags, category=params.category,
+                        checkpoint_data=checkpoint_data,
+                    )
+                    all_imported += db_result["imported"]
+                    all_skipped += db_result["skipped"]
+                    all_errors.extend(db_result["errors"])
+                    all_truncated.extend(db_result["truncated_pages"])
+                    # Database pages are added to remaining for continuation
+                    remaining_page_ids.extend(db_result.get("page_ids", []))
+                except WorkspaceSaturationError as exc:
+                    # Return partial result with continuation token
+                    remaining_after = remaining_page_ids[all_imported + all_skipped:]
+                    cont_token = _encode_continuation_token(
+                        resolved_vault.id, remaining_after, [], ckpt_path,
+                    )
+                    return json.dumps({
+                        "imported": all_imported,
+                        "skipped": all_skipped,
+                        "errors": all_errors + [str(exc)],
+                        "continuation_token": cont_token,
+                        "truncated_pages": all_truncated,
+                        "message": "Workspace saturated. Use continuation_token to resume.",
+                    })
+
+            # Import explicit page IDs
+            if remaining_page_ids:
+                page_result = importer.import_pages(
+                    remaining_page_ids, tags=params.tags, category=params.category,
                     checkpoint_data=checkpoint_data,
                 )
-                all_imported += db_result["imported"]
-                all_skipped += db_result["skipped"]
-                all_errors.extend(db_result["errors"])
-                all_truncated.extend(db_result["truncated_pages"])
-                # Database pages are added to remaining for continuation
-                remaining_page_ids.extend(db_result.get("page_ids", []))
-            except WorkspaceSaturationError as exc:
-                # Return partial result with continuation token
-                remaining_after = remaining_page_ids[all_imported + all_skipped:]
-                cont_token = _encode_continuation_token(
-                    resolved_vault.id, remaining_after, [], ckpt_path,
-                )
-                return json.dumps({
-                    "imported": all_imported,
-                    "skipped": all_skipped,
-                    "errors": all_errors + [str(exc)],
-                    "continuation_token": cont_token,
-                    "truncated_pages": all_truncated,
-                    "message": "Workspace saturated. Use continuation_token to resume.",
-                })
+                all_imported += page_result["imported"]
+                all_skipped += page_result["skipped"]
+                all_errors.extend(page_result["errors"])
+                all_truncated.extend(page_result["truncated_pages"])
 
-        # Import explicit page IDs
-        if remaining_page_ids:
-            page_result = importer.import_pages(
-                remaining_page_ids, tags=params.tags, category=params.category,
-                checkpoint_data=checkpoint_data,
+            # Save checkpoint
+            ckpt_mgr.save(checkpoint_data)
+
+        except WorkspaceSaturationError as exc:
+            cont_token = _encode_continuation_token(
+                resolved_vault.id, [], remaining_db_ids, ckpt_path,
             )
-            all_imported += page_result["imported"]
-            all_skipped += page_result["skipped"]
-            all_errors.extend(page_result["errors"])
-            all_truncated.extend(page_result["truncated_pages"])
+            return json.dumps({
+                "imported": all_imported,
+                "skipped": all_skipped,
+                "errors": all_errors + [str(exc)],
+                "continuation_token": cont_token,
+                "truncated_pages": all_truncated,
+                "message": "Workspace saturated. Use continuation_token to resume.",
+            })
 
-        # Save checkpoint
-        ckpt_mgr.save(checkpoint_data)
+        # Build continuation token if there are remaining pages
+        remaining_after = remaining_page_ids[params.max_pages:] if len(remaining_page_ids) > params.max_pages else []
+        cont_token = None
+        if remaining_after:
+            cont_token = _encode_continuation_token(
+                resolved_vault.id, remaining_after, [], ckpt_path,
+            )
 
-    except WorkspaceSaturationError as exc:
-        cont_token = _encode_continuation_token(
-            resolved_vault.id, [], remaining_db_ids, ckpt_path,
-        )
-        return json.dumps({
+        result = {
             "imported": all_imported,
             "skipped": all_skipped,
-            "errors": all_errors + [str(exc)],
-            "continuation_token": cont_token,
+            "errors": all_errors,
             "truncated_pages": all_truncated,
-            "message": "Workspace saturated. Use continuation_token to resume.",
-        })
+        }
+        if cont_token:
+            result["continuation_token"] = cont_token
+            result["message"] = "Partial import. Use continuation_token to resume."
 
-    # Build continuation token if there are remaining pages
-    remaining_after = remaining_page_ids[params.max_pages:] if len(remaining_page_ids) > params.max_pages else []
-    cont_token = None
-    if remaining_after:
-        cont_token = _encode_continuation_token(
-            resolved_vault.id, remaining_after, [], ckpt_path,
-        )
-
-    result = {
-        "imported": all_imported,
-        "skipped": all_skipped,
-        "errors": all_errors,
-        "truncated_pages": all_truncated,
-    }
-    if cont_token:
-        result["continuation_token"] = cont_token
-        result["message"] = "Partial import. Use continuation_token to resume."
-
-    return json.dumps(result, indent=2)
+        return json.dumps(result, indent=2)
 
 
 @mcp.tool(
