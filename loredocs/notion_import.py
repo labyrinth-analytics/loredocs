@@ -807,6 +807,6 @@ def _notion_extra_available():
         "Missing packages: " + ", ".join(missing) + ". "
         "Fix: pip install 'loredocs[notion]'  "
         "or: uvx --with loredocs[notion] loredocs-mcp. "
-        "Diagnostic: loredocs check-notion"
+        "Diagnostic: python -m loredocs.cli check-notion"
     )
     return False, diag
