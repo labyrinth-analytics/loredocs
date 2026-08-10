@@ -1,6 +1,6 @@
 # LoreDocs MCP Tool Catalog
 
-LoreDocs provides 48 MCP tools that Claude calls during your sessions. You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
+LoreDocs provides 47 MCP tools that Claude calls during your sessions (48 with the `notion` extra installed). You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
 
 > **Version 0.1.8:** Added file-based document ingest to `vault_add_doc` (read documents from disk with the `path` parameter).
 

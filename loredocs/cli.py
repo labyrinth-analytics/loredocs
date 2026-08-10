@@ -482,6 +482,26 @@ def clear_notion_token():
         sys.exit(1)
 
 
+def _pip_index_reachable(python):
+    """Best-effort connectivity probe for the offline/mirror heuristic.
+
+    Runs `pip index versions loredocs --quiet` with a 3-second timeout, per
+    the r5 proposal spec (loredocs_notion-import-bridge_20260611.md,
+    PART:distribution). A timeout or connectivity error is treated as
+    unreachable -- diagnostic guidance only, never a hard failure.
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            [python, "-m", "pip", "index", "versions", "loredocs", "--quiet"],
+            capture_output=True, timeout=3,
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+
+
 @cli.command(name="check-notion")
 @click.option("--runtime", is_flag=True, help="Show MCP server interpreter context.")
 def check_notion(runtime):
@@ -496,10 +516,12 @@ def check_notion(runtime):
         click.echo(f"[INFO] Python version: {_sys.version.split()[0]}")
 
     # Check notion-client
+    notion_extra_missing = False
     try:
         importlib.import_module("notion_client")
         click.echo(f"[OK]  notion-client: installed")
     except ImportError:
+        notion_extra_missing = True
         click.echo(f"[MISSING] notion-client: not installed")
         click.echo(f"[MISSING] Run: pip install \"loredocs[notion]\"")
 
@@ -508,7 +530,15 @@ def check_notion(runtime):
         importlib.import_module("keyring")
         click.echo(f"[OK]  keyring: installed")
     except ImportError:
+        notion_extra_missing = True
         click.echo(f"[MISSING] keyring: not installed")
+
+    # Offline/mirror heuristic -- only worth probing when there is something
+    # to install. [r5/PART:distribution H15/H22]
+    if notion_extra_missing and not _pip_index_reachable(python):
+        click.echo(f"[WARN] pip index connectivity unavailable (offline or mirror-constrained env detected)")
+        click.echo(f"[INFO] Install via mirror: pip install --index-url https://<mirror> \"loredocs[notion]\"")
+        click.echo(f"[INFO] Contact your IT administrator if package installs are blocked.")
 
     # Recommend uvx
     import shutil
