@@ -68,6 +68,20 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Load the shared FTS sanitizer by file location -- no package install, no
+# sys.path mutation. loredocs/fts_query.py is stdlib-only for this reason.
+# This is the same definition storage.py uses; never re-implement it here.
+import importlib.util
+_FTS_QUERY_PATH = (
+    Path(__file__).resolve().parent.parent / "loredocs" / "fts_query.py"
+)
+_fts_spec = importlib.util.spec_from_file_location(
+    "_loredocs_fts_query", str(_FTS_QUERY_PATH)
+)
+_fts_query = importlib.util.module_from_spec(_fts_spec)
+_fts_spec.loader.exec_module(_fts_query)
+sanitize_fts_query = _fts_query.sanitize_fts_query
+
 
 # -- DB discovery --
 
@@ -294,7 +308,9 @@ def cmd_search(args):
     """Search documents across all vaults by keyword."""
     conn, db_path = _connect(args.db_path)
 
-    # Use FTS if available, fall back to LIKE
+    # Use FTS if available, fall back to LIKE.
+    # Raw input is never passed to MATCH: FTS5 reads bare hyphens and colons
+    # as query syntax, so "SH-100406" raises "no such column: 100406".
     try:
         rows = conn.execute(
             """SELECT d.id, d.vault_id, d.name, d.category, d.tags, d.notes,
@@ -304,19 +320,34 @@ def cmd_search(args):
                JOIN vaults v ON d.vault_id = v.id
                WHERE doc_fts MATCH ? AND d.deleted = 0
                ORDER BY d.updated_at DESC LIMIT ?""",
-            (args.search, args.limit)
+            (sanitize_fts_query(args.search), args.limit)
         ).fetchall()
     except sqlite3.OperationalError:
-        # FTS match failed, fall back to LIKE
-        pattern = f"%{args.search}%"
+        # Sanitized input should always parse. If MATCH still fails (corrupt
+        # or missing FTS index), degrade to a per-term AND over LIKE.
+        #
+        # NOT a substring match on the raw query: "SH-100406 architecture"
+        # never appears verbatim in a doc name, so matching the whole string
+        # returned zero rows and read as "no such document". Adding a term
+        # must narrow results, never erase them.
+        terms = [t for t in (args.search or "").split() if t]
+        if not terms:
+            conn.close()
+            print(f"No documents matching '{args.search}'.")
+            return
+        where = " AND ".join(["(d.name LIKE ? OR d.notes LIKE ?)"] * len(terms))
+        params = []
+        for term in terms:
+            params.extend([f"%{term}%", f"%{term}%"])
+        params.append(args.limit)
         rows = conn.execute(
-            """SELECT d.id, d.vault_id, d.name, d.category, d.tags, d.notes,
-                      d.updated_at, d.file_size_bytes, v.name as vault_name
-               FROM documents d
-               JOIN vaults v ON d.vault_id = v.id
-               WHERE d.deleted = 0 AND (d.name LIKE ? OR d.notes LIKE ?)
-               ORDER BY d.updated_at DESC LIMIT ?""",
-            (pattern, pattern, args.limit)
+            f"""SELECT d.id, d.vault_id, d.name, d.category, d.tags, d.notes,
+                       d.updated_at, d.file_size_bytes, v.name as vault_name
+                FROM documents d
+                JOIN vaults v ON d.vault_id = v.id
+                WHERE d.deleted = 0 AND {where}
+                ORDER BY d.updated_at DESC LIMIT ?""",
+            params
         ).fetchall()
 
     conn.close()
