@@ -34,6 +34,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from .fts_query import sanitize_fts_query
 from .tiers import TierEnforcer, TierLimitError, get_tier, TIER_PRO  # noqa: F401 (re-exported)
 from .version_storage import (
     HistoryDivergedError, RecoveryAbortedError, DocumentLockedError,
@@ -2406,22 +2407,9 @@ class VaultStorage:
     # Search
     # -------------------------------------------------------------------
 
-    @staticmethod
-    def _sanitize_fts_query(query: str) -> str:
-        """OPP-010: Sanitize user input for FTS5 MATCH without changing search semantics.
-
-        Strategy: quote each individual token so hyphens, colons, and other
-        FTS5 operators inside a token are treated as literals, but multiple
-        tokens are implicitly ANDed (the FTS5 default). This preserves the
-        expected behavior where "data warehouse migration" matches documents
-        containing all three words anywhere, not just as a consecutive phrase.
-        """
-        safe = query.strip()
-        if not safe:
-            return '""'
-        tokens = safe.split()
-        quoted = ['"' + t.replace('"', '') + '"' for t in tokens if t.replace('"', '')]
-        return ' '.join(quoted) if quoted else '""'
+    # Defined in fts_query.py -- the single definition shared with the
+    # fallback script. Kept as a staticmethod so existing callers work.
+    _sanitize_fts_query = staticmethod(sanitize_fts_query)
 
     def search(self, query: str, vault_id: Optional[str] = None,
                limit: int = 20, offset: int = 0) -> Dict[str, Any]:
