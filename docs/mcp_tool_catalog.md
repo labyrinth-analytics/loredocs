@@ -1,6 +1,6 @@
 # LoreDocs MCP Tool Catalog
 
-LoreDocs provides 47 MCP tools that Claude calls during your sessions (48 with the `notion` extra installed). You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
+LoreDocs provides 48 MCP tools that Claude calls during your sessions (49 with the `notion` extra installed). You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
 
 > **Version 0.1.8:** Added file-based document ingest to `vault_add_doc` (read documents from disk with the `path` parameter).
 
@@ -376,7 +376,7 @@ View the version history for a document. Shows when each version was created and
 
 ---
 
-## Versioning and Bulk Operations (4 tools)
+## Versioning and Bulk Operations (5 tools)
 
 ### `vault_doc_restore`
 
@@ -448,6 +448,16 @@ Export a complete manifest of a vault's contents. Useful for sharing, versioning
 **When Claude uses it:** When you need a portable snapshot of your vault.
 
 **Key parameters:** `vault_id` (required)
+
+---
+
+### `vault_verify`
+
+Check the integrity of document version history and report any problems found. Can optionally perform additive-only repairs, meaning it restores missing records but never deletes or overwrites a version already on disk. Run it with `pre_upgrade` before a version upgrade to confirm your data is sound first.
+
+**When Claude uses it:** When you ask "is my vault healthy?", before an upgrade, or when `vault_info` reports that documents need attention.
+
+**Key parameters:** `vault` (optional), `doc_id` (optional), `repair` (optional), `confirm` (optional), `pre_upgrade` (optional)
 
 ---
 
