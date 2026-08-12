@@ -200,7 +200,7 @@ and usage anytime with `vault_tier_status`. Activate a Pro license with `vault_s
 
 ## MCP Tools
 
-LoreDocs provides 47 MCP tools by default (48 with the `notion` extra installed; 49 with LOREDOCS_ENABLE_CAP_TOOLS=1 and the notion extra) organized by function:
+LoreDocs provides 48 MCP tools by default (49 with the `notion` extra installed; 50 with LOREDOCS_ENABLE_CAP_TOOLS=1 and the notion extra) organized by function:
 
 ### Vault Management (8 tools)
 | Tool | What it does |
@@ -273,12 +273,13 @@ LoreDocs provides 47 MCP tools by default (48 with the `notion` extra installed;
 | `vault_link_doc` | Create a link between two documents |
 | `vault_unlink_doc` | Remove a link between documents |
 
-### Administration (3 tools)
+### Administration (4 tools)
 | Tool | What it does |
 |------|-------------|
 | `vault_tier_status` | Check current tier limits and usage |
 | `vault_set_tier` | Set the active tier (free or pro) |
 | `get_license_tier` | Check current tier and license key status |
+| `vault_verify` | Check document version-history integrity, optionally repair |
 
 ### Cross-product Session Links (3 tools, Pro)
 | Tool | What it does |
