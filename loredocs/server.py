@@ -3215,7 +3215,7 @@ def get_server_info() -> dict:
     status (ok|mismatch|undetermined|disabled|internal_error), note,
     error_detail (set only on internal_error).
     """
-    from compat_check import detect_install_kind, extract_live_version_from_source
+    from .compat_check import detect_install_kind, extract_live_version_from_source
 
     result = _compat_check()
     result_copy = dict(result)
