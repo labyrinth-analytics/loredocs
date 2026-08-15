@@ -1,13 +1,13 @@
 # LoreDocs Installation Guide
 
-**LoreDocs** gives you a searchable, organized, version-tracked knowledge base for your AI projects. Works with Claude Code, Cursor, OpenAI Codex, and Hermes Agent.
+**LoreDocs** gives you a searchable, organized, version-tracked knowledge base for your AI projects. Works with Claude Code, Cowork, Cursor, OpenAI Codex, and Hermes Agent.
 
 ---
 
 ## Prerequisites
 
 - **uv** (which provides `uvx`) -- this is the only thing you need to install
-- One of: Claude Code, Cursor, OpenAI Codex, or Hermes Agent installed
+- One of: Claude Code, Cowork, Cursor, OpenAI Codex, or Hermes Agent installed
 
 LoreDocs runs through `uvx`, which downloads a pinned copy of the server and
 manages its own Python. You do not need to create a virtual environment, and you

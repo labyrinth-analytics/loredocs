@@ -2,7 +2,7 @@
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
-LoreDocs gives Claude persistent access to your project documentation -- specs, guides, architecture decisions, reference docs -- so it never loses context between sessions. Works with Claude Code, Cursor, OpenAI Codex, and Hermes Agent.
+LoreDocs gives Claude persistent access to your project documentation -- specs, guides, architecture decisions, reference docs -- so it never loses context between sessions. Works with Claude Code, Cowork, Cursor, OpenAI Codex, and Hermes Agent.
 
 > Install directly from Claude Code's plugin marketplace, or via PyPI: `uvx loredocs`
 
