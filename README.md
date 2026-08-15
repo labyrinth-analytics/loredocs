@@ -1,4 +1,4 @@
-# LoreDocs v0.1.20
+# LoreDocs v0.1.21
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -405,37 +405,64 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
-## v0.1.20 (2026-08-09)
+## v0.1.21 (2026-08-10)
 
-### New: Clear your Pro license from the bundled fallback CLI
+### New: Version-storage integrity
 
-```
-python -m loredocs.cli license clear
-```
+LoreDocs now guarantees that a crash, disk-full, or power loss can never
+destroy or corrupt a version already on disk. Every mutation uses atomic
+write ordering (temp + rename), and an intent journal enables hash-guarded
+crash recovery.
 
-Removes the stored Pro license key from this machine. If you have suite-wide
-Pro shared with LoreConvo, add `--suite` to clear it from both. The command
-reports anything it could not clear rather than failing quietly.
+**Five-source version allocator.** Version numbers are monotonically
+increasing across content files, per-version metadata sidecars, the DB
+counter, a reset marker, and a highwater mark. A backup/restore that rolls
+back multiple sources together is caught and reported.
 
-This is part of the bundled fallback CLI, which is there for when the MCP
-server is not available. Invoke it with `python -m loredocs.cli` -- the
-`loredocs` command itself starts the MCP server, not the CLI. (The separate
-`loredocs-cli` package is a different product and does not include this
-command.) LoreConvo v0.10.0 gained the matching
-`python -m loreconvo.cli license clear`.
+**Per-version metadata.** Each version now has a `history/v{N}.meta.json`
+sidecar recording the save time, author, session ID, change note, and
+operation type. These are display-only -- no code branches on them.
 
-### Fixed: Diagnostic messages pointed at commands that do not run
+**Divergence detection.** History loss, jump, rollback, and holes are
+detected. Writes refuse on divergence; reads proceed with a `divergence`
+field flagging the issue. Use `vault_verify` to diagnose and repair.
 
-Several messages told you to run `loredocs check-notion`, `loredocs ui`, or
-`python3 -m loredocs set-notion-token`. None of those work: `loredocs` is the
-MCP server entry point, and the package has no `__main__`, so the second form
-errors with "cannot be directly executed". All now give the working form,
-`python -m loredocs.cli <command>`.
+**Retention rotation fixed.** Free-tier version cap (5) now rotates
+correctly: the oldest version is removed and its sidecar kept as a
+tombstone. Version numbers are never renumbered or reissued. Pro tier
+retains 100 versions by default.
 
-### Fixed: Security update
+**New tool: `vault_verify`.** Reports integrity issues per document:
+stale journals, recovery orphans, missing/invalid sidecars, version count
+drift, divergence, unrecognized files, and permissions advisories. With
+`repair=True`, performs additive-only repairs (never deletes content).
+Use `vault_verify --pre-upgrade` before upgrading to check for legacy
+vault anomalies.
 
-Updated the `cryptography` dependency from 49.0.0 to 50.0.0 to pick up a fix
-for CVE-2026-69247.
+**Restore works across extension changes.** `vault_doc_restore` now
+resolves version files by globbing instead of assuming the current
+extension, so you can restore a version written before an extension change.
+
+**`metadata.json` is now live.** Previously written once and never updated,
+it is now regenerated on every document update. It is strictly derived
+from the SQLite database -- do not edit it directly.
+
+**Provenance tracking.** `vault_update_doc` now accepts optional `author`,
+`session_id`, and `note` parameters, stored in the version's metadata
+sidecar.
+
+### New: Supported substrate table
+
+README.md and INSTALL.md now document which filesystem substrates are
+supported (local disk) vs best-effort (cloud-sync, network mounts, WSL).
+A one-time warning is emitted when a vault root is under a known
+cloud-sync directory.
+
+### Mixed-version client warning
+
+Sharing `~/.loredocs` between pre-0.1.18 and 0.1.21+ clients is
+unsupported. The older client does not take the per-document lock and
+retains the pre-fix version-write bug.
 
 <!-- WHATS_NEW:END -->
 
