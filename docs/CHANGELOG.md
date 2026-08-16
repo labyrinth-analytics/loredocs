@@ -4,6 +4,18 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## v0.1.22 (2026-08-16)
+
+### Fixed: Server info now reports the right version and install type on a development install
+
+`get_server_info` (the diagnostic tool for checking what's actually running)
+now tells you whether you're on a normal install or a development one, and
+reports the live version number correctly in both cases -- it previously only
+knew how to find that information in one specific development layout and
+returned nothing usable in the more common one. Also fixed a bug where the
+tool's internal version check could read from LoreConvo's code instead of
+LoreDocs' own when both products were installed together.
+
 ## v0.1.21 (2026-08-10)
 
 ### New: Version-storage integrity
