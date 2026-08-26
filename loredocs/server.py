@@ -1199,7 +1199,7 @@ async def vault_add_doc(
 
 
 class DocUpdateInput(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
     doc_id: str = Field(..., description="Document ID to update", min_length=1)
     content: Optional[str] = Field(default=None, description="New text content (previous version will be saved automatically)")

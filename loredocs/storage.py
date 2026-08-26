@@ -2155,6 +2155,28 @@ class VaultStorage:
 
         else:
             # 3. Only metadata changed (no content).
+            # Guard: if no updatable fields were provided, return unchanged doc.
+            has_updates = (name is not None or tags is not None or
+                          category is not None or priority is not None or notes is not None)
+            if not has_updates:
+                # Return current doc metadata unchanged, don't update updated_at
+                meta = {
+                    "id": doc_id,
+                    "vault_id": vault_id,
+                    "name": row["name"],
+                    "original_filename": row["original_filename"],
+                    "file_extension": row["file_extension"],
+                    "category": row["category"],
+                    "priority": row["priority"],
+                    "tags": _parse_json_list(row["tags"]),
+                    "notes": row["notes"],
+                    "file_size_bytes": row["file_size_bytes"],
+                    "version_count": row["version_count"],
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                }
+                return meta
+
             file_size = row["file_size_bytes"]
             extracted = None
 
