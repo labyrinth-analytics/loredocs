@@ -1230,6 +1230,7 @@ async def vault_update_doc(
     author: Optional[str] = None,
     session_id: Optional[str] = None,
     note: Optional[str] = None,
+    **kwargs
 ) -> str:
     """Update a document's content or metadata.
 
@@ -1237,7 +1238,12 @@ async def vault_update_doc(
     version history. You can restore old versions with vault_doc_restore.
     The author, session_id, and note params are stored in the version's
     metadata sidecar for provenance tracking.
+
+    Unknown parameters are rejected with a ValueError.
     """
+    if kwargs:
+        unknown_keys = ', '.join(sorted(kwargs.keys()))
+        raise ValueError(f"vault_update_doc received unknown parameters: {unknown_keys}")
     params = DocUpdateInput(doc_id=doc_id, content=content, name=name, tags=tags,
                             category=category, priority=priority, notes=notes,
                             author=author, session_id=session_id, note=note)
