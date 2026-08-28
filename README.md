@@ -21,6 +21,8 @@ uv sync
 
 For detailed installation instructions, see [INSTALL.md](INSTALL.md).
 
+**Using the Claude Agent SDK directly?** `git clone` the public repo and point the SDK's local-directory plugin loader at it -- the repo root is a self-contained plugin directory (`.claude-plugin/plugin.json` + `.mcp.json`). No separate SDK-installable bundle exists or is needed.
+
 ## Using LoreDocs
 
 ### Claude Code (Terminal)
