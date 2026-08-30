@@ -2175,6 +2175,30 @@ class VaultStorage:
                     "created_at": row["created_at"],
                     "updated_at": row["updated_at"],
                 }
+
+                # Report divergence on the no-op path, matching get_document().
+                divergence = None
+                try:
+                    ctx = self._ctx_mgr.acquire(
+                        doc_id,
+                        row["vault_id"],
+                        row["file_extension"],
+                        row["version_count"],
+                        write=False,
+                    )
+                    try:
+                        divergence = ctx.divergence
+                    finally:
+                        self._ctx_mgr.release(ctx)
+                except Exception as exc:
+                    # On any lock/divergence error during a read, report None
+                    # rather than blocking the read. The caller can use
+                    # vault_verify to inspect.
+                    logger.debug(
+                        "divergence check failed for doc %s: %s", doc_id, exc
+                    )
+
+                meta["divergence"] = divergence
                 return meta
 
             file_size = row["file_size_bytes"]
