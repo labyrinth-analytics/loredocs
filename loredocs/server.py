@@ -670,6 +670,23 @@ def _get_storage(ctx: Context) -> VaultStorage:
     return ctx.request_context.lifespan_context["storage"]
 
 
+def _forbid_unknown_tool_params(tool_name: str) -> None:
+    """Make a registered tool's FastMCP argument model reject unknown params.
+
+    FastMCP's ArgModelBase defaults to pydantic's "ignore" extra-fields
+    behavior, so unknown params sent by an MCP client are silently dropped
+    during arg validation and never reach the tool function -- a Python-level
+    **kwargs check inside the function body can't see them (SH-101189 /
+    SH-101253). Tightening extra-field handling on just this tool's generated
+    arg_model, rather than FastMCP's shared ArgModelBase, keeps the change
+    scoped to this tool instead of every tool on the server.
+    """
+    tool = mcp._tool_manager.get_tool(tool_name)
+    arg_model = tool.fn_metadata.arg_model
+    arg_model.model_config["extra"] = "forbid"
+    arg_model.model_rebuild(force=True)
+
+
 # ---------------------------------------------------------------------------
 # Enums and shared models
 # ---------------------------------------------------------------------------
@@ -1230,7 +1247,6 @@ async def vault_update_doc(
     author: Optional[str] = None,
     session_id: Optional[str] = None,
     note: Optional[str] = None,
-    **kwargs
 ) -> str:
     """Update a document's content or metadata.
 
@@ -1239,11 +1255,11 @@ async def vault_update_doc(
     The author, session_id, and note params are stored in the version's
     metadata sidecar for provenance tracking.
 
-    Unknown parameters are rejected with a ValueError.
+    Unknown parameters are rejected at the MCP dispatch layer (see
+    _forbid_unknown_tool_params below): FastMCP's generated arg model for
+    this tool has extra="forbid", so a client-supplied unknown param never
+    reaches this function body.
     """
-    if kwargs:
-        unknown_keys = ', '.join(sorted(kwargs.keys()))
-        raise ValueError(f"vault_update_doc received unknown parameters: {unknown_keys}")
     params = DocUpdateInput(doc_id=doc_id, content=content, name=name, tags=tags,
                             category=category, priority=priority, notes=notes,
                             author=author, session_id=session_id, note=note)
@@ -1264,6 +1280,9 @@ async def vault_update_doc(
     if result:
         return json.dumps(result, indent=2)
     return f"Error: Document '{params.doc_id}' not found."
+
+
+_forbid_unknown_tool_params("vault_update_doc")
 
 
 class DocIdInput(BaseModel):
