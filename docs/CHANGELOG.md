@@ -4,6 +4,26 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## v0.1.23 (2026-08-30)
+
+### Fixed: Updating a document with nothing to change no longer marks it as edited
+
+Calling an update with only a document ID -- no new content, name, tags,
+category, priority, or notes -- still stamped the document with a fresh
+"last modified" time even though nothing about it had changed. Documents
+that had only ever been read looked freshly edited, and that showed up as
+phantom conflicts when syncing a vault between machines. An update with
+nothing to change now leaves the document exactly as it was and returns it
+unchanged.
+
+### Fixed: A misspelled parameter is now reported instead of silently ignored
+
+Passing an unrecognized parameter name to a document update -- a typo, or a
+field that does not exist -- used to be accepted and quietly discarded. The
+call reported success while doing nothing at all, which is the hardest kind
+of failure to notice. Unrecognized parameters are now rejected with an error
+that names the offending parameter, so a typo surfaces immediately.
+
 ## v0.1.22 (2026-08-16)
 
 ### Fixed: Server info now reports the right version and install type on a development install

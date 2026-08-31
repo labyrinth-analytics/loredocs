@@ -1,4 +1,4 @@
-# LoreDocs v0.1.22
+# LoreDocs v0.1.23
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -407,17 +407,25 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
-## v0.1.22 (2026-08-16)
+## v0.1.23 (2026-08-30)
 
-### Fixed: Server info now reports the right version and install type on a development install
+### Fixed: Updating a document with nothing to change no longer marks it as edited
 
-`get_server_info` (the diagnostic tool for checking what's actually running)
-now tells you whether you're on a normal install or a development one, and
-reports the live version number correctly in both cases -- it previously only
-knew how to find that information in one specific development layout and
-returned nothing usable in the more common one. Also fixed a bug where the
-tool's internal version check could read from LoreConvo's code instead of
-LoreDocs' own when both products were installed together.
+Calling an update with only a document ID -- no new content, name, tags,
+category, priority, or notes -- still stamped the document with a fresh
+"last modified" time even though nothing about it had changed. Documents
+that had only ever been read looked freshly edited, and that showed up as
+phantom conflicts when syncing a vault between machines. An update with
+nothing to change now leaves the document exactly as it was and returns it
+unchanged.
+
+### Fixed: A misspelled parameter is now reported instead of silently ignored
+
+Passing an unrecognized parameter name to a document update -- a typo, or a
+field that does not exist -- used to be accepted and quietly discarded. The
+call reported success while doing nothing at all, which is the hardest kind
+of failure to notice. Unrecognized parameters are now rejected with an error
+that names the offending parameter, so a typo surfaces immediately.
 
 <!-- WHATS_NEW:END -->
 
