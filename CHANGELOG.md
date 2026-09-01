@@ -7,6 +7,38 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
+## Unreleased
+
+### Fixed: Notion import preserves block structure (SH-101419)
+
+`loredocs/notion_import.py::_render_block_text` had an early return on
+`rich_text` that made every structural handler below it dead code: headings,
+bulleted/numbered lists, to-dos and code blocks all flattened to bare text,
+and quote/callout/toggle had no handlers at all. Handlers now run before the
+generic fallback, heading level is parsed from the trailing digit (the old
+`count("_")` math could not distinguish heading levels), and quote/callout/
+toggle render as markdown. A committed fixture of realistic Notion block
+payloads (`tests/fixtures/notion_blocks.json`) plus table-driven and
+round-trip tests lock the exact output per block type.
+
+### Fixed: semantic index rebuild is atomic and reports progress (SH-101414)
+
+`loredocs/semantic_search.py::DocLanceIndex.rebuild` dropped the live `docs`
+table before building the replacement, so a client-abandoned or crashed
+rebuild left the index empty -- the state that produced the silent
+partial-index degradation. The rebuild now builds a staging table and swaps
+it in with `mode='overwrite'` only after the build succeeds; a failure
+mid-build leaves the previous index intact. `rebuild()` accepts a
+`progress_cb(done, total)` callback, and `vault_rebuild_index` runs the
+rebuild in a worker thread, reporting MCP progress notifications per
+document and touching the idle watchdog so a long rebuild is neither silent
+nor reaped mid-work. `_auto_link_doc_embeddings` in `loredocs/storage.py`
+now pre-filters its similarity search by vault (`prefilter=True`) -- the
+same post-filter defect class that broke scoped semantic search. A stale
+`loredocs.db.migrationlock` file is removed after a clean migration run
+(flock is released by the OS even on crash, so the leftover file was litter,
+not a blocker).
+
 ## v0.1.23 (2026-08-30)
 
 ### Fixed: metadata-only `vault_update_doc` no longer bumps `updated_at` (SH-101146)

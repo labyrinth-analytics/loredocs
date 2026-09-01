@@ -10,6 +10,7 @@ Usage:
     loredocs                           # via installed entry point
 """
 
+import asyncio
 import hmac
 import json
 import logging
@@ -320,6 +321,11 @@ def _check_admin_token(provided: str) -> bool:
 
 _mcp_server_accepting_connections: bool = False
 
+# Idle watchdog instance, set in app_lifespan. Long-running operations
+# (vault_rebuild_index) touch it so the idle timer does not fire mid-work
+# (SH-101414).
+_idle_watchdog = None
+
 _SESSION_TOKEN_REGISTRY_ENABLED: bool = (
     os.environ.get("LOREDOCS_SESSION_TOKEN_REGISTRY", "0") == "1"
 )
@@ -571,6 +577,7 @@ def _do_injection(
 async def app_lifespan(app):
     """Initialize the VaultStorage instance for the server lifetime."""
     global _mcp_server_accepting_connections
+    global _idle_watchdog
     root_override = os.environ.get("LOREDOCS_ROOT")
     root = Path(root_override) if root_override else None
     storage = VaultStorage(root=root)
@@ -578,7 +585,7 @@ async def app_lifespan(app):
     # Release the cached Lance index (and stay alive) when the client parks
     # this process idle -- Claude Code/Desktop do not re-spawn a stdio server
     # that exits, so exiting on idle permanently lost the server (SH-13610).
-    idle_watchdog.install(
+    _idle_watchdog = idle_watchdog.install(
         mcp, env_var="LOREDOCS_IDLE_TIMEOUT",
         release_func=storage.release_idle_resources,
         backstop_env_var="LOREDOCS_IDLE_BACKSTOP_TIMEOUT",
@@ -1618,7 +1625,37 @@ async def vault_rebuild_index(ctx: Context, confirm: bool = False) -> str:
         )
 
     try:
-        result = storage.rebuild_lance_index()
+        # SH-101414: run the rebuild in a worker thread and report progress.
+        # The rebuild is CPU/IO-bound (embedding + LanceDB writes) and can
+        # take 30+ minutes on a real vault; running it on the event loop
+        # would block every other tool call, and blocking silently is what
+        # made the operation look hung. Progress notifications go out only
+        # when the client supplied a progressToken (report_progress is a
+        # no-op otherwise), so this is safe for every client.
+        loop = asyncio.get_running_loop()
+
+        def _progress(d, t):
+            if _idle_watchdog is not None:
+                _idle_watchdog.touch()
+            if t:
+                fut = asyncio.run_coroutine_threadsafe(
+                    ctx.report_progress(d, t, f"Indexing document {d}/{t}"),
+                    loop,
+                )
+                # Progress is best-effort: a client that dropped the session
+                # must not turn a successful rebuild into a warning storm.
+                def _swallow(f):
+                    try:
+                        if not f.cancelled():
+                            f.exception()
+                    except Exception:
+                        pass
+
+                fut.add_done_callback(_swallow)
+
+        result = await loop.run_in_executor(
+            None, lambda: storage.rebuild_lance_index(progress_cb=_progress)
+        )
     except Exception as exc:
         return f"Error during index rebuild: {exc}"
 

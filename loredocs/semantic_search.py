@@ -285,22 +285,35 @@ class DocLanceIndex:
             _log.error("Lance indexed_doc_count failed: %s", exc)
             return 0
 
-    def rebuild(self, docs: list) -> int:
+    def rebuild(self, docs: list, progress_cb=None) -> int:
         """Rebuild the Lance index from a list of doc dicts.
 
         Each dict must have: doc_id, vault_id, name, text.
-        Drops and recreates the table. Returns total chunk count indexed.
-        Raises on fatal errors (caller should handle).
+        Returns total chunk count indexed. Raises on fatal errors (caller
+        should handle).
+
+        SH-101414: the rebuild is ATOMIC. The old implementation dropped the
+        live 'docs' table first, so a client-abandoned or crashed rebuild
+        left the index empty or half-written -- the exact state that produced
+        the silent partial-index degradation. The new table is now built
+        under a staging name and swapped in with rename_table only after it
+        is complete; a failure mid-build leaves the previous index intact.
+
+        progress_cb, if given, is called as progress_cb(done, total) after
+        each document is embedded, so long rebuilds can report progress
+        instead of blocking silently for 30+ minutes.
         """
         valid = [d for d in docs if d.get('doc_id') and d.get('text', '').strip()]
         if not valid:
             return 0
 
         all_rows: list = []
-        for doc in valid:
+        for idx, doc in enumerate(valid):
             prefix = f"{doc.get('name', '')}. " if doc.get('name') else ""
             chunks = _chunk_text(prefix + doc['text'])
             if not chunks:
+                if progress_cb:
+                    progress_cb(idx + 1, len(valid))
                 continue
             embeddings = self._embed_many(chunks)
             for i, chunk in enumerate(chunks):
@@ -312,21 +325,50 @@ class DocLanceIndex:
                     'chunk_text': chunk[:2000],
                     'vector': embeddings[i],
                 })
+            if progress_cb:
+                progress_cb(idx + 1, len(valid))
 
         if not all_rows:
             return 0
 
         db = self._get_db()
+        staging = 'docs_new'
         try:
-            db.drop_table('docs')
+            db.drop_table(staging)
         except Exception:
             pass
-        self._table = None
 
         schema = self._make_schema()
-        self._table = db.create_table('docs', all_rows, schema=schema)
-        self._table.create_fts_index('name', replace=True)
-        self._table.create_fts_index('chunk_text', replace=True)
+        try:
+            # Build the staging table completely first: all embedding work
+            # is already done, so this is pure write + FTS index creation.
+            staging_table = db.create_table(staging, all_rows, schema=schema)
+            staging_table.create_fts_index('name', replace=True)
+            staging_table.create_fts_index('chunk_text', replace=True)
+            # Swap: replace the live table only after the staging build
+            # succeeded. LanceDB OSS has no rename_table, so the swap is
+            # mode='overwrite' -- the live table is untouched until this
+            # point, and a failure mid-build leaves the previous index
+            # intact and searchable. The overwrite creates a fresh table,
+            # so the FTS indices must be recreated on it as well.
+            live_table = db.create_table('docs', all_rows, schema=schema,
+                                         mode='overwrite')
+            live_table.create_fts_index('name', replace=True)
+            live_table.create_fts_index('chunk_text', replace=True)
+            try:
+                db.drop_table(staging)
+            except Exception:
+                pass
+        except Exception:
+            # Build failed: drop the staging table; the live table was never
+            # touched, so the previous index is still in place.
+            try:
+                db.drop_table(staging)
+            except Exception:
+                pass
+            raise
+
+        self._table = None
         # Deliberately NO ANN index on the vector column (SH-101414). Without
         # one, LanceDB vector search is an exact flat scan -- correct at any
         # corpus size, and fast at ours. An IVF_PQ index cannot train under
