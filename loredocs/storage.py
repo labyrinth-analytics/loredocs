@@ -968,6 +968,18 @@ def _migrate_db(db_path: Path) -> None:
                 _run_migrations_locked(conn)
             finally:
                 _release_migration_lock(lock_fd)
+        # SH-101414: a leftover .migrationlock file is litter, not a blocker.
+        # flock is released by the OS when the fd closes -- even on a crash --
+        # so a stale lock FILE never blocks the next startup. Remove it after
+        # a clean run to keep the data dir tidy. (Unlink-after-release has a
+        # narrow race where a third process could open a fresh lock file while
+        # a second is still blocked on the old inode; migrations are versioned
+        # and idempotent, and SQLite serializes the writes, so the worst case
+        # is redundant work, not corruption.)
+        try:
+            Path(lock_path).unlink()
+        except OSError:
+            pass
     else:
         # In-memory database: no file for a second process to contend on.
         _run_migrations_locked(conn)
@@ -1101,11 +1113,19 @@ def _auto_link_doc_embeddings(
         query_text = extracted_row[0] if extracted_row else ""
         q_vec = lance_index._embed_one(query_text)
 
+        # SH-101414: pre-filter by vault BEFORE ranking. A global top-50
+        # followed by a Python-side vault filter is the same post-filter
+        # defect that broke scoped semantic search -- on a multi-vault store
+        # the global top-k is dominated by other vaults and the filter
+        # discards everything, so no embedding links are ever created.
+        # LanceDB 0.30.2 has no parameterized filter API; vault ids are
+        # truncated UUIDs from SQLite, but escape single quotes anyway.
+        safe_vault = source_vault_id.replace("'", "''")
         raw = table.search(
             q_vec,
             vector_column_name="vector",
             query_type="vector",
-        ).limit(50).to_list()
+        ).where(f"vault_id = '{safe_vault}'", prefilter=True).limit(50).to_list()
 
         # Dedup to best distance per doc_id, filter by threshold + same vault
         best: Dict[str, float] = {}
@@ -1494,10 +1514,13 @@ class VaultStorage:
             logging.getLogger(__name__).error("Lance coverage check failed: %s", exc)
             return 0, 0
 
-    def rebuild_lance_index(self) -> Dict[str, Any]:
+    def rebuild_lance_index(self, progress_cb=None) -> Dict[str, Any]:
         """Rebuild the LanceDB index from all non-deleted documents. Pro only.
 
         Reads extracted.txt for each document. Returns a summary dict.
+        progress_cb, if given, is called as progress_cb(done, total) after
+        each document is embedded (SH-101414: long rebuilds must report
+        progress instead of blocking silently).
         """
         docs = []
         with self._db() as conn:
@@ -1521,7 +1544,7 @@ class VaultStorage:
                         "text": text,
                     })
 
-        chunk_count = self._get_lance_index().rebuild(docs)
+        chunk_count = self._get_lance_index().rebuild(docs, progress_cb=progress_cb)
         return {
             "docs_indexed": len(docs),
             "chunks_indexed": chunk_count,

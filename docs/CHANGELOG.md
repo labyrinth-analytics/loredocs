@@ -4,6 +4,26 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## Unreleased
+
+### Fixed: Notion imports keep their structure
+
+Imported Notion pages were losing all of their structure -- headings,
+bullet and numbered lists, to-do checkboxes, and code blocks all arrived as
+one flat wall of text, and quotes, callouts, and collapsible sections were
+dropped entirely. Imports now preserve headings at the right level, list
+markers, checked/unchecked to-do state, fenced code blocks with their
+language, quotes, callouts, and toggles.
+
+### Fixed: semantic index rebuilds are safer and show progress
+
+Rebuilding the semantic search index used to delete the existing index
+first, so an interrupted rebuild could leave search empty. The rebuild now
+builds the new index in the background and swaps it in only when complete --
+an interruption leaves your previous index untouched. Rebuilds also report
+progress as they go instead of sitting silent for a long time, and
+auto-discovered related documents now search within the right vault.
+
 ## v0.1.23 (2026-08-30)
 
 ### Fixed: Updating a document with nothing to change no longer marks it as edited

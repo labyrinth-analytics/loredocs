@@ -462,6 +462,12 @@ class NotionImporter:
 
         Active HTML block types (equation, synced_block, link_preview) are
         rendered as placeholders to prevent stored-XSS.
+
+        SH-101419: structural handlers run BEFORE the generic rich_text
+        fallback. Real Notion payloads always carry a populated rich_text
+        array, so the old early return made every handler below it dead code
+        -- headings, lists, to-dos and code blocks all flattened to bare
+        text. The generic fallback is now the final else.
         """
         if block_type in _ACTIVE_HTML_BLOCK_TYPES:
             return f"[{block_type}: content placeholder -- active HTML type, not imported]"
@@ -469,11 +475,6 @@ class NotionImporter:
         block_data = block.get(block_type, {})
         if not isinstance(block_data, dict):
             return ""
-
-        # Rich text extraction (common to most block types)
-        rich_text = block_data.get("rich_text", [])
-        if rich_text:
-            return self._rich_text_to_markdown(rich_text)
 
         # Code blocks
         if block_type == "code":
@@ -484,7 +485,13 @@ class NotionImporter:
 
         # Heading levels
         if block_type.startswith("heading_"):
-            level = block_type.count("_")  # heading_1 -> 1, heading_2 -> 2, etc.
+            # heading_1 -> 1, heading_2 -> 2, etc. Parse the trailing digit;
+            # block_type.count("_") is 1 for every heading_N, so it cannot
+            # distinguish levels (SH-101419).
+            try:
+                level = int(block_type.rsplit("_", 1)[1])
+            except (ValueError, IndexError):
+                level = 1
             prefix = "#" * min(level, 6)
             rich_text = block_data.get("rich_text", [])
             return f"{prefix} {self._rich_text_to_markdown(rich_text)}"
@@ -497,6 +504,22 @@ class NotionImporter:
             if block_type == "to_do":
                 prefix = "- [x]" if checked else "- [ ]"
             return f"{prefix} {self._rich_text_to_markdown(rich_text)}"
+
+        # Quote
+        if block_type == "quote":
+            rich_text = block_data.get("rich_text", [])
+            return f"> {self._rich_text_to_markdown(rich_text)}"
+
+        # Callout (rendered as a GitHub-style note admonition)
+        if block_type == "callout":
+            rich_text = block_data.get("rich_text", [])
+            return f"> [!NOTE] {self._rich_text_to_markdown(rich_text)}"
+
+        # Toggle (collapsible section; children are flattened below it)
+        if block_type == "toggle":
+            rich_text = block_data.get("rich_text", [])
+            summary = self._rich_text_to_markdown(rich_text)
+            return f"<details>\n<summary>{summary}</summary>\n\n</details>"
 
         # Divider
         if block_type == "divider":
@@ -514,7 +537,8 @@ class NotionImporter:
         if block_type == "table":
             return "[table: structured data -- import as separate document if needed]"
 
-        # Default: try to get plain text from any rich_text field
+        # Default: plain text from any rich_text field (paragraph and any
+        # block type without a specific handler above)
         rich_text = block_data.get("rich_text", [])
         if rich_text:
             return self._rich_text_to_markdown(rich_text)
