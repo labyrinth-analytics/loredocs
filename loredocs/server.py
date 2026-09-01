@@ -1527,9 +1527,16 @@ async def vault_search(
             if params.response_format == ResponseFormat.JSON:
                 return json.dumps(result, indent=2)
             scope = f"vault '{vault_name}'" if vault_name else "all vaults"
+            coverage_note = result.get("coverage_warning")
             if not result["results"]:
-                return f"No semantic results found for '{params.query}' in {scope}. Try vault_rebuild_index if the index is empty."
+                msg = f"No semantic results found for '{params.query}' in {scope}. Try vault_rebuild_index if the index is empty."
+                if coverage_note:
+                    msg = f"*WARNING: {coverage_note}*\n\n" + msg
+                return msg
             lines = [f"# Semantic Search Results: '{params.query}'", ""]
+            if coverage_note:
+                lines.append(f"*WARNING: {coverage_note}*")
+                lines.append("")
             lines.append(f"Found {result['count']} results in {scope} (semantic)")
             lines.append("")
             for r in result["results"]:
@@ -2936,6 +2943,16 @@ async def vault_tier_status(
     total_bytes = storage.get_total_storage_bytes()
     status = storage.enforcer.status_dict(vault_count, total_bytes)
 
+    # SH-101414: semantic index coverage must be inspectable without running
+    # a search. Pro only -- the Lance index does not exist on Free.
+    if status["is_pro"]:
+        indexed, indexable = storage._lance_coverage()
+        status["semantic_index_coverage"] = {
+            "indexed_docs": indexed,
+            "indexable_docs": indexable,
+            "in_sync": indexed >= indexable,
+        }
+
     if params.response_format == ResponseFormat.JSON:
         return json.dumps(status, indent=2)
 
@@ -2976,6 +2993,14 @@ async def vault_tier_status(
         f"- **Versions per doc:** "
         f"{ver_limit if ver_limit is not None else 'unlimited'}"
     )
+
+    cov = status.get("semantic_index_coverage")
+    if cov:
+        sync_str = "in sync" if cov["in_sync"] else "OUT OF SYNC -- run vault_rebuild_index"
+        lines.append(
+            f"- **Semantic index:** {cov['indexed_docs']} / "
+            f"{cov['indexable_docs']} docs indexed ({sync_str})"
+        )
 
     if not status["is_pro"]:
         lines += [
