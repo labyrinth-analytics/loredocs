@@ -1377,10 +1377,29 @@ class VaultStorage:
         Returns the same dict structure as search(). Falls back to FTS5 if
         the Lance index is unavailable (index not built or search error).
         Callers must check tier before calling; this does not enforce tier.
+
+        The result carries index_coverage (and coverage_warning when the
+        derived Lance index holds fewer documents than SQLite says are
+        indexable in scope) -- SH-101414: a partial index must never degrade
+        silently into confident wrong answers.
         """
+        indexed, indexable = self._lance_coverage(vault_id)
+        coverage_warning = None
+        if indexed < indexable:
+            coverage_warning = (
+                f"Semantic index covers {indexed} of {indexable} indexable "
+                f"documents in this scope; results may silently omit the "
+                f"missing ones. Run vault_rebuild_index to re-sync."
+            )
+
         doc_ids = self._get_lance_index().search(query, vault_id=vault_id, limit=limit)
         if not doc_ids:
-            return self.search(query, vault_id=vault_id, limit=limit)
+            fallback = self.search(query, vault_id=vault_id, limit=limit)
+            fallback["index_coverage"] = {"indexed_docs": indexed,
+                                          "indexable_docs": indexable}
+            if coverage_warning:
+                fallback["coverage_warning"] = coverage_warning
+            return fallback
 
         results = []
         with self._db() as conn:
@@ -1417,13 +1436,63 @@ class VaultStorage:
                     "relevance_rank": None,
                 })
 
-        return {
+        out = {
             "query": query,
             "scope": vault_id or "all_vaults",
             "count": len(results),
             "results": results,
             "semantic": True,
+            "index_coverage": {"indexed_docs": indexed,
+                               "indexable_docs": indexable},
         }
+        if coverage_warning:
+            out["coverage_warning"] = coverage_warning
+        return out
+
+    def _lance_coverage(self, vault_id: Optional[str] = None) -> tuple:
+        """(indexed_docs, indexable_docs) for a scope.
+
+        Indexable mirrors rebuild_lance_index eligibility: non-deleted docs
+        with a non-empty extracted.txt. Docs with no extractable text can
+        never be indexed and must not trigger a false coverage warning.
+        Best-effort: returns (0, 0) on any error so search never breaks.
+        """
+        try:
+            indexed = self._get_lance_index().indexed_doc_count(vault_id)
+            indexable = 0
+            with self._db() as conn:
+                if vault_id:
+                    rows = conn.execute(
+                        "SELECT id, vault_id FROM documents "
+                        "WHERE deleted = 0 AND vault_id = ?", (vault_id,)
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        "SELECT id, vault_id FROM documents WHERE deleted = 0"
+                    ).fetchall()
+            for row in rows:
+                extracted = (self.vaults_dir / row["vault_id"] / "docs"
+                             / row["id"] / "extracted.txt")
+                try:
+                    if not extracted.exists():
+                        continue
+                    size = extracted.stat().st_size
+                    if size == 0:
+                        continue
+                    # Whitespace-only files are never indexed (rebuild checks
+                    # text.strip()); read tiny files to avoid a permanent
+                    # false coverage warning.
+                    if size <= 16 and not extracted.read_text(
+                            encoding="utf-8", errors="ignore").strip():
+                        continue
+                    indexable += 1
+                except OSError:
+                    continue
+            return indexed, indexable
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).error("Lance coverage check failed: %s", exc)
+            return 0, 0
 
     def rebuild_lance_index(self) -> Dict[str, Any]:
         """Rebuild the LanceDB index from all non-deleted documents. Pro only.

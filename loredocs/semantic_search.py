@@ -244,14 +244,14 @@ class DocLanceIndex:
 
             vec_q = table.search(q_vec, vector_column_name='vector', query_type='vector')
             if where_clause:
-                vec_q = vec_q.where(where_clause)
+                vec_q = vec_q.where(where_clause, prefilter=True)
             vec_results = vec_q.limit(limit * 4).to_list()
 
             fts_results: list = []
             try:
                 fts_q = table.search(query, query_type='fts')
                 if where_clause:
-                    fts_q = fts_q.where(where_clause)
+                    fts_q = fts_q.where(where_clause, prefilter=True)
                 fts_results = fts_q.limit(limit * 4).to_list()
             except Exception:
                 pass  # FTS index may not exist on very new tables
@@ -261,6 +261,29 @@ class DocLanceIndex:
         except Exception as exc:
             _log.error("Lance search failed: %s", exc)
             return []
+
+    def indexed_doc_count(self, vault_id: Optional[str] = None) -> int:
+        """Count distinct doc_ids present in the index, optionally vault-scoped.
+
+        Used for coverage reporting (SH-101414): the index is derived and its
+        writes are best-effort, so it can silently hold fewer documents than
+        SQLite. Returns 0 if the index is unavailable.
+        """
+        table = self._open_table()
+        if table is None:
+            return 0
+        try:
+            q = table.search().select(['doc_id'])
+            if vault_id:
+                if not _SAFE_ID_RE.match(vault_id):
+                    return 0
+                safe_vault = vault_id.replace("'", "''")
+                q = q.where(f"vault_id = '{safe_vault}'")
+            rows = q.limit(max(table.count_rows(), 1)).to_list()
+            return len({r['doc_id'] for r in rows})
+        except Exception as exc:
+            _log.error("Lance indexed_doc_count failed: %s", exc)
+            return 0
 
     def rebuild(self, docs: list) -> int:
         """Rebuild the Lance index from a list of doc dicts.
@@ -304,6 +327,12 @@ class DocLanceIndex:
         self._table = db.create_table('docs', all_rows, schema=schema)
         self._table.create_fts_index('name', replace=True)
         self._table.create_fts_index('chunk_text', replace=True)
+        # Deliberately NO ANN index on the vector column (SH-101414). Without
+        # one, LanceDB vector search is an exact flat scan -- correct at any
+        # corpus size, and fast at ours. An IVF_PQ index cannot train under
+        # 256 rows, emits empty-cluster warnings below ~65536 vectors, and
+        # trades exactness for approximate recall. Revisit only if vaults
+        # reach a scale where flat-scan latency is measured to be a problem.
         os.chmod(self._lance_dir, 0o700)
         return len(all_rows)
 
