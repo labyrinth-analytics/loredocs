@@ -7,7 +7,7 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
-## Unreleased
+## v0.1.24 (2026-09-01)
 
 ### Fixed: Notion import preserves block structure (SH-101419)
 
@@ -20,6 +20,35 @@ generic fallback, heading level is parsed from the trailing digit (the old
 toggle render as markdown. A committed fixture of realistic Notion block
 payloads (`tests/fixtures/notion_blocks.json`) plus table-driven and
 round-trip tests lock the exact output per block type.
+
+### Added: semantic index coverage is visible (SH-101414)
+
+The silent-degradation half of SH-101414. `_lance_write_safe` skips index
+writes whenever the tier is not Pro and swallows errors by design, so the
+derived Lance index can drift below SQLite without any signal -- the state
+that produced the original wrong-answer report.
+
+`VaultStorage.search_semantic` now computes per-scope coverage via a new
+`_lance_coverage` helper and attaches `index_coverage`
+(`indexed_docs`/`indexable_docs`) to both the semantic and FTS-fallback
+result dicts, plus a `coverage_warning` string when the index holds fewer
+documents than SQLite says are indexable. `vault_search` renders the warning
+in both markdown and JSON; `vault_tier_status` gains a
+`semantic_index_coverage` block (`indexed_docs`, `indexable_docs`,
+`in_sync`), Pro only, so drift is inspectable without running a search.
+`DocLanceIndex.indexed_doc_count(vault_id)` backs the count.
+
+`_lance_coverage` mirrors rebuild eligibility exactly -- non-deleted docs
+with a non-empty, non-whitespace `extracted.txt` -- so documents with no
+extractable text cannot raise a permanent false warning.
+
+Two deliberate non-changes, documented here because both look like
+omissions: `prefilter=True` is stated explicitly on the search `.where()`
+calls purely as insurance against a future LanceDB default flip (0.30.2
+already pre-filters, so removing it is a no-op on the pinned version), and
+`rebuild()` deliberately creates NO ANN index -- IVF_PQ cannot train under
+256 rows and degrades recall, while the exact flat scan is correct at any
+size.
 
 ### Fixed: semantic index rebuild is atomic and reports progress (SH-101414)
 

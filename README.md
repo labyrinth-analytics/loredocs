@@ -1,4 +1,4 @@
-# LoreDocs v0.1.23
+# LoreDocs v0.1.24
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -407,25 +407,45 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
-## v0.1.23 (2026-08-30)
+## v0.1.24 (2026-09-01)
 
-### Fixed: Updating a document with nothing to change no longer marks it as edited
+### Fixed: Notion imports keep their structure
 
-Calling an update with only a document ID -- no new content, name, tags,
-category, priority, or notes -- still stamped the document with a fresh
-"last modified" time even though nothing about it had changed. Documents
-that had only ever been read looked freshly edited, and that showed up as
-phantom conflicts when syncing a vault between machines. An update with
-nothing to change now leaves the document exactly as it was and returns it
-unchanged.
+Imported Notion pages were losing all of their structure -- headings,
+bullet and numbered lists, to-do checkboxes, and code blocks all arrived as
+one flat wall of text, and quotes, callouts, and collapsible sections were
+dropped entirely. Imports now preserve headings at the right level, list
+markers, checked/unchecked to-do state, fenced code blocks with their
+language, quotes, callouts, and toggles.
 
-### Fixed: A misspelled parameter is now reported instead of silently ignored
+### Added: search tells you when its index is incomplete
 
-Passing an unrecognized parameter name to a document update -- a typo, or a
-field that does not exist -- used to be accepted and quietly discarded. The
-call reported success while doing nothing at all, which is the hardest kind
-of failure to notice. Unrecognized parameters are now rejected with an error
-that names the offending parameter, so a typo surfaces immediately.
+Semantic search draws on an index that is built separately from your
+documents. If that index falls behind -- most commonly because documents
+were added while you were on the Free tier, where the index is not
+maintained -- searches kept returning confident results drawn from only the
+part of your library that had been indexed. Nothing indicated that anything
+was missing.
+
+Searches now report their own coverage. When the index holds fewer documents
+than your vault does, results carry a warning naming the counts (for
+example, "covers 3 of 5 indexable documents in this scope") and telling you
+to run a rebuild. Documents with no extractable text are not counted against
+coverage, so an image-only file will not produce a warning that never goes
+away.
+
+You can also check the index without running a search: on Pro,
+`vault_tier_status` now reports how many documents are indexed, how many are
+indexable, and whether the two are in sync.
+
+### Fixed: semantic index rebuilds are safer and show progress
+
+Rebuilding the semantic search index used to delete the existing index
+first, so an interrupted rebuild could leave search empty. The rebuild now
+builds the new index in the background and swaps it in only when complete --
+an interruption leaves your previous index untouched. Rebuilds also report
+progress as they go instead of sitting silent for a long time, and
+auto-discovered related documents now search within the right vault.
 
 <!-- WHATS_NEW:END -->
 
