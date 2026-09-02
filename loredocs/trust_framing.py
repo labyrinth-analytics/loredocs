@@ -119,7 +119,7 @@ def _neutralize_literal_markers(body):
     return neutralized, count
 
 
-def derive_session_nonce(session_token):
+def derive_session_nonce(session_token=None):
     """Derive the per-call delimiter nonce.
 
     LoreDocs' injection tools are pull-based (no guaranteed external session
@@ -134,7 +134,7 @@ def derive_session_nonce(session_token):
     return hashlib.sha256(session_token.encode("utf-8")).hexdigest()[:8]
 
 
-def wrap_untrusted(body, *, session_nonce):
+def wrap_untrusted(body, *, session_nonce=None):
     """Wrap `body` in the untrusted-vault-content delimiter.
 
     Neutralizes literal occurrences of the delimiter marker inside `body`
@@ -148,6 +148,9 @@ def wrap_untrusted(body, *, session_nonce):
             "LoreDocs vault_inject: WARNING possible boundary-spoof near-miss "
             f"detected ({near_miss_count} occurrence(s))\n"
         )
+
+    if session_nonce is None:
+        session_nonce = derive_session_nonce()
 
     open_block = _OPEN_TEMPLATE.format(nonce=session_nonce)
     close_block = _CLOSE_TEMPLATE.format(nonce=session_nonce)
