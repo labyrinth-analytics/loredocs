@@ -202,6 +202,8 @@ Full-text search across document contents using SQLite FTS5. Searches across all
 
 **Key parameters:** `query` (required), `vault_id` (optional)
 
+**Note:** when the semantic index covers fewer documents than the vault holds, results carry a coverage warning naming the counts. Run `vault_rebuild_index` to re-sync.
+
 ---
 
 ### `vault_search_by_tag`
@@ -465,9 +467,9 @@ Check the integrity of document version history and report any problems found. C
 
 ### `vault_tier_status`
 
-Show your current tier (Free or Pro) and usage vs. limits. Free tier allows up to 3 vaults.
+Show your current tier (Free or Pro) and usage vs. limits. Free tier allows up to 3 vaults. On Pro it also reports semantic index coverage -- how many documents are indexed, how many are indexable, and whether the two are in sync -- so you can spot a stale index without running a search.
 
-**When Claude uses it:** When you ask "what tier am I on?" or "how many vaults can I create?"
+**When Claude uses it:** When you ask "what tier am I on?", "how many vaults can I create?", or "is my search index up to date?"
 
 **Key parameters:** none required
 
