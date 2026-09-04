@@ -17,6 +17,12 @@ Usage:
     # Search documents across all vaults
     python scripts/query_loredocs.py --search "architecture"
 
+    # Semantic search (Pro; degrades to keyword search if unavailable)
+    python scripts/query_loredocs.py --search "how do we handle retries" --semantic
+
+    # Get one document's full metadata and content (equivalent to vault_get_doc)
+    python scripts/query_loredocs.py --get-doc abc123def456
+
     # Add a text/markdown document to a vault
     python scripts/query_loredocs.py --add-doc \
         --vault "My Project Docs" \
@@ -82,18 +88,49 @@ _fts_query = importlib.util.module_from_spec(_fts_spec)
 _fts_spec.loader.exec_module(_fts_query)
 sanitize_fts_query = _fts_query.sanitize_fts_query
 
+# DB_FILE is imported from loredocs.storage (the same constant server.py's
+# VaultStorage() uses) so the env-var discovery candidate below never drifts
+# from the real filename. Falls back to the literal already used by the
+# Cowork-mount/home-dir candidates if the package isn't importable.
+try:
+    from loredocs.storage import DB_FILE
+except ImportError:
+    DB_FILE = "loredocs.db"
+
 
 # -- DB discovery --
 
 def _find_loredocs_db():
     """Find the LoreDocs database, checking common locations.
 
-    Mounted paths are checked FIRST. In Cowork VMs, os.path.expanduser("~")
+    `LOREDOCS_ROOT`, when set, is the highest-precedence *discovery*
+    candidate (below the `--db-path` flag, which is checked by callers before
+    this function runs at all) -- it matches the MCP server's own resolution
+    (server.py's `app_lifespan`). An explicitly-set-but-unresolvable
+    `LOREDOCS_ROOT` is a hard error, never a silent fall-through to a
+    different corpus (SH-101500): a non-interactive caller reading only
+    stdout must never believe it queried the corpus it named while actually
+    reading another one.
+
+    Mounted paths are checked next. In Cowork VMs, os.path.expanduser("~")
     resolves to the ephemeral VM home (e.g. /sessions/sharp-adoring-dijkstra/),
     NOT Debbie's Mac home. Writing to VM ~ loses all data when the session ends.
     Checking /sessions/*/mnt/.loredocs/ first ensures we find the Mac-backed
     mount when running in a Cowork VM.
     """
+    if os.environ.get("LOREDOCS_ROOT"):
+        p = Path(os.environ["LOREDOCS_ROOT"]) / DB_FILE
+        if not p.is_file():
+            print(
+                f"ERROR: LOREDOCS_ROOT is set to {os.environ['LOREDOCS_ROOT']} "
+                f"but contains no {DB_FILE}. Refusing to fall back to a "
+                f"different corpus. Fix the path, unset LOREDOCS_ROOT, or "
+                f"pass --db-path.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        return str(p)
+
     # Cowork VM mount paths FIRST -- VM ~ is ephemeral, mount is Debbie's Mac
     candidates = sorted(glob.glob("/sessions/*/mnt/.loredocs/loredocs.db"))
     # VM home fallback (used in Claude Code on Debbie's Mac where ~ IS the Mac home)
@@ -302,10 +339,105 @@ def cmd_info(args):
     conn.close()
 
 
+# -- vault_get_doc --
+
+def cmd_get_doc(args):
+    """Show a document's metadata and full content (equivalent to vault_get_doc).
+
+    Delegates to VaultStorage.get_document()/.get_document_content() -- the
+    exact two calls vault_get_doc makes -- rather than hand-composing the
+    on-disk path. Prints the metadata dict's fields in insertion order (not
+    a hand-picked subset), so a future field added to get_document() flows
+    through without a second edit here.
+    """
+    db_path = args.db_path or _find_loredocs_db()
+    if not db_path:
+        print("ERROR: Could not find LoreDocs loredocs.db", file=sys.stderr)
+        sys.exit(1)
+    root = _find_loredocs_root(db_path)
+
+    try:
+        from loredocs.storage import VaultStorage
+    except ImportError:
+        print(
+            "ERROR: loredocs package not importable; --get-doc requires "
+            "the installed loredocs package.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    storage = VaultStorage(root=Path(root))
+    doc = storage.get_document(args.get_doc)
+    if doc is None:
+        print(f"Error: Document '{args.get_doc}' not found.", file=sys.stderr)
+        sys.exit(1)
+
+    for key, value in doc.items():
+        print(f"{key}: {value}")
+    print()
+
+    content = storage.get_document_content(args.get_doc) or ""
+    print(content if content else "(no content)")
+
+
 # -- vault_search --
 
+def _cmd_search_semantic(args):
+    """Attempt Pro semantic search via VaultStorage.search_semantic().
+
+    Reuses the exact call vault_search makes (server.py) rather than
+    re-implementing ranking/fusion -- a second caller, never a second
+    implementation.
+
+    Returns True if semantic results were printed to stdout (caller is
+    done). Returns False after printing a degrade tip to stderr; the
+    caller should then run the ordinary keyword search on stdout, never a
+    mix of tip and result text on the same stream.
+    """
+    db_path = args.db_path or _find_loredocs_db()
+    if not db_path:
+        print("ERROR: Could not find LoreDocs loredocs.db", file=sys.stderr)
+        sys.exit(1)
+    root = _find_loredocs_root(db_path)
+
+    tip = (
+        "Semantic search requires LoreDocs Pro. Returning keyword results "
+        "instead. Use vault_set_tier with tier='pro' to activate your "
+        "license."
+    )
+    try:
+        from loredocs.storage import VaultStorage
+        from loredocs.tiers import get_tier, TIER_PRO
+    except ImportError:
+        print(tip, file=sys.stderr)
+        return False
+
+    if get_tier(Path(root)) != TIER_PRO:
+        print(tip, file=sys.stderr)
+        return False
+
+    storage = VaultStorage(root=Path(root))
+    result = storage.search_semantic(args.search, vault_id=None, limit=args.limit)
+    rows = result.get("results", [])
+
+    if not rows:
+        print(f"No documents matching '{args.search}' (semantic).")
+        return True
+
+    print(f"Found {len(rows)} document(s) matching '{args.search}' (semantic):\n")
+    for r in rows:
+        print(f"- **{r['doc_name']}** (`{r['doc_id']}`) in vault '{r['vault_name']}'")
+        if r.get("snippet"):
+            print(f"  {r['snippet']}")
+        print()
+    return True
+
+
 def cmd_search(args):
-    """Search documents across all vaults by keyword."""
+    """Search documents across all vaults by keyword (or semantically with --semantic)."""
+    if getattr(args, "semantic", False) and _cmd_search_semantic(args):
+        return
+
     conn, db_path = _connect(args.db_path)
 
     # Use FTS if available, fall back to LIKE.
@@ -783,6 +915,12 @@ def main():
     parser.add_argument("--list", action="store_true", help="List all vaults (equivalent to vault_list)")
     parser.add_argument("--info", type=str, help="Show vault details by name or ID (equivalent to vault_inject_summary)")
     parser.add_argument("--search", type=str, help="Search documents by keyword")
+    parser.add_argument("--semantic", action="store_true",
+                        help="Use semantic (hybrid vector+keyword) search with --search. "
+                             "Pro tier only; degrades to keyword search if unavailable.")
+    parser.add_argument("--get-doc", type=str, dest="get_doc",
+                        help="Show one document's full metadata and content by ID "
+                             "(equivalent to vault_get_doc)")
     parser.add_argument("--add-doc", action="store_true", dest="add_doc", help="Add a document to a vault")
     parser.add_argument("--create-vault", action="store_true", dest="create_vault", help="Create a new vault")
     parser.add_argument("--update-doc", action="store_true", dest="update_doc", help="Update a document's content or metadata")
@@ -841,6 +979,8 @@ def main():
         cmd_add_doc(args)
     elif args.info:
         cmd_info(args)
+    elif args.get_doc:
+        cmd_get_doc(args)
     elif args.search:
         cmd_search(args)
     elif args.list:
