@@ -7,6 +7,22 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
+## Unreleased
+
+### Added: fallback contract tier -- `--semantic` and `--get-doc` on `query_loredocs.py` (SH-101553)
+
+`scripts/query_loredocs.py` gains `--semantic` on `--search` (Pro; degrades
+to keyword search with a stderr tip, never a hard crash) and `--get-doc
+DOC_ID` (equivalent to `vault_get_doc`), both delegating to the existing
+`VaultStorage.search_semantic()`/`get_document()`/`get_document_content()`
+methods -- no hand-composed file paths. `_find_loredocs_db()` now checks
+`LOREDOCS_ROOT` ahead of the Cowork-mount/home-dir fallbacks; a set-but-
+unresolvable override hard-fails (`sys.exit(1)`, no stdout rows) instead of
+silently querying a different corpus (SH-101500). New canonical contract
+doc: `FALLBACK_CONTRACT.md`. New drift guard:
+`tests/test_fallback_mcp_parity.py`, asserting the fallback and the MCP
+server agree on every tier-(a) read operation.
+
 ## v0.1.24 (2026-09-01)
 
 ### Fixed: Notion import preserves block structure (SH-101419)
