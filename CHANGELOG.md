@@ -7,7 +7,7 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
-## Unreleased
+## v0.1.25 (2026-09-05)
 
 ### Added: fallback contract tier -- `--semantic` and `--get-doc` on `query_loredocs.py` (SH-101553)
 
@@ -20,8 +20,37 @@ methods -- no hand-composed file paths. `_find_loredocs_db()` now checks
 unresolvable override hard-fails (`sys.exit(1)`, no stdout rows) instead of
 silently querying a different corpus (SH-101500). New canonical contract
 doc: `FALLBACK_CONTRACT.md`. New drift guard:
-`tests/test_fallback_mcp_parity.py`, asserting the fallback and the MCP
-server agree on every tier-(a) read operation.
+`tests/test_fallback_mcp_parity.py` (6 tests), asserting the fallback and
+the MCP server agree on every tier-(a) read operation, including both hard
+invariants above. Shared `unwrap_result()` helper extracted to
+`internal_tools/loremcp_fixtures/fixtures.py` (fixes a FastMCP
+string-wrapped-JSON unwrapping bug surfaced while writing this test) so
+both products' parity tests import one implementation instead of each
+redefining `_payload()`.
+
+### Fixed: test-integrity gap in `test_mcp_tools.py` -- `assert_ok()` never raised (SH-101598)
+
+The file's custom assertion helper only incremented a module-level `FAIL`
+counter and printed `[FAIL] ...` on a false condition; it never raised, so
+pytest (the repo's actual execution path for this file) reported every one
+of the 8 affected test functions as PASSED regardless of whether their
+`assert_ok` checks held. 62 of 63 assertions across the file were affected.
+`assert_ok` now raises `AssertionError`, verified by a mutation test
+(flip an assertion to a guaranteed-false condition, confirm pytest now
+reports FAILED, revert). Fixing this unmasked 3 previously-invisible
+failures, triaged separately in SH-101601.
+
+### Internal: trust-framing signature alignment for three-way sync (SH-101476)
+
+`derive_session_nonce()` and `wrap_untrusted()` gain backward-compatible
+`=None` defaults so this file's signatures align with the LoreConvo hook
+and MCP-tool copies now that `scripts/check_trust_framing_sync.py` checks
+all three pairwise. No behavior change for LoreDocs callers.
+
+### Documentation: Pro key-issuance runbook note (follow-up to SH-100131)
+
+`README.md`/`INSTALL.md` set the post-checkout expectation for manual Pro
+key issuance.
 
 ## v0.1.24 (2026-09-01)
 

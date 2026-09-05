@@ -4,9 +4,9 @@ What changed in each release, written for users (not developers).
 
 ---
 
-## Unreleased
+## v0.1.25 (2026-09-05)
 
-### Added: the fallback script can now do semantic search and fetch a single document
+### Added: the fallback script can now do semantic search and fetch a single document, and follows a documented contract
 
 If the LoreDocs MCP server is unreachable, the fallback command-line script
 (`query_loredocs.py`) can now run a semantic search (Pro) and fetch one
@@ -14,8 +14,13 @@ document's full content by ID, matching what the MCP tools already do. If
 you set `LOREDOCS_ROOT` to point the fallback at a specific vault location
 and that location doesn't actually contain your data, the fallback now
 stops with a clear error instead of silently searching somewhere else. See
-`FALLBACK_CONTRACT.md` in the LoreDocs install for what the fallback
-guarantees.
+`FALLBACK_CONTRACT.md` in the LoreDocs install for exactly what the
+fallback guarantees and how it's kept in sync with the MCP server.
+
+### Documentation: Pro license key issuance
+
+The README and install docs now set expectations for how you receive your
+Pro license key after checkout.
 
 ## v0.1.24 (2026-09-01)
 
