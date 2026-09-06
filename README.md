@@ -1,4 +1,4 @@
-# LoreDocs v0.1.24
+# LoreDocs v0.1.25
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -409,45 +409,23 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
-## v0.1.24 (2026-09-01)
+## v0.1.25 (2026-09-05)
 
-### Fixed: Notion imports keep their structure
+### Added: the fallback script can now do semantic search and fetch a single document, and follows a documented contract
 
-Imported Notion pages were losing all of their structure -- headings,
-bullet and numbered lists, to-do checkboxes, and code blocks all arrived as
-one flat wall of text, and quotes, callouts, and collapsible sections were
-dropped entirely. Imports now preserve headings at the right level, list
-markers, checked/unchecked to-do state, fenced code blocks with their
-language, quotes, callouts, and toggles.
+If the LoreDocs MCP server is unreachable, the fallback command-line script
+(`query_loredocs.py`) can now run a semantic search (Pro) and fetch one
+document's full content by ID, matching what the MCP tools already do. If
+you set `LOREDOCS_ROOT` to point the fallback at a specific vault location
+and that location doesn't actually contain your data, the fallback now
+stops with a clear error instead of silently searching somewhere else. See
+`FALLBACK_CONTRACT.md` in the LoreDocs install for exactly what the
+fallback guarantees and how it's kept in sync with the MCP server.
 
-### Added: search tells you when its index is incomplete
+### Documentation: Pro license key issuance
 
-Semantic search draws on an index that is built separately from your
-documents. If that index falls behind -- most commonly because documents
-were added while you were on the Free tier, where the index is not
-maintained -- searches kept returning confident results drawn from only the
-part of your library that had been indexed. Nothing indicated that anything
-was missing.
-
-Searches now report their own coverage. When the index holds fewer documents
-than your vault does, results carry a warning naming the counts (for
-example, "covers 3 of 5 indexable documents in this scope") and telling you
-to run a rebuild. Documents with no extractable text are not counted against
-coverage, so an image-only file will not produce a warning that never goes
-away.
-
-You can also check the index without running a search: on Pro,
-`vault_tier_status` now reports how many documents are indexed, how many are
-indexable, and whether the two are in sync.
-
-### Fixed: semantic index rebuilds are safer and show progress
-
-Rebuilding the semantic search index used to delete the existing index
-first, so an interrupted rebuild could leave search empty. The rebuild now
-builds the new index in the background and swaps it in only when complete --
-an interruption leaves your previous index untouched. Rebuilds also report
-progress as they go instead of sitting silent for a long time, and
-auto-discovered related documents now search within the right vault.
+The README and install docs now set expectations for how you receive your
+Pro license key after checkout.
 
 <!-- WHATS_NEW:END -->
 
