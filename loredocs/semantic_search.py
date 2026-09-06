@@ -296,8 +296,8 @@ class DocLanceIndex:
         live 'docs' table first, so a client-abandoned or crashed rebuild
         left the index empty or half-written -- the exact state that produced
         the silent partial-index degradation. The new table is now built
-        under a staging name and swapped in with rename_table only after it
-        is complete; a failure mid-build leaves the previous index intact.
+        under a staging name and swapped in via mode='overwrite' only after
+        it is complete; a failure mid-build leaves the previous index intact.
 
         progress_cb, if given, is called as progress_cb(done, total) after
         each document is embedded, so long rebuilds can report progress
