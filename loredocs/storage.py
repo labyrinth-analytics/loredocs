@@ -51,7 +51,7 @@ from .version_storage import (
     _read_intent_journal, _write_intent_journal, _delete_intent_journal,
     _check_lock_health, _compute_retention_depth, _compute_history_budget,
     _vault_history_bytes, _should_warn_substrate, _timestamp_suffix,
-    _validate_sidecar, _write_sidecar, _stamp_rotated_at,
+    _validate_sidecar, _write_sidecar, _rotate_history_version,
     doc_context_cm,
 )
 
@@ -1135,7 +1135,7 @@ def _auto_link_doc_embeddings(
             dist = r.get("_distance", 999)
             if cand_doc_id == doc_id:
                 continue
-            if dist > 0.707:  # cosine < 0.75 for L2-normalized vectors
+            if dist > 0.5:  # squared L2 > 0.5 means cosine < 0.75
                 continue
             if cand_vault_id != source_vault_id:
                 continue
@@ -1908,16 +1908,18 @@ class VaultStorage:
         1. Read DB row for doc_id.
         2. If content is changing:
            a. Determine new ext from filename.
-           b. Compute retention depth and do rotation.
-           c. Check vault history budget.
-           d. Acquire _doc_context (write=True).
-           e. Write new bytes to current.new{ext_new} (temp + fsync).
-           f. Write .intent.json.
+           b. Acquire _doc_context (write=True), which validates lock and
+              divergence before retention planning.
+           c. Plan retention rotation without deleting content.
+           d. Check the prospective vault history budget, subtracting the
+              planned rotation bytes, before filesystem mutation.
+           e. Write and hash-validate current.new{ext_new} (temp + fsync).
+           f. Write .intent.json, including the first rotation target.
            g. Write .highwater (BEFORE content creation in history).
            h. Step 3a: Archive current -> history/v{from_version}{ext_old}.
            i. Step 3b: Write v{from_version}.meta.json sidecar.
-           j. Step 3c: If rotation happened, unlink rotated content file.
-           k. Step 3d: Verify current.new hash, os.replace to current{ext_new}.
+           j. Verify current.new hash, os.replace to current{ext_new}.
+           k. Apply journaled rotation after the replacement is accepted.
            l. Step 3e: If ext changed, unlink current{ext_old}.
            m. Step 3f: Rewrite extracted.txt.
            n. Step 4: Rewrite metadata.json with _derived: true.
@@ -1953,67 +1955,71 @@ class VaultStorage:
             if filename:
                 ext_new = Path(filename).suffix.lower()
 
-            # 2b. Compute retention depth and do rotation (P4 fix).
-            # depth = total versions retained (including current).
-            # History files = depth - 1. Rotation happens when
-            # present_count >= depth - 1 (we're about to add one more).
-            tier = get_tier(self.root)
-            depth = _compute_retention_depth(tier, self.enforcer)
-            max_history = depth - 1
-            history_dir.mkdir(parents=True, exist_ok=True)
-            content_files = sorted(_content_file_glob(history_dir),
-                                   key=lambda p: _parse_version_number(p.name) or 0)
-            present_count = len(content_files)
-            rotated_versions = []
-            while present_count >= max_history:
-                lowest = content_files[0]
-                low_version = _parse_version_number(lowest.name)
-                if low_version is None:
-                    break
-                try:
-                    lowest.unlink()
-                    rotated_versions.append(low_version)
-                    logger.debug(
-                        "Rotated out v%d for doc '%s' (retention depth=%d)",
-                        low_version, doc_name, depth,
-                    )
-                except OSError as exc:
-                    logger.warning(
-                        "Failed to rotate v%d: %s", low_version, exc,
-                    )
-                    break
-                content_files = _content_file_glob(history_dir)
-                present_count = len(content_files)
-            if rotated_versions:
-                version_rotated = True
-                rotate_version = rotated_versions[0]
-
-            # 2c. Check vault history budget (r6/ops-cost).
-            tier = get_tier(self.root)
-            cap = _compute_history_budget(tier)
-            current_history_bytes = _vault_history_bytes(
-                self.vaults_dir, vault_id
-            )
-            if current_history_bytes + len(content) > cap:
-                raise HistoryBudgetExceededError(
-                    f"Vault history budget exceeded: current="
-                    f"{current_history_bytes} bytes, new content="
-                    f"{len(content)} bytes, cap={cap} bytes. "
-                    f"Remove old versions or upgrade tier."
-                )
-
-            # 2d. Acquire _doc_context (write=True).
+            # 2b. Acquire _doc_context (write=True).
             # This takes the lock, replays stale journals, computes
             # next_version, and checks divergence (raises on divergence).
+            tier = get_tier(self.root)
             ctx = self._ctx_mgr.acquire(
                 doc_id, vault_id, ext_old, version_count, write=True,
             )
             try:
+                # 2c. Plan retention without deleting content. The first
+                # selected version is journaled for crash recovery; deletion
+                # happens only at Step 3c under this lock.
+                depth = _compute_retention_depth(tier, self.enforcer)
+                max_history = depth - 1
+                content_files = sorted(
+                    _content_file_glob(history_dir),
+                    key=lambda path: (
+                        _parse_version_number(path.name) or 0,
+                        path.name,
+                    ),
+                )
+                rotate_count = max(0, len(content_files) - max_history + 1)
+                rotation_versions = []
+                for content_file in content_files[:rotate_count]:
+                    planned = _parse_version_number(content_file.name)
+                    if planned is not None and planned not in rotation_versions:
+                        rotation_versions.append(planned)
+                if rotation_versions:
+                    rotate_version = rotation_versions[0]
+
+                # 2d. Validate the prospective history budget without
+                # deleting anything. This update archives current_old, while
+                # the incoming content remains current and does not consume
+                # history budget. Subtract only files selected for rotation.
+                rotation_bytes = 0
+                for content_file in content_files[:rotate_count]:
+                    try:
+                        rotation_bytes += content_file.stat().st_size
+                    except OSError:
+                        pass
+                current_old = doc_dir / f"current{ext_old}"
+                try:
+                    outgoing_current_bytes = current_old.stat().st_size
+                except OSError:
+                    outgoing_current_bytes = 0
+                cap = _compute_history_budget(tier)
+                current_history_bytes = _vault_history_bytes(
+                    self.vaults_dir, vault_id
+                )
+                prospective_history_bytes = (
+                    current_history_bytes
+                    - rotation_bytes
+                    + outgoing_current_bytes
+                )
+                if prospective_history_bytes > cap:
+                    raise HistoryBudgetExceededError(
+                        f"Vault history budget exceeded: current="
+                        f"{current_history_bytes} bytes, archived content="
+                        f"{outgoing_current_bytes} bytes, cap={cap} bytes. "
+                        f"Remove old versions or upgrade tier."
+                    )
+
                 from_version = version_count  # current version to archive
                 to_version = ctx.next_version  # new version number
 
                 # Compute hash of current file (for journal).
-                current_old = doc_dir / f"current{ext_old}"
                 sha256_old = ""
                 if current_old.is_file():
                     try:
@@ -2024,9 +2030,28 @@ class VaultStorage:
                 # Compute hash of new content (for journal + verification).
                 sha256_new = hashlib.sha256(content).hexdigest()
 
-                # 2e. Write new bytes to current.new{ext_new} (temp + fsync).
+                # 2e. Write new bytes to current.new{ext_new} (temp + fsync)
+                # and validate them before journaling any destructive work.
                 current_new_path = doc_dir / f"current.new{ext_new}"
                 _safe_write_bytes(current_new_path, content, mode=0o600)
+                try:
+                    staged_new_hash = _hash_file(current_new_path)
+                except OSError:
+                    staged_new_hash = ""
+                if staged_new_hash != sha256_new:
+                    ts = _timestamp_suffix()
+                    orphan_path = doc_dir / f"current.new.orphan-{ts}{ext_new}"
+                    try:
+                        os.replace(str(current_new_path), str(orphan_path))
+                    except OSError:
+                        orphan_path = current_new_path
+                    raise RecoveryAbortedError(
+                        f"current.new hash mismatch during update of "
+                        f"doc {doc_id}. Expected {sha256_new[:16]}..., "
+                        f"got {staged_new_hash[:16]}... Orphan at: "
+                        f"{orphan_path}. Run vault_verify(doc_id='{doc_id}', "
+                        f"repair=True)."
+                    )
 
                 # 2f. Write .intent.json with all the fields.
                 journal_payload = {
@@ -2111,15 +2136,9 @@ class VaultStorage:
                         note=note,
                     )
 
-                # Step 3c: If rotation happened, unlink rotated content
-                # file (already unlinked above), stamp rotated_at.
-                if rotated_versions:
-                    for rv in rotated_versions:
-                        _stamp_rotated_at(history_dir, rv)
-
-                # Step 3d: Verify current.new hash, os.replace to
-                # current{ext_new}. If mismatch: orphan, delete journal,
-                # raise RecoveryAbortedError.
+                # Re-verify current.new and replace it before destructive
+                # retention rotation. If validation rejects the update,
+                # retained history and its sidecars remain unchanged.
                 current_dest_path = doc_dir / f"current{ext_new}"
                 try:
                     new_hash = _hash_file(current_new_path)
@@ -2141,6 +2160,25 @@ class VaultStorage:
                     )
                 os.replace(str(current_new_path), str(current_dest_path))
                 _fsync_dir(doc_dir)
+
+                # Apply the journaled retention rotation while the document
+                # lock is held. Replay uses the same helper. The journal
+                # remains present if a crash occurs before rotation finishes.
+                if rotation_versions:
+                    rotated_versions = []
+                    for version in rotation_versions:
+                        if _rotate_history_version(history_dir, version):
+                            rotated_versions.append(version)
+                    if rotated_versions:
+                        version_rotated = True
+                        for rotated in rotated_versions:
+                            logger.debug(
+                                "Rotated out v%d for doc '%s' "
+                                "(retention depth=%d)",
+                                rotated,
+                                doc_name,
+                                depth,
+                            )
 
                 # Step 3e: If ext changed, unlink current{ext_old}.
                 if ext_old and ext_new and ext_old != ext_new:

@@ -168,13 +168,18 @@ class DocLanceIndex:
         Replaces any existing chunks for this doc_id, then inserts new chunks.
         Errors are logged but never raised (never block a document save).
         """
-        if not text or not text.strip():
-            return True
         if not _SAFE_ID_RE.match(doc_id):
             _log.warning("index_document: unsafe doc_id rejected: %.32s", doc_id)
             return True
 
         try:
+            if not text or not text.strip():
+                if self._lance_dir.exists():
+                    table = self._open_table()
+                    if table is not None:
+                        table.delete(f"doc_id = '{doc_id}'")
+                return True
+
             prefix = f"{name}. " if name else ""
             chunks = _chunk_text(prefix + text)
             if not chunks:
@@ -304,8 +309,6 @@ class DocLanceIndex:
         instead of blocking silently for 30+ minutes.
         """
         valid = [d for d in docs if d.get('doc_id') and d.get('text', '').strip()]
-        if not valid:
-            return 0
 
         all_rows: list = []
         for idx, doc in enumerate(valid):
@@ -327,9 +330,6 @@ class DocLanceIndex:
                 })
             if progress_cb:
                 progress_cb(idx + 1, len(valid))
-
-        if not all_rows:
-            return 0
 
         db = self._get_db()
         staging = 'docs_new'

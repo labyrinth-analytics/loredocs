@@ -4,6 +4,17 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## Unreleased
+
+### Fixed
+
+- Rejected document updates preserve earlier versions, and document history can be viewed again.
+- Updating a document to empty text clears its content and saves the previous version.
+- Repeated context-loading calls respect changed token settings and report omitted documents accurately.
+- Notion imports retain paginated content and provide continuation for pages beyond the selected limit.
+- Semantic search stops matching cleared content, including after an empty index rebuild.
+- Automatically discovered document relationships follow the documented similarity minimum.
+
 ## v0.1.25 (2026-09-05)
 
 ### Added: the fallback script can now do semantic search and fetch a single document, and follows a documented contract

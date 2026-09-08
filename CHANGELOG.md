@@ -7,6 +7,17 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
+## Unreleased
+
+### Fixed
+
+- Preserve retained document history when an update fails budget or lock checks.
+- Render the structured history result in the MCP tool and version explicitly empty content updates.
+- Keep vault-prime cache selection and omission reporting consistent with current injection settings.
+- Follow Notion block pagination and preserve page-limit continuation IDs.
+- Remove stale semantic chunks for blank documents and empty index rebuilds.
+- Apply the documented automatic-relationship cosine threshold to LanceDB squared distances.
+
 ## v0.1.25 (2026-09-05)
 
 ### Added: fallback contract tier -- `--semantic` and `--get-doc` on `query_loredocs.py` (SH-101553)
