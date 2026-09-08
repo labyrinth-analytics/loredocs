@@ -4,6 +4,28 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## Unreleased
+
+### Documentation: correcting the v0.1.26 note on automatic document relationships
+
+The v0.1.26 notes said that rebuilding the semantic index would regenerate
+existing automatic relationships at the corrected similarity threshold. That
+is not accurate, and the correction matters if you read the original note and
+expected a rebuild to clean things up.
+
+Rebuilding the index rebuilds the search index only -- it does not revisit
+relationships that have already been recorded. Automatic links created before
+v0.1.26 stay exactly as they are.
+
+In practice this is a smaller problem than the original note implied. The
+earlier threshold was too permissive rather than too strict, so no
+relationship is missing: every link that qualifies under the documented 0.75
+minimum is already there. What can remain is a small number of extra links
+between documents that are less closely related than the documented minimum.
+If one of those shows up in a "related documents" list and you want it gone,
+remove it with `vault_unlink_doc`. New links have used the documented
+threshold since v0.1.26.
+
 ## v0.1.26 (2026-09-08)
 
 ### Fixed: a rejected update no longer costs you your document history
