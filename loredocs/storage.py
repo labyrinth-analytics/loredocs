@@ -1943,7 +1943,6 @@ class VaultStorage:
         now = self._now()
         doc_dir = self.vaults_dir / vault_id / "docs" / doc_id
         history_dir = doc_dir / "history"
-        history_dir.mkdir(parents=True, exist_ok=True)
 
         version_rotated = False
         rotate_version = None
@@ -1961,6 +1960,7 @@ class VaultStorage:
             tier = get_tier(self.root)
             depth = _compute_retention_depth(tier, self.enforcer)
             max_history = depth - 1
+            history_dir.mkdir(parents=True, exist_ok=True)
             content_files = sorted(_content_file_glob(history_dir),
                                    key=lambda p: _parse_version_number(p.name) or 0)
             present_count = len(content_files)
