@@ -140,6 +140,7 @@ _PROCESS_START_TS: float = time.monotonic()
 
 @dataclass
 class _InjectionCacheEntry:
+    candidate_doc_ids: List[str]
     injected_doc_ids: List[str]
     estimated_token_count: int
     vault_max_updated_at: str
@@ -183,6 +184,10 @@ def _build_cache_key(
     tags_frozen: "Optional[frozenset[str]]",
     query: str,
     vault_max_updated_at: str,
+    effective_cap: Optional[int],
+    cap_behavior: str,
+    max_single_doc_tokens: Optional[int],
+    safety_factor: float,
 ) -> tuple:
     return (
         session_token or "",
@@ -193,6 +198,10 @@ def _build_cache_key(
         tags_frozen or frozenset(),
         query or "",
         vault_max_updated_at,
+        effective_cap,
+        cap_behavior,
+        max_single_doc_tokens,
+        safety_factor,
     )
 
 
@@ -1271,7 +1280,11 @@ async def vault_update_doc(
                             category=category, priority=priority, notes=notes,
                             author=author, session_id=session_id, note=note)
     storage = _get_storage(ctx)
-    content_bytes = params.content.encode("utf-8") if params.content else None
+    content_bytes = (
+        params.content.encode("utf-8")
+        if params.content is not None
+        else None
+    )
     result = storage.update_document(
         doc_id=params.doc_id,
         content=content_bytes,
@@ -1878,10 +1891,38 @@ async def vault_doc_history(ctx: Context, doc_id: str) -> str:
     if not history:
         return f"No version history for document '{params.doc_id}'."
 
+    versions = history.get("versions", [])
     lines = [f"# Version History: {doc['name']}", ""]
-    for v in history:
+    for v in versions:
         current = " (current)" if v.get("current") else ""
-        lines.append(f"- **v{v['version']}**{current} | {v['modified_at'][:10]} | {_fmt_size(v['file_size_bytes'])}")
+        status = v.get("status", "unknown")
+        modified_at = str(v.get("modified_at") or "unknown")[:10]
+        lines.append(
+            f"- **v{v['version']}**{current} | {status} | "
+            f"{modified_at} | {_fmt_size(v.get('file_size_bytes', 0))}"
+        )
+
+    status_counts = {
+        status: sum(1 for version in versions if version.get("status") == status)
+        for status in ("present", "rotated", "missing")
+    }
+    lines.extend([
+        "",
+        "Retention: "
+        f"{status_counts['present']} present, "
+        f"{status_counts['rotated']} rotated, "
+        f"{status_counts['missing']} missing",
+    ])
+
+    divergence = history.get("divergence")
+    if divergence:
+        lines.extend([
+            f"Divergence: {divergence.get('kind', 'unknown')}",
+            f"Detail: {divergence.get('detail', '')}",
+            f"Remedy: {divergence.get('remedy', '')}",
+        ])
+    else:
+        lines.append("Divergence: none")
     return "\n".join(lines)
 
 
@@ -2183,22 +2224,25 @@ def _run_vault_injection(
 
     tags_frozen: "Optional[frozenset[str]]" = frozenset(tags) if tags is not None else None
     cache_key = _build_cache_key(
-        session_token, vault_name, max_tokens, tags_frozen, query or "", vault_max_updated_at
+        session_token,
+        vault_name,
+        max_tokens,
+        tags_frozen,
+        query or "",
+        vault_max_updated_at,
+        effective_cap,
+        cap_behavior,
+        max_single_doc_tokens,
+        safety_factor,
     )
     cached = _cache_lookup(cache_key)
     if cached is not None:
         cache_label = "(cached)"
-        est = cached.estimated_token_count
-        inj_ids = cached.injected_doc_ids
-        # Re-fetch content for cached entry to build text (content is not cached, only ids)
-        # For cache hit, just indicate cache was used -- we do NOT re-build the full text here
-        # because we need to re-fetch doc content. Instead, we skip cache for text rebuilding.
-        # Note: the cache's value is "did we already inject this set", but since we need the
-        # actual text returned to the caller, we still need to fetch content on a cache hit.
-        # The cache's purpose is to skip the DB query + FTS step, not the text-building step.
-        # We store injected_doc_ids so we can fast-path retrieve exactly those docs in order.
+        candidate_ids = cached.candidate_doc_ids
+        # Re-fetch all candidates in their ranked order, then re-apply injection.
+        # Keeping the full candidate set preserves omission metadata on cache hits.
         docs = []
-        for doc_id in inj_ids:
+        for doc_id in candidate_ids:
             doc_meta = storage.get_document(doc_id)
             if doc_meta:
                 content = storage.get_document_content(doc_id) or ""
@@ -2220,6 +2264,7 @@ def _run_vault_injection(
         result = _do_injection(docs, effective_cap, cap_behavior, max_single_doc_tokens, vault_name, session_nonce)
         # Store cache entry
         cache_entry = _InjectionCacheEntry(
+            candidate_doc_ids=[doc["doc_id"] for doc in docs],
             injected_doc_ids=result["injected_doc_ids"],
             estimated_token_count=result["estimated_token_count"],
             vault_max_updated_at=vault_max_updated_at,
@@ -3515,8 +3560,11 @@ if _NOTION_AVAILABLE:
                 return f"Error: {exc}"
 
         # Cap page count
+        remaining_after = []
         if len(remaining_page_ids) > params.max_pages:
+            remaining_after = remaining_page_ids[params.max_pages:]
             remaining_page_ids = remaining_page_ids[:params.max_pages]
+        explicit_page_batch = list(remaining_page_ids)
 
         # Set up checkpoint manager
         ckpt_mgr = CheckpointManager(ckpt_path)
@@ -3536,7 +3584,7 @@ if _NOTION_AVAILABLE:
 
         try:
             # Import database pages
-            for db_id in remaining_db_ids:
+            for db_index, db_id in enumerate(remaining_db_ids):
                 try:
                     db_result = importer.import_database(
                         db_id, tags=params.tags, category=params.category,
@@ -3550,9 +3598,10 @@ if _NOTION_AVAILABLE:
                     remaining_page_ids.extend(db_result.get("page_ids", []))
                 except WorkspaceSaturationError as exc:
                     # Return partial result with continuation token
-                    remaining_after = remaining_page_ids[all_imported + all_skipped:]
+                    pending_page_ids = explicit_page_batch + remaining_after
+                    pending_db_ids = remaining_db_ids[db_index:]
                     cont_token = _encode_continuation_token(
-                        resolved_vault.id, remaining_after, [], ckpt_path,
+                        resolved_vault.id, pending_page_ids, pending_db_ids, ckpt_path,
                     )
                     return json.dumps({
                         "imported": all_imported,
@@ -3578,8 +3627,9 @@ if _NOTION_AVAILABLE:
             ckpt_mgr.save(checkpoint_data)
 
         except WorkspaceSaturationError as exc:
+            pending_page_ids = explicit_page_batch + remaining_after
             cont_token = _encode_continuation_token(
-                resolved_vault.id, [], remaining_db_ids, ckpt_path,
+                resolved_vault.id, pending_page_ids, [], ckpt_path,
             )
             return json.dumps({
                 "imported": all_imported,
@@ -3591,7 +3641,6 @@ if _NOTION_AVAILABLE:
             })
 
         # Build continuation token if there are remaining pages
-        remaining_after = remaining_page_ids[params.max_pages:] if len(remaining_page_ids) > params.max_pages else []
         cont_token = None
         if remaining_after:
             cont_token = _encode_continuation_token(

@@ -789,8 +789,38 @@ def _stamp_rotated_at(history_dir: Path, version: int) -> None:
     if data is None:
         # Invalid sidecar -- do not touch it.  The version reports missing.
         return
+    if data.get("rotated_at") is not None:
+        return
     data["rotated_at"] = _now_iso()
     _safe_write_json(sidecar_path, data, mode=0o600)
+
+
+def _rotate_history_version(
+    history_dir: Path,
+    version: int,
+    *,
+    complete_missing_sidecar: bool = False,
+) -> bool:
+    """Remove retained content for ``version`` and stamp its sidecar.
+
+    Content is resolved by parsed version number rather than the document's
+    current extension. Historical versions can have different extensions
+    after a filename change, including during intent-journal replay. Replay
+    may complete the stamp after an interruption between unlink and stamp.
+    """
+    removed = False
+    for content_path in _content_file_glob(history_dir):
+        if _parse_version_number(content_path.name) != version:
+            continue
+        try:
+            content_path.unlink()
+        except OSError as exc:
+            logger.warning("Failed to rotate v%d: %s", version, exc)
+            break
+        removed = True
+    if removed or complete_missing_sidecar:
+        _stamp_rotated_at(history_dir, version)
+    return removed
 
 
 # ---------------------------------------------------------------------------
@@ -1274,20 +1304,6 @@ class DocContextManager:
                     from_version, exc,
                 )
 
-        # Step 3c: Rotation -- unlink the rotate_version content file if
-        # it still exists, and stamp rotated_at on its sidecar.
-        if rotate_version is not None and isinstance(rotate_version, int):
-            rotate_path = history_dir / f"v{rotate_version}{ext_old}"
-            if rotate_path.is_file():
-                try:
-                    rotate_path.unlink()
-                    _stamp_rotated_at(history_dir, rotate_version)
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to rotate v%d during replay: %s",
-                        rotate_version, exc,
-                    )
-
         # Step 3d: Replace current.new{ext_new} -> current{ext_new}.
         # Guard: if current{ext_new} already hashes to sha256_new, the
         # replace already happened -- skip.
@@ -1360,6 +1376,17 @@ class DocContextManager:
                 os.replace(str(current_new_path), str(current_dest_path))
                 _fsync_dir(doc_dir)
                 replace_done = True
+
+        # Step 3c: Rotation -- remove the recorded version only after the
+        # replacement has passed its hash guard. Resolve by version number
+        # because historical content may use a different extension. If a
+        # prior replay stopped after unlink, complete the valid sidecar stamp.
+        if rotate_version is not None and isinstance(rotate_version, int):
+            _rotate_history_version(
+                history_dir,
+                rotate_version,
+                complete_missing_sidecar=True,
+            )
 
         # Step 3e: If ext_old != ext_new, unlink current{ext_old}.
         # Guard: only if it still exists and the replace is done.

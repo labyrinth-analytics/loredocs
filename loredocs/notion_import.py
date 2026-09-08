@@ -395,6 +395,36 @@ class NotionImporter:
             # Re-raise with redacted message, stripped cause chain
             raise NotionAPIError(safe_msg) from None
 
+    def _fetch_block_children(self, client, block_id):
+        """Fetch every page of direct children for a Notion block."""
+        results = []
+        start_cursor = None
+        seen_cursors = set()
+
+        while True:
+            call_args = {"block_id": block_id}
+            if start_cursor:
+                call_args["start_cursor"] = start_cursor
+            response = self._safe_sdk_call(
+                client.blocks.children.list, **call_args
+            )
+            if not isinstance(response, dict):
+                break
+
+            results.extend(response.get("results", []))
+            if not response.get("has_more"):
+                break
+
+            next_cursor = response.get("next_cursor")
+            if not next_cursor or next_cursor in seen_cursors:
+                raise NotionAPIError(
+                    "Notion block pagination did not provide a new cursor"
+                )
+            seen_cursors.add(next_cursor)
+            start_cursor = next_cursor
+
+        return results
+
     def _fetch_page_content(self, client, page_id):
         """
         Fetch and flatten a Notion page's block tree into markdown text.
@@ -403,10 +433,7 @@ class NotionImporter:
         NOT fetched. The parent block at the cap depth gets an appended marker
         line. Returns (text, was_truncated).
         """
-        blocks = self._safe_sdk_call(
-            client.blocks.children.list, block_id=page_id
-        )
-        results = blocks.get("results", []) if isinstance(blocks, dict) else []
+        results = self._fetch_block_children(client, page_id)
         text_parts = []
         was_truncated = False
 
@@ -433,10 +460,7 @@ class NotionImporter:
         # Check for children
         has_children = block.get("has_children", False)
         if has_children and depth < self._max_block_depth:
-            child_blocks = self._safe_sdk_call(
-                client.blocks.children.list, block_id=block_id
-            )
-            child_results = child_blocks.get("results", []) if isinstance(child_blocks, dict) else []
+            child_results = self._fetch_block_children(client, block_id)
             child_parts = []
             child_truncated = False
             for child in child_results:
