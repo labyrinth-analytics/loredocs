@@ -7,16 +7,37 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
-## Unreleased
+## v0.1.26 (2026-09-08)
 
 ### Fixed
 
-- Preserve retained document history when an update fails budget or lock checks.
-- Render the structured history result in the MCP tool and version explicitly empty content updates.
-- Keep vault-prime cache selection and omission reporting consistent with current injection settings.
-- Follow Notion block pagination and preserve page-limit continuation IDs.
-- Remove stale semantic chunks for blank documents and empty index rebuilds.
-- Apply the documented automatic-relationship cosine threshold to LanceDB squared distances.
+- `version_storage.py`: rotation now runs under the document lock after content
+  validation and successful replacement, so budget, lock, divergence, and
+  `current.new` hash rejections all preserve retained history instead of
+  deleting it first.
+- `version_storage.py`: history-budget accounting charges outgoing archived
+  bytes rather than the incoming replacement, and credits space freed by a
+  planned rotation. Rotation validates the `current.new` hash before the
+  destructive step, and replays the `rotated_at` stamp idempotently after an
+  unlink/stamp interruption.
+- `server.py`: the document-history MCP tool renders the structured
+  versions/divergence result, including retention status, instead of raising.
+- `storage.py`: an explicit empty-content update is a versioned update; an
+  omitted content field still leaves content unchanged.
+- `server.py`: vault-prime cache identity includes the selection controls and
+  resolved caps, and a cache hit reconsiders the full ranked candidate list, so
+  omission reporting stays consistent with current injection settings.
+- `notion_import.py`: root and nested block pagination is exhausted; page-limit
+  continuations retain ordered pending IDs across workspace-saturation exits and
+  pending databases. Malformed and cyclic cursors fail explicitly.
+- `semantic_search.py`: blank replacement removes stale chunks and an empty
+  rebuild clears the derived index.
+- `semantic_search.py`: the advertised cosine >= 0.75 auto-link threshold is
+  applied as a LanceDB squared distance <= 0.5 on normalized vectors, verified
+  against real index operations.
+- `feature_manifest.yml`: storage and portability descriptions distinguish the
+  SQLite metadata/keyword index from vault content/history, and require the
+  complete data directory rather than promising single-file portability.
 
 ## v0.1.25 (2026-09-05)
 

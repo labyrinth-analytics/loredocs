@@ -4,16 +4,89 @@ What changed in each release, written for users (not developers).
 
 ---
 
-## Unreleased
+## v0.1.26 (2026-09-08)
 
-### Fixed
+### Fixed: a rejected update no longer costs you your document history
 
-- Rejected document updates preserve earlier versions, and document history can be viewed again.
-- Updating a document to empty text clears its content and saves the previous version.
-- Repeated context-loading calls respect changed token settings and report omitted documents accurately.
-- Notion imports retain paginated content and provide continuation for pages beyond the selected limit.
-- Semantic search stops matching cleared content, including after an empty index rebuild.
-- Automatically discovered document relationships follow the documented similarity minimum.
+When an update to a document was turned away -- because it would have
+exceeded the history storage budget, because another process held the
+document lock, or because the stored copy had diverged from what was
+expected -- the earlier versions of that document had already been deleted
+by the time the rejection happened. The update failed and the history went
+with it.
+
+Rotation now happens only after the new content has been validated and
+written, so a rejected update leaves your previous versions exactly where
+they were. The history budget also counts the right thing: it charges the
+bytes actually being archived rather than the size of the incoming
+replacement, and it credits space that the rotation itself is about to free,
+so updates that comfortably fit are no longer refused. If a rotation is
+interrupted partway through, it now completes cleanly the next time instead
+of leaving the document in a half-rotated state.
+
+### Fixed: viewing a document's history works again
+
+Asking for a document's version history through the MCP tool raised an error
+instead of returning anything. It now renders the full result -- the list of
+versions, any divergence between them, and how much history is being
+retained.
+
+### Fixed: clearing a document's content is saved as a version
+
+Updating a document to empty text is now treated as a real edit: the content
+clears and the previous version is kept in history, so you can get it back.
+Leaving the content field out of an update still means "don't touch the
+content", as before.
+
+### Fixed: loading context twice in a row respects settings you changed in between
+
+Repeated context-loading calls were served from a cache that ignored the
+selection settings and token limits you passed, so changing them had no
+effect on the second call, and the report of which documents had been left
+out could disagree with what was actually loaded. The cache now accounts for
+those settings, and reconsiders every eligible document each time, so what
+you asked for is what you get and the omission report matches it.
+
+### Fixed: Notion imports no longer stop partway through
+
+Importing from Notion silently dropped content past the first page of
+results -- both for a page's own blocks and for blocks nested inside them --
+so large pages arrived incomplete with nothing to indicate anything was
+missing. Pagination is now followed to the end.
+
+Importing with a page limit also lost track of which pages remained, so
+there was no way to continue where you left off. The remaining page IDs are
+now retained in order, including when the import stops because it reached
+the end of the workspace and when databases are still pending. A malformed
+or looping cursor from Notion now fails with an explicit error rather than
+importing partial content quietly.
+
+### Fixed: semantic search stops returning documents you have cleared
+
+Clearing a document's content left its old text in the semantic index, so
+searches kept matching and returning it. Blank content now removes the stale
+entries, and rebuilding an index that has nothing to index clears it rather
+than leaving the previous contents in place.
+
+### Fixed: automatically discovered relationships now meet the documented similarity bar
+
+Auto-discovered related documents were being linked at a weaker similarity
+than the documented 0.75 minimum, so the "related documents" list included
+pairs that were not meaningfully related. New links now apply the documented
+threshold.
+
+This governs links created from now on. Relationship records already stored
+do not retain the scores needed to identify which of them fell below the
+corrected bar, so existing weak links are not removed automatically -- a
+rebuild will regenerate them at the correct threshold.
+
+### Documentation: what "portable data" actually means
+
+The description of LoreDocs storage promised more portability than it
+delivered, implying a single file could be moved on its own. It now
+distinguishes the SQLite metadata and keyword index from your vault's
+content and version history, and states that moving your data means moving
+the complete data directory.
 
 ## v0.1.25 (2026-09-05)
 
