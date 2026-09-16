@@ -4,7 +4,7 @@ What changed in each release, written for users (not developers).
 
 ---
 
-## Unreleased
+## v0.1.27 (2026-09-15)
 
 ### Documentation: correcting the v0.1.26 note on automatic document relationships
 
