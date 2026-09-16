@@ -7,6 +7,11 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
+## v0.1.27 (2026-09-15)
+
+No module changes. See `docs/CHANGELOG.md` for this release's documentation
+correction.
+
 ## v0.1.26 (2026-09-08)
 
 ### Fixed
