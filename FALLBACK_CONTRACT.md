@@ -18,9 +18,12 @@ while the MCP server is down:
 | `vault_search` (keyword) | `--search QUERY` | FTS5, same as MCP. |
 | `vault_search` (semantic) | `--search QUERY --semantic` | Pro tier only. |
 | `vault_get_doc` | `--get-doc DOC_ID` | One document's full metadata + content. |
+| `vault_doc_history` | `--doc-history DOC_ID` | Version history list (SH-102198; extends the read path). |
 
-All four delegate to the same `VaultStorage` methods the MCP server calls
-(`get_document()` / `get_document_content()` / `search_semantic()`) -- the
+The delegating ops (`--get-doc`, `--search --semantic`, `--doc-history`)
+call the same `VaultStorage` methods the MCP server calls
+(`get_document()` / `get_document_content()` / `search_semantic()` /
+`get_doc_history()`) -- the
 fallback is a second caller of that logic, never a second implementation of
 it. If the on-disk layout or search ranking ever changes, both surfaces pick
 up the change identically because they share the call, not just a convention.
@@ -56,3 +59,7 @@ invariants above. Run per-product:
 Write operations (`--add-doc`, `--create-vault`, `--update-doc`,
 `--delete-doc`, `--archive`, `--restore`, `--migrate-tags`) are not part of
 this contract -- they predate it and are not covered by the parity guard.
+`--doc-restore DOC_ID --version N` (SH-102198) joins that write-side group:
+it is a second caller of `VaultStorage.restore_document_version()` (the
+extracted shared core the MCP tool `vault_doc_restore` delegates to), not
+part of the emergency read path.

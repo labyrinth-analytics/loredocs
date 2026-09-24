@@ -1945,61 +1945,12 @@ async def vault_doc_restore(ctx: Context, doc_id: str, version: int) -> str:
     """
     params = DocRestoreInput(doc_id=doc_id, version=version)
     storage = _get_storage(ctx)
-    doc = storage.get_document(params.doc_id)
-    if not doc:
-        return f"Error: Document '{params.doc_id}' not found."
-
-    vault_id = doc["vault_id"]
-    ext = doc["file_extension"]
-    doc_dir = storage.vaults_dir / vault_id / "docs" / params.doc_id
-    history_dir = doc_dir / "history"
-
-    # P5/r6 fix: resolve the version file by globbing history/v{N}.* 
-    # (excluding .meta.json sidecars) instead of assuming the current ext.
-    import glob as _glob
-    pattern = str(history_dir / f"v{params.version}.*")
-    candidates = [
-        Path(p) for p in _glob.glob(pattern)
-        if not p.endswith(".meta.json")
-        and ".partial" not in p
-        and ".conflict" not in p
-        and ".invalid" not in p
-        and ".superseded" not in p
-    ]
-    version_file = None
-    for c in candidates:
-        # Verify it's a content file (not a sidecar or other dotfile)
-        name = c.name
-        # Must match v{N}{.ext} pattern
-        if re.match(rf"^v{params.version}\.[A-Za-z0-9]{{1,10}}$", name):
-            version_file = c
-            break
-
-    if not version_file or not version_file.exists():
-        # Check if it was rotated
-        sidecar_path = history_dir / f"v{params.version}.meta.json"
-        if sidecar_path.exists():
-            try:
-                sidecar = json.loads(sidecar_path.read_text())
-                if sidecar.get("rotated_at"):
-                    return (
-                        f"Error: Version {params.version} of document "
-                        f"'{params.doc_id}' was rotated (removed by retention). "
-                        f"Rotated at: {sidecar['rotated_at']}."
-                    )
-            except Exception:
-                pass
-        return f"Error: Version {params.version} not found for document '{params.doc_id}'."
-
-    content = version_file.read_bytes()
-    result = storage.update_document(
-        params.doc_id,
-        content=content,
-        filename=doc["original_filename"],
-    )
-    if result:
-        return f"Document '{doc['name']}' restored to version {params.version}. Previous content saved as v{doc['version_count']}."
-    return "Error: Could not restore version."
+    # SH-102198: the resolution + restore logic lives in
+    # VaultStorage.restore_document_version() so the fallback script and
+    # loredocs-cli are second callers of the same code, never a second
+    # implementation. The returned message strings are unchanged.
+    result = storage.restore_document_version(params.doc_id, params.version)
+    return result["message"]
 
 
 # ===================================================================

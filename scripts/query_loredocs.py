@@ -380,6 +380,115 @@ def cmd_get_doc(args):
     print(content if content else "(no content)")
 
 
+# -- vault_doc_history / vault_doc_restore (SH-102198) --
+
+
+def _vault_storage_for_doc_ops(args):
+    """Build a VaultStorage over the resolved root for doc history/restore.
+
+    Both new ops are second callers of the MCP server's own VaultStorage
+    methods (get_doc_history / restore_document_version) -- never a second
+    implementation. The loredocs package is required (same explicit
+    failure as --get-doc): version history can only be read through the
+    shared core, and the fallback must not re-derive the on-disk layout.
+    """
+    db_path = args.db_path or _find_loredocs_db()
+    if not db_path:
+        print("ERROR: Could not find LoreDocs loredocs.db", file=sys.stderr)
+        sys.exit(1)
+    root = _find_loredocs_root(db_path)
+
+    try:
+        from loredocs.storage import VaultStorage
+    except ImportError:
+        print(
+            "ERROR: loredocs package not importable; document history and "
+            "restore require the installed loredocs package.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    return VaultStorage(root=Path(root))
+
+
+def cmd_doc_history(args):
+    """Show one document's version history (equivalent to vault_doc_history).
+
+    Renders the same markdown vault_doc_history produces (version lines,
+    retention counts, divergence block) from VaultStorage.get_doc_history()
+    and get_document() -- a second caller of the MCP tool's exact calls.
+    """
+    storage = _vault_storage_for_doc_ops(args)
+    doc = storage.get_document(args.doc_history)
+    if not doc:
+        print(f"Error: Document '{args.doc_history}' not found.", file=sys.stderr)
+        sys.exit(1)
+
+    history = storage.get_doc_history(args.doc_history)
+    if not history:
+        print(f"No version history for document '{args.doc_history}'.")
+        return
+
+    versions = history.get("versions", [])
+    lines = [f"# Version History: {doc['name']}", ""]
+    for v in versions:
+        current = " (current)" if v.get("current") else ""
+        status = v.get("status", "unknown")
+        modified_at = str(v.get("modified_at") or "unknown")[:10]
+        lines.append(
+            f"- **v{v['version']}**{current} | {status} | "
+            f"{modified_at} | {_fmt_size(v.get('file_size_bytes', 0))}"
+        )
+
+    status_counts = {
+        status: sum(1 for version in versions if version.get("status") == status)
+        for status in ("present", "rotated", "missing")
+    }
+    lines.extend([
+        "",
+        "Retention: "
+        f"{status_counts['present']} present, "
+        f"{status_counts['rotated']} rotated, "
+        f"{status_counts['missing']} missing",
+    ])
+
+    divergence = history.get("divergence")
+    if divergence:
+        lines.extend([
+            f"Divergence: {divergence.get('kind', 'unknown')}",
+            f"Detail: {divergence.get('detail', '')}",
+            f"Remedy: {divergence.get('remedy', '')}",
+        ])
+    else:
+        lines.append("Divergence: none")
+    print("\n".join(lines))
+
+
+def cmd_doc_restore(args):
+    """Restore a document to a previous version (equivalent to vault_doc_restore).
+
+    Calls VaultStorage.restore_document_version() -- the extracted shared
+    core the MCP tool now delegates to. Unknown version numbers refuse with
+    the same clear error the MCP tool returns; the write is idempotent.
+    """
+    version = args.version
+    if version is None:
+        print("Error: --doc-restore requires --version N.", file=sys.stderr)
+        sys.exit(1)
+    if version < 1:
+        print("Error: --version must be >= 1.", file=sys.stderr)
+        sys.exit(1)
+    storage = _vault_storage_for_doc_ops(args)
+    result = storage.restore_document_version(
+        args.doc_restore, version
+    )
+    if result["ok"]:
+        print(result["message"])
+    else:
+        print(result["message"], file=sys.stderr)
+        sys.exit(1)
+
+
 # -- vault_search --
 
 def _cmd_search_semantic(args):
@@ -921,6 +1030,15 @@ def main():
     parser.add_argument("--get-doc", type=str, dest="get_doc",
                         help="Show one document's full metadata and content by ID "
                              "(equivalent to vault_get_doc)")
+    parser.add_argument("--doc-history", type=str, dest="doc_history",
+                        help="Show one document's version history by ID "
+                             "(equivalent to vault_doc_history)")
+    parser.add_argument("--doc-restore", type=str, dest="doc_restore",
+                        help="Restore a document to a previous version by ID; "
+                             "use --version N to pick the version "
+                             "(equivalent to vault_doc_restore)")
+    parser.add_argument("--version", type=int,
+                        help="Version number to restore (with --doc-restore)")
     parser.add_argument("--add-doc", action="store_true", dest="add_doc", help="Add a document to a vault")
     parser.add_argument("--create-vault", action="store_true", dest="create_vault", help="Create a new vault")
     parser.add_argument("--update-doc", action="store_true", dest="update_doc", help="Update a document's content or metadata")
@@ -981,6 +1099,12 @@ def main():
         cmd_info(args)
     elif args.get_doc:
         cmd_get_doc(args)
+    elif args.doc_history:
+        cmd_doc_history(args)
+    elif args.doc_restore:
+        if not args.version:
+            parser.error("--doc-restore requires --version N")
+        cmd_doc_restore(args)
     elif args.search:
         cmd_search(args)
     elif args.list:
