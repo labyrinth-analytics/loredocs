@@ -99,7 +99,7 @@ The `--env=LOREDOCS_PRO=<your-license-key>` flag is optional -- omit it if you a
 |----------|---------------|--------------|
 | `LOREDOCS_PRO` | Your Pro license key (optional) | `--env=LOREDOCS_PRO=<key>` in the `claude mcp add` command |
 
-If `LOREDOCS_PRO` is not set, LoreDocs runs on the free tier (limited vaults and documents). To upgrade, use the Pro link in README.md; your license key is emailed to your checkout address, usually within one business day.
+If `LOREDOCS_PRO` is not set, LoreDocs runs on the free tier (limited vaults and documents). To upgrade, use the Pro link in README.md; your license key is emailed automatically to your checkout address, usually within a few minutes.
 
 ### Verify the connection
 
@@ -339,7 +339,7 @@ Claude Code does not expand shell variables in `settings.json`. Replace any `~` 
 
 The free tier limits the number of vaults and documents. When you reach the limit,
 tools return a message with the upgrade link. After checkout your Pro license key is
-emailed to your checkout address, usually within one business day; then re-run
+emailed automatically to your checkout address, usually within a few minutes; then re-run
 `claude mcp add --scope user` with `--env=LOREDOCS_PRO=<your-key>` included.
 
 ---
