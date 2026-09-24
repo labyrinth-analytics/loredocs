@@ -3114,6 +3114,97 @@ class VaultStorage:
         return result
 
     # -------------------------------------------------------------------
+    # Document version restore (vault_doc_restore core, SH-102198)
+    # -------------------------------------------------------------------
+
+    def restore_document_version(
+        self, doc_id: str, version: int
+    ) -> Dict[str, Any]:
+        """Restore a document to a previous version (vault_doc_restore core).
+
+        Extracted from server.py's inline vault_doc_restore (SH-102198) so
+        the fallback script and loredocs-cli are second callers of this
+        logic, never a second implementation. Resolution follows the r6
+        convention:
+
+        1. The version's content file is resolved through the canonical
+           _content_file_glob / _parse_version_number helpers (never a raw
+           glob or regex).
+        2. A missing content file with a rotated sidecar reports the
+           rotation record instead of a bare not-found.
+        3. The bytes are written back through update_document(), so the
+           current version is archived first (r6 write ordering) and the
+           restored bytes become current.
+
+        Restoring a version twice is idempotent: the second restore
+        archives the (identical) current bytes and update_document() skips
+        the duplicate archive by hash comparison.
+
+        Returns {"ok": bool, "message": str}. Failure messages carry the
+        same "Error: ..." strings the MCP tool returned before the
+        extraction, so server.py's response text is unchanged.
+        """
+        doc = self.get_document(doc_id)
+        if not doc:
+            return {
+                "ok": False,
+                "message": f"Error: Document '{doc_id}' not found.",
+            }
+        previous_count = doc["version_count"]
+
+        doc_dir = self.vaults_dir / doc["vault_id"] / "docs" / doc_id
+        history_dir = doc_dir / "history"
+
+        content_files = sorted(
+            _content_file_glob(history_dir),
+            key=lambda p: (_parse_version_number(p.name) or 0, p.name),
+        )
+        version_file = next(
+            (
+                p for p in content_files
+                if _parse_version_number(p.name) == version
+            ),
+            None,
+        )
+        if version_file is None or not version_file.is_file():
+            sidecar = _validate_sidecar(
+                history_dir / f"v{version}.meta.json", version
+            )
+            if sidecar is not None and sidecar.get("rotated_at"):
+                return {
+                    "ok": False,
+                    "message": (
+                        f"Error: Version {version} of document '{doc_id}' "
+                        f"was rotated (removed by retention). "
+                        f"Rotated at: {sidecar['rotated_at']}."
+                    ),
+                }
+            return {
+                "ok": False,
+                "message": (
+                    f"Error: Version {version} not found for document "
+                    f"'{doc_id}'."
+                ),
+            }
+
+        content = version_file.read_bytes()
+        result = self.update_document(
+            doc_id,
+            content=content,
+            filename=doc["original_filename"],
+        )
+        if result:
+            return {
+                "ok": True,
+                "message": (
+                    f"Document '{doc['name']}' restored to version {version}. "
+                    f"Previous content saved as v{previous_count}."
+                ),
+            }
+        return {"ok": False, "message": "Error: Could not restore version."}
+
+
+    # -------------------------------------------------------------------
     # Vault verification (r6 / SH-100432)
     # -------------------------------------------------------------------
 
