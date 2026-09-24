@@ -179,7 +179,7 @@ plan -- Pro does not add any cloud component.
 
 [Upgrade to Pro -- $9/month](https://buy.stripe.com/00w3cndEw0l5b8fek17N601)
 
-After checkout, your license key is emailed to the address you used at checkout, usually within one business day. Questions: info@labyrinthanalyticsconsulting.com.
+After checkout, your license key is emailed automatically to the address you used at checkout, usually within a few minutes. Questions: info@labyrinthanalyticsconsulting.com.
 
 Free tier limits are enforced before writes; Pro removes them. Check your current tier
 and usage anytime with `vault_tier_status`. Activate a Pro license with `vault_set_tier`.
