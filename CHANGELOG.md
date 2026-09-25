@@ -7,6 +7,29 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
+## v0.1.28 (2026-09-24)
+
+### Added: doc history/restore on fallback and CLI (SH-102198)
+
+Restore logic moved out of `server.py:vault_doc_restore` into
+`VaultStorage.restore_document_version()` in `loredocs/storage.py`;
+`server.py` now thin-delegates, matching the existing `get_doc_history`
+pattern. `scripts/query_loredocs.py` gains `--doc-history DOC_ID` and
+`--doc-restore DOC_ID --version N` (rejects version < 1); the CLI gains
+`doc history` and `doc restore`. `FALLBACK_CONTRACT.md` documents the ops.
+
+### Added: MCP Server Registry metadata
+
+New `server.json` (name `io.github.labyrinth-analytics/loredocs`, PyPI
+package over stdio via `uvx`). `README.md` carries the registry's
+`mcp-name:` ownership marker as its final line; the registry validates it
+against the PyPI README of this exact version.
+
+### Changed: license-delivery wording
+
+`README.md` and `INSTALL.md` now state automatic key delivery within minutes
+(Stripe webhook Lambda) instead of one business day.
+
 ## v0.1.27 (2026-09-15)
 
 No module changes. See `docs/CHANGELOG.md` for this release's documentation
