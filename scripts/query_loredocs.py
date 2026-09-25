@@ -62,6 +62,15 @@ Usage:
 
     # Restore (unarchive) a vault
     python scripts/query_loredocs.py --restore --vault "Old Project Docs"
+
+    # Import all supported files from a directory into a vault (vault_import_dir)
+    python scripts/query_loredocs.py --import-dir --vault "My Vault" --directory /path/to/obsidian/vault
+
+    # Import with tags and non-recursive
+    python scripts/query_loredocs.py --import-dir --vault "My Vault" --directory ./docs --tags '["spec", "ref"]' --no-recursive
+
+    # Report Notion import readiness (vault_import_notion_setup)
+    python scripts/query_loredocs.py --import-notion-report
 """
 
 import argparse
@@ -1012,6 +1021,113 @@ def cmd_migrate_tags(args):
     print(f"Migration complete: {migrated_vaults} vault(s), {migrated_docs} document(s) updated.")
 
 
+# -- import_dir (SH-102596: T3 parity -- second caller of VaultStorage.import_directory) --
+
+def cmd_import_dir(args):
+    """Bulk import all supported files from a directory into a vault.
+
+    Second caller of VaultStorage.import_directory() -- the same shared
+    import path the MCP server's vault_import_dir tool calls. Never a
+    second implementation of the import logic.
+    """
+    from pathlib import Path as _Path
+
+    conn, db_path = _connect(args.db_path)
+    root = _find_loredocs_root(db_path)
+
+    vault = _resolve_vault(conn, args.vault)
+    if not vault:
+        print(f"Error: Vault '{args.vault}' not found.")
+        conn.close()
+        return
+    vault_id = vault["id"]
+    conn.close()
+
+    dir_path = _Path(args.import_dir)
+    if not dir_path.is_dir():
+        print(f"Error: Directory '{args.import_dir}' not found or is not a directory.")
+        return
+
+    # Parse tags
+    tags = []
+    if args.tags:
+        try:
+            parsed = json.loads(args.tags)
+            if isinstance(parsed, list):
+                tags = parsed
+        except (json.JSONDecodeError, TypeError):
+            tags = [args.tags]
+
+    category = args.category or "imported"
+    recursive = not args.no_recursive
+
+    # Delegate to the shared import path (same as MCP vault_import_dir)
+    from loredocs.storage import VaultStorage
+
+    storage = VaultStorage(root=_Path(root))
+    results = storage.import_directory(
+        vault_id=vault_id,
+        dir_path=dir_path,
+        tags=tags if tags else None,
+        category=category,
+        recursive=recursive,
+    )
+
+    if not results:
+        print(f"No files imported from '{args.import_dir}'.")
+        print("Check that the directory contains supported files under 30MB.")
+        return
+
+    print(f"Imported {len(results)} file(s) into vault '{vault['name']}':")
+    print("")
+    for r in results:
+        size = r.get("file_size_bytes", 0)
+        print(f"  - {r['name']} ({r.get('original_filename', '?')}) - {_fmt_size(size)}")
+
+
+# -- import_notion_report (SH-102596: T3 parity -- second caller of _notion_extra_available) --
+
+def cmd_import_notion_report(args):
+    """Report Notion import readiness (parity with vault_import_notion_setup).
+
+    Read-only diagnostic: checks whether the loredocs[notion] extra is
+    installed and prints the install command if not. Does NOT perform an
+    import or modify any packages.
+    """
+    import sys as _sys
+
+    try:
+        from loredocs.notion_import import _notion_extra_available
+    except ImportError:
+        print("Error: loredocs package not installed. Install with: pip install loredocs")
+        return
+
+    available, diag = _notion_extra_available()
+    if available:
+        print("Status: ready")
+        print("vault_import_notion is enabled.")
+        return
+
+    python = _sys.executable
+    in_uv = bool(
+        os.environ.get("UV_VENV")
+        or (python and ".venv" in python and "uv" in python)
+    )
+    if in_uv:
+        install_cmd = "uvx --with loredocs[notion] loredocs-mcp"
+        hint = "Re-launch MCP server with: " + install_cmd
+    else:
+        install_cmd = f"{python} -m pip install 'loredocs[notion]'"
+        hint = "Install into this Python: " + install_cmd
+
+    print("Status: not_ready")
+    print(f"Diagnostic: {diag}")
+    print(f"Python: {python}")
+    print(f"Install command: {install_cmd}")
+    print(f"Hint: {hint}")
+    print("CLI diagnostic: python -m loredocs.cli check-notion")
+
+
 # -- CLI --
 
 def main():
@@ -1047,6 +1163,15 @@ def main():
     parser.add_argument("--restore", action="store_true", help="Restore (unarchive) a vault (use with --vault)")
     parser.add_argument("--migrate-tags", action="store_true", dest="migrate_tags",
                         help="One-time migration: normalize legacy comma-separated tags to JSON arrays")
+    parser.add_argument("--import-dir", type=str, dest="import_dir",
+                        help="Import all supported files from a directory into a vault "
+                             "(equivalent to vault_import_dir). Use with --vault and --directory.")
+    parser.add_argument("--directory", type=str, dest="import_dir_path",
+                        help="Directory path for --import-dir")
+    parser.add_argument("--no-recursive", action="store_true", dest="no_recursive",
+                        help="With --import-dir: do not traverse subdirectories (single-level import)")
+    parser.add_argument("--import-notion-report", action="store_true", dest="import_notion_report",
+                        help="Report Notion import readiness (equivalent to vault_import_notion_setup)")
     parser.add_argument("--include-archived", action="store_true", dest="include_archived",
                         help="Include archived vaults in --list")
 
@@ -1071,6 +1196,15 @@ def main():
 
     if args.migrate_tags:
         cmd_migrate_tags(args)
+    elif args.import_dir:
+        if not args.vault:
+            parser.error("--import-dir requires --vault")
+        if not args.import_dir_path:
+            parser.error("--import-dir requires --directory PATH")
+        args.import_dir = args.import_dir_path
+        cmd_import_dir(args)
+    elif args.import_notion_report:
+        cmd_import_notion_report(args)
     elif args.create_vault:
         if not args.name:
             parser.error("--create-vault requires --name")

@@ -63,3 +63,13 @@ this contract -- they predate it and are not covered by the parity guard.
 it is a second caller of `VaultStorage.restore_document_version()` (the
 extracted shared core the MCP tool `vault_doc_restore` delegates to), not
 part of the emergency read path.
+
+## Import operations (SH-102596: T3 import/export parity)
+
+These join the write-side group as second callers of the MCP server's own
+shared import path -- never a second implementation of the import logic.
+
+| MCP tool | Fallback | Notes |
+|---|---|---|
+| `vault_import_dir` | `--import-dir --vault VAULT --directory PATH` | Calls `VaultStorage.import_directory()` -- the same shared method the MCP tool calls. Supports `--tags`, `--category`, `--no-recursive`. |
+| `vault_import_notion_setup` | `--import-notion-report` | Calls `_notion_extra_available()` -- read-only readiness diagnostic. Not an actual Notion import (that requires a Notion API token and the `[notion]` extra). |
