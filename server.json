@@ -1,0 +1,31 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.labyrinth-analytics/loredocs",
+  "title": "LoreDocs",
+  "description": "Local-first knowledge vaults for project docs, specs, and reference material. Tagged, versioned, full-text searchable, injectable into context.",
+  "repository": {
+    "url": "https://github.com/labyrinth-analytics/loredocs",
+    "source": "github"
+  },
+  "version": "0.1.28",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "loredocs",
+      "version": "0.1.28",
+      "runtimeHint": "uvx",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "LOREDOCS_PRO",
+          "description": "Pro license key. Leave unset for the free tier.",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}
