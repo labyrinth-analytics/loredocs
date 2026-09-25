@@ -4,6 +4,24 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## v0.1.28 (2026-09-24)
+
+### Added
+
+- Document version history and restore now work without the MCP server. If
+  the LoreDocs MCP server is unreachable, the fallback script can list a
+  document's saved versions and restore any earlier one, and the terminal CLI
+  has matching `doc history` and `doc restore` commands. Both use the same
+  code the MCP tools use, so results match.
+- The package now carries the metadata the official MCP Server Registry
+  requires, so LoreDocs can be listed there and installed by MCP clients that
+  browse the registry.
+
+### Changed
+
+- License keys for Pro are now delivered automatically within a few minutes of
+  checkout. Documentation previously said one business day.
+
 ## v0.1.27 (2026-09-15)
 
 ### Documentation: correcting the v0.1.26 note on automatic document relationships

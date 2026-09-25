@@ -1,4 +1,4 @@
-# LoreDocs v0.1.27
+# LoreDocs v0.1.28
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -409,27 +409,23 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
-## v0.1.27 (2026-09-15)
+## v0.1.28 (2026-09-24)
 
-### Documentation: correcting the v0.1.26 note on automatic document relationships
+### Added
 
-The v0.1.26 notes said that rebuilding the semantic index would regenerate
-existing automatic relationships at the corrected similarity threshold. That
-is not accurate, and the correction matters if you read the original note and
-expected a rebuild to clean things up.
+- Document version history and restore now work without the MCP server. If
+  the LoreDocs MCP server is unreachable, the fallback script can list a
+  document's saved versions and restore any earlier one, and the terminal CLI
+  has matching `doc history` and `doc restore` commands. Both use the same
+  code the MCP tools use, so results match.
+- The package now carries the metadata the official MCP Server Registry
+  requires, so LoreDocs can be listed there and installed by MCP clients that
+  browse the registry.
 
-Rebuilding the index rebuilds the search index only -- it does not revisit
-relationships that have already been recorded. Automatic links created before
-v0.1.26 stay exactly as they are.
+### Changed
 
-In practice this is a smaller problem than the original note implied. The
-earlier threshold was too permissive rather than too strict, so no
-relationship is missing: every link that qualifies under the documented 0.75
-minimum is already there. What can remain is a small number of extra links
-between documents that are less closely related than the documented minimum.
-If one of those shows up in a "related documents" list and you want it gone,
-remove it with `vault_unlink_doc`. New links have used the documented
-threshold since v0.1.26.
+- License keys for Pro are now delivered automatically within a few minutes of
+  checkout. Documentation previously said one business day.
 
 <!-- WHATS_NEW:END -->
 
