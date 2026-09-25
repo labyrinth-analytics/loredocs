@@ -498,6 +498,63 @@ def cmd_doc_restore(args):
         sys.exit(1)
 
 
+# -- vault_find_related (SH-102201) --
+
+
+def cmd_related(args):
+    """List documents linked to a given document (vault_find_related, Pro only).
+
+    A second caller of the MCP tool's exact call -- VaultStorage.
+    find_related_docs() -- never a second implementation of the link graph
+    query. Mirrors vault_find_related's behavior: Pro-gated before any
+    storage work, embedding links excluded for free-tier callers by the
+    shared method itself.
+    """
+    db_path = args.db_path or _find_loredocs_db()
+    if not db_path:
+        print("ERROR: Could not find LoreDocs loredocs.db", file=sys.stderr)
+        sys.exit(1)
+    root = _find_loredocs_root(db_path)
+
+    try:
+        from loredocs.storage import VaultStorage
+        from loredocs.license import get_license_status
+    except ImportError:
+        print(
+            "ERROR: loredocs package not importable; related-document "
+            "lookup requires the installed loredocs package.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if not get_license_status()["is_pro"]:
+        print(
+            "Error: vault_find_related requires LoreDocs Pro. "
+            "Use vault_set_tier with tier='pro' to activate your license.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    storage = VaultStorage(root=Path(root))
+    related = storage.find_related_docs(args.related)
+    if not related:
+        print(
+            f"No related documents found for '{args.related}'. "
+            "Use vault_link_doc to create links."
+        )
+        return
+
+    lines = [f"Found {len(related)} related document(s):", ""]
+    for r in related:
+        tag_str = ", ".join(r["tags"]) if r["tags"] else "none"
+        lines.append(
+            f"- [{r['label']}] {r['name']} "
+            f"(vault: {r['vault_name']}, category: {r['category']}, tags: {tag_str})"
+        )
+        lines.append(f"  ID: {r['id']}  updated: {r['updated_at'][:10]}")
+    print("\n".join(lines))
+
+
 # -- vault_search --
 
 def _cmd_search_semantic(args):
@@ -1153,6 +1210,9 @@ def main():
                         help="Restore a document to a previous version by ID; "
                              "use --version N to pick the version "
                              "(equivalent to vault_doc_restore)")
+    parser.add_argument("--related", type=str, dest="related",
+                        help="List documents linked to a document by ID "
+                             "(equivalent to vault_find_related, Pro only)")
     parser.add_argument("--version", type=int,
                         help="Version number to restore (with --doc-restore)")
     parser.add_argument("--add-doc", action="store_true", dest="add_doc", help="Add a document to a vault")
@@ -1239,6 +1299,8 @@ def main():
         if not args.version:
             parser.error("--doc-restore requires --version N")
         cmd_doc_restore(args)
+    elif args.related:
+        cmd_related(args)
     elif args.search:
         cmd_search(args)
     elif args.list:

@@ -19,11 +19,13 @@ while the MCP server is down:
 | `vault_search` (semantic) | `--search QUERY --semantic` | Pro tier only. |
 | `vault_get_doc` | `--get-doc DOC_ID` | One document's full metadata + content. |
 | `vault_doc_history` | `--doc-history DOC_ID` | Version history list (SH-102198; extends the read path). |
+| `vault_find_related` | `--related DOC_ID` | Linked-document list (SH-102201; extends the read path). Pro-only: free tier exits 1 with the upgrade message, same as the MCP tool. |
 
-The delegating ops (`--get-doc`, `--search --semantic`, `--doc-history`)
+The delegating ops (`--get-doc`, `--search --semantic`, `--doc-history`,
+`--related`)
 call the same `VaultStorage` methods the MCP server calls
 (`get_document()` / `get_document_content()` / `search_semantic()` /
-`get_doc_history()`) -- the
+`get_doc_history()` / `find_related_docs()`) -- the
 fallback is a second caller of that logic, never a second implementation of
 it. If the on-disk layout or search ranking ever changes, both surfaces pick
 up the change identically because they share the call, not just a convention.
