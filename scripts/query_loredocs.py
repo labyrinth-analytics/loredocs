@@ -63,6 +63,10 @@ Usage:
     # Restore (unarchive) a vault
     python scripts/query_loredocs.py --restore --vault "Old Project Docs"
 
+    # Open (or create) the vault scoped to a workspace directory
+    # (equivalent to vault_open_workspace)
+    python scripts/query_loredocs.py --workspace ~/projects/side_hustle
+
     # Import all supported files from a directory into a vault (vault_import_dir)
     python scripts/query_loredocs.py --import-dir --vault "My Vault" --directory /path/to/obsidian/vault
 
@@ -945,6 +949,64 @@ def cmd_create_vault(args):
         print(f"  linked_projects: {', '.join(linked_projects)}")
 
 
+# -- vault_open_workspace (SH-102202: T3 vault management parity) --
+
+
+def cmd_workspace(args):
+    """Open (or create) the vault scoped to a workspace directory.
+
+    Second caller of the MCP tool's exact path: VaultStorage
+    .get_vault_by_workspace_path() then .create_vault() with the
+    workspace_path kwarg -- never a re-derivation of the resolve-or-create
+    logic. The resolved path, vault name fallback, and description default
+    mirror server.py's vault_open_workspace so both surfaces answer the
+    same way for the same directory.
+    """
+    db_path = args.db_path or _find_loredocs_db()
+    if not db_path:
+        print("ERROR: Could not find LoreDocs loredocs.db", file=sys.stderr)
+        sys.exit(1)
+    root = _find_loredocs_root(db_path)
+
+    try:
+        from loredocs.storage import VaultStorage
+        from loredocs.tiers import TierLimitError
+    except ImportError:
+        print(
+            "ERROR: loredocs package not importable; --workspace requires "
+            "the installed loredocs package.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    resolved = str(Path(args.workspace).expanduser().resolve())
+    storage = VaultStorage(root=Path(root))
+
+    existing = storage.get_vault_by_workspace_path(resolved)
+    if existing:
+        print(f"Vault '{existing['name']}' already scoped to this workspace")
+        print(f"  vault_id: {existing['id']}")
+        print(f"  workspace_path: {existing['workspace_path']}")
+        print(f"  doc_count: {existing.get('doc_count', 0)}")
+        return
+
+    vault_name = Path(resolved).name or "Workspace"
+    try:
+        vault = storage.create_vault(
+            name=vault_name,
+            description=args.description or f"Workspace vault for {resolved}",
+            workspace_path=resolved,
+        )
+    except TierLimitError as exc:
+        hint = f" {exc.upgrade_hint}" if getattr(exc, "upgrade_hint", "") else ""
+        print(f"Error: {exc}{hint}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Created workspace vault '{vault['name']}'")
+    print(f"  vault_id: {vault['id']}")
+    print(f"  workspace_path: {vault['workspace_path']}")
+
+
 # -- vault_update_doc --
 
 def cmd_update_doc(args):
@@ -1323,6 +1385,9 @@ def main():
     parser.add_argument("--delete-doc", action="store_true", dest="delete_doc", help="Soft-delete a document")
     parser.add_argument("--archive", action="store_true", help="Archive a vault (soft delete, use with --vault)")
     parser.add_argument("--restore", action="store_true", help="Restore (unarchive) a vault (use with --vault)")
+    parser.add_argument("--workspace", type=str, dest="workspace",
+                        help="Open (or create) the vault scoped to a workspace directory "
+                             "(equivalent to vault_open_workspace). Use with optional --description.")
     parser.add_argument("--migrate-tags", action="store_true", dest="migrate_tags",
                         help="One-time migration: normalize legacy comma-separated tags to JSON arrays")
     parser.add_argument("--import-dir", type=str, dest="import_dir",
@@ -1387,6 +1452,8 @@ def main():
         if not args.vault:
             parser.error("--restore requires --vault")
         cmd_restore(args)
+    elif args.workspace:
+        cmd_workspace(args)
     elif args.add_doc:
         if not args.vault or not args.name:
             parser.error("--add-doc requires --vault and --name")

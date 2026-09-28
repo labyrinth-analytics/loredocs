@@ -73,7 +73,11 @@ this contract -- they predate it and are not covered by the parity guard.
 `--doc-restore DOC_ID --version N` (SH-102198) joins that write-side group:
 it is a second caller of `VaultStorage.restore_document_version()` (the
 extracted shared core the MCP tool `vault_doc_restore` delegates to), not
-part of the emergency read path.
+part of the emergency read path. `--workspace PATH` (SH-102202) joins the
+same group: resolve-or-create is a write, a second caller of
+`VaultStorage.get_vault_by_workspace_path()` / `create_vault()` (the exact
+path the MCP tool `vault_open_workspace` takes), not part of the emergency
+read path.
 
 ## Import operations (SH-102596: T3 import/export parity)
 
