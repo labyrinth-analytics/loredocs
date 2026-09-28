@@ -71,6 +71,10 @@ Usage:
 
     # Report Notion import readiness (vault_import_notion_setup)
     python scripts/query_loredocs.py --import-notion-report
+
+    # Prime a vault: load all documents ranked by priority under a token cap
+    # (equivalent to vault_prime)
+    python scripts/query_loredocs.py --prime "My Project Docs" --max-tokens 20000
 """
 
 import argparse
@@ -553,6 +557,91 @@ def cmd_related(args):
         )
         lines.append(f"  ID: {r['id']}  updated: {r['updated_at'][:10]}")
     print("\n".join(lines))
+
+
+# -- vault_prime (SH-102595 escalation of SH-102199: T3 injection parity) --
+
+
+def _resolve_vault_via_storage(storage, vault):
+    """Resolve a vault by ID or name via VaultStorage (mirrors server.py's _resolve_vault)."""
+    result = storage.get_vault(vault)
+    if not result:
+        result = storage.find_vault_by_name(vault)
+    return result
+
+
+def cmd_prime(args):
+    """Prime a vault's ranked documents into stdout (equivalent to vault_prime).
+
+    Second caller of the MCP tool's own logic: VaultStorage.get_docs_for_injection()
+    for the ranked document read (the exact call vault_prime makes with query="")
+    and loredocs.server._do_injection() for cap enforcement, truncation, and
+    trust_framing wrapping -- never a second implementation of either. Skips the
+    MCP server's per-process injection cache: a one-shot CLI invocation gets no
+    benefit from an in-memory cache scoped to a long-lived server process, and
+    the cache only ever changes whether get_docs_for_injection() re-runs, never
+    the formatted result _do_injection() returns.
+    """
+    db_path = args.db_path or _find_loredocs_db()
+    if not db_path:
+        print("ERROR: Could not find LoreDocs loredocs.db", file=sys.stderr)
+        sys.exit(1)
+    root = _find_loredocs_root(db_path)
+
+    try:
+        from loredocs.storage import VaultStorage
+        from loredocs.server import _do_injection, _resolve_max_tokens, _validate_injection_params
+        from loredocs import trust_framing
+    except ImportError:
+        print(
+            "ERROR: loredocs package not importable; --prime requires "
+            "the installed loredocs package.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    err = _validate_injection_params(
+        args.max_tokens, args.safety_factor, args.max_single_doc_tokens,
+        args.cap_behavior, args.session_token,
+    )
+    if err:
+        print(err, file=sys.stderr)
+        sys.exit(1)
+
+    storage = VaultStorage(root=Path(root))
+    v = _resolve_vault_via_storage(storage, args.prime)
+    if not v:
+        print(f"[LOREDOCS-ERROR] Vault '{args.prime}' not found.", file=sys.stderr)
+        sys.exit(1)
+    vault_id = v["id"]
+
+    session_nonce = trust_framing.derive_session_nonce(args.session_token)
+    vault_cap = storage.get_injection_cap(vault_id)
+    effective_cap_raw = _resolve_max_tokens(args.max_tokens, vault_cap)
+    effective_cap = int(effective_cap_raw * args.safety_factor) if effective_cap_raw is not None else None
+    if effective_cap is not None and effective_cap < 100:
+        effective_cap = 100  # floor: never cap below 100 tokens, mirrors _run_vault_injection
+
+    docs = storage.get_docs_for_injection(vault_id, query="", limit=500)
+    result = _do_injection(
+        docs, effective_cap, args.cap_behavior, args.max_single_doc_tokens,
+        args.prime, session_nonce,
+    )
+
+    footer_lines = []
+    if result["omitted_count"] > 0:
+        footer_lines.append(
+            f"[LoreDocs: {result['omitted_count']} document(s) omitted due to token cap "
+            f"(cap={effective_cap}, behavior={args.cap_behavior})]"
+        )
+    if result.get("cap_exceeded") and result["overflow_tokens"] > 0:
+        footer_lines.append(
+            f"[LoreDocs-WARN: injection exceeded cap by ~{result['overflow_tokens']} tokens (best_effort)]"
+        )
+    text = result["text"]
+    if footer_lines:
+        text = text.rstrip() + "\n\n" + "\n".join(footer_lines)
+    print(text)
 
 
 # -- vault_search --
@@ -1213,6 +1302,19 @@ def main():
     parser.add_argument("--related", type=str, dest="related",
                         help="List documents linked to a document by ID "
                              "(equivalent to vault_find_related, Pro only)")
+    parser.add_argument("--prime", type=str, dest="prime",
+                        help="Prime a vault: load all documents ranked by priority "
+                             "under a token cap (equivalent to vault_prime)")
+    parser.add_argument("--max-tokens", type=int, dest="max_tokens",
+                        help="Hard token budget for --prime (overrides vault DB cap)")
+    parser.add_argument("--cap-behavior", type=str, dest="cap_behavior", default="best_effort",
+                        help="'best_effort' or 'strict' cap handling for --prime (default: best_effort)")
+    parser.add_argument("--session-token", type=str, dest="session_token",
+                        help="Opaque string used as the untrusted-content delimiter nonce for --prime")
+    parser.add_argument("--max-single-doc-tokens", type=int, dest="max_single_doc_tokens",
+                        help="Truncate individual documents to this many tokens for --prime (0 = no per-doc limit)")
+    parser.add_argument("--safety-factor", type=float, dest="safety_factor", default=0.60,
+                        help="Fraction of max_tokens to use as the effective cap for --prime (default: 0.60)")
     parser.add_argument("--version", type=int,
                         help="Version number to restore (with --doc-restore)")
     parser.add_argument("--add-doc", action="store_true", dest="add_doc", help="Add a document to a vault")
@@ -1301,6 +1403,8 @@ def main():
         cmd_doc_restore(args)
     elif args.related:
         cmd_related(args)
+    elif args.prime:
+        cmd_prime(args)
     elif args.search:
         cmd_search(args)
     elif args.list:
