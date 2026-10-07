@@ -4,6 +4,22 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## v0.1.29 (2026-10-07)
+
+### Added
+
+- More of LoreDocs now works without the MCP server. If the MCP server is
+  unreachable, the fallback script can find documents related to a given
+  document (Pro), build a priority-ranked context load for a vault within a
+  token budget, open or create the vault for a workspace folder, import a
+  whole folder of files into a vault, and report whether Notion import is
+  ready. Each uses the same code the MCP tools use, so results match.
+
+### Changed
+
+- The description shown in the MCP Server Registry is shorter, to fit the
+  registry's length limit.
+
 ## v0.1.28 (2026-09-24)
 
 ### Added

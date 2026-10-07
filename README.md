@@ -1,4 +1,4 @@
-# LoreDocs v0.1.28
+# LoreDocs v0.1.29
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -409,23 +409,21 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
-## v0.1.28 (2026-09-24)
+## v0.1.29 (2026-10-07)
 
 ### Added
 
-- Document version history and restore now work without the MCP server. If
-  the LoreDocs MCP server is unreachable, the fallback script can list a
-  document's saved versions and restore any earlier one, and the terminal CLI
-  has matching `doc history` and `doc restore` commands. Both use the same
-  code the MCP tools use, so results match.
-- The package now carries the metadata the official MCP Server Registry
-  requires, so LoreDocs can be listed there and installed by MCP clients that
-  browse the registry.
+- More of LoreDocs now works without the MCP server. If the MCP server is
+  unreachable, the fallback script can find documents related to a given
+  document (Pro), build a priority-ranked context load for a vault within a
+  token budget, open or create the vault for a workspace folder, import a
+  whole folder of files into a vault, and report whether Notion import is
+  ready. Each uses the same code the MCP tools use, so results match.
 
 ### Changed
 
-- License keys for Pro are now delivered automatically within a few minutes of
-  checkout. Documentation previously said one business day.
+- The description shown in the MCP Server Registry is shorter, to fit the
+  registry's length limit.
 
 <!-- WHATS_NEW:END -->
 

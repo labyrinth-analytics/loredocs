@@ -7,6 +7,29 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
+## v0.1.29 (2026-10-07)
+
+### Added: fallback parity for related-docs, prime, workspace, import (SH-102201, SH-102595, SH-102202, SH-102596)
+
+`scripts/query_loredocs.py` gains `--related DOC_ID` (second caller of
+`VaultStorage.find_related_docs()`, Pro-gated like the MCP tool), `--prime
+VAULT` with `--max-tokens`, `--cap-behavior`, `--session-token`,
+`--max-single-doc-tokens`, `--safety-factor` (calls
+`VaultStorage.get_docs_for_injection()` and `server._do_injection()`, the same
+two calls `vault_prime` makes; skips the server's per-process injection cache),
+`--workspace PATH` (`get_vault_by_workspace_path()` / `create_vault()`, the
+`vault_open_workspace` path), `--import-dir --vault V --directory PATH`
+(`VaultStorage.import_directory()`, with `--tags`, `--category`,
+`--no-recursive`), and `--import-notion-report` (`_notion_extra_available()`,
+read-only readiness check). `FALLBACK_CONTRACT.md` documents each op and
+its MCP counterpart; `FEATURE_SURFACES` exceptions replaced with introspected
+ops.
+
+### Changed: MCP Registry description
+
+`server.json` description shortened to the registry's 100-character limit
+(`mcp-publisher validate` passes).
+
 ## v0.1.28 (2026-09-24)
 
 ### Added: doc history/restore on fallback and CLI (SH-102198)
