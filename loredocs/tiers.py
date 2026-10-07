@@ -279,8 +279,7 @@ class TierEnforcer:
     def _upgrade_hint(self) -> str:
         return (
             "Upgrade to Pro for unlimited usage: "
-            f"{LOREDOCS_UPGRADE_URL} (14-day free trial available) -- "
-            "then use vault_set_tier with tier='pro' "
+            f"{LOREDOCS_UPGRADE_URL} -- then use vault_set_tier with tier='pro' "
             "to activate your license."
         )
 
@@ -293,8 +292,7 @@ class TierEnforcer:
             raise TierLimitError(
                 f"Free tier allows at most {lim.max_vaults} vaults "
                 f"(currently have {current_vault_count}). "
-                "Archive or delete an existing vault, or upgrade to Pro "
-                "(14-day free trial available).",
+                "Archive or delete an existing vault, or upgrade to Pro.",
                 upgrade_hint=self._upgrade_hint(),
             )
 
@@ -308,8 +306,7 @@ class TierEnforcer:
             raise TierLimitError(
                 f"Free tier allows at most {lim.max_docs_per_vault} documents per vault "
                 f"(currently have {current_doc_count}{vault_label}). "
-                "Delete some documents or upgrade to Pro "
-                "(14-day free trial available).",
+                "Delete some documents or upgrade to Pro.",
                 upgrade_hint=self._upgrade_hint(),
             )
 

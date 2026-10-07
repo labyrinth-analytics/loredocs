@@ -87,8 +87,7 @@ def validate_license_key(key: str) -> dict:
         raise LicenseError(
             "Invalid license key format. "
             "Keys must start with 'LAB-'. "
-            f"Get a license key by upgrading at {LOREDOCS_UPGRADE_URL} "
-            "(14-day free trial available)."
+            f"Get a license key by upgrading at {LOREDOCS_UPGRADE_URL}."
         )
 
     body = key[len(_KEY_PREFIX):]
@@ -135,8 +134,7 @@ def validate_license_key(key: str) -> dict:
         raise LicenseError(
             "License key does not grant Pro access. "
             "Contact support at labyrinthanalyticsconsulting.com "
-            f"or upgrade at {LOREDOCS_UPGRADE_URL} "
-            "(14-day free trial available)."
+            f"or upgrade at {LOREDOCS_UPGRADE_URL}."
         )
 
     # Check expiry
@@ -149,8 +147,7 @@ def validate_license_key(key: str) -> dict:
         if exp_date < date.today():
             raise LicenseError(
                 f"License key expired on {exp}. "
-                f"Renew at {LOREDOCS_UPGRADE_URL} "
-                "(14-day free trial available)."
+                f"Renew at {LOREDOCS_UPGRADE_URL}."
             )
 
     return payload
