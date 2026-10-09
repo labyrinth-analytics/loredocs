@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "loredocs",
   "displayName": "LoreDocs",
-  "version": "0.1.29-does-not-exist",
+  "version": "0.1.29",
   "author": {
     "name": "Labyrinth Analytics Consulting",
     "url": "https://labyrinthanalyticsconsulting.com"
