@@ -1465,8 +1465,8 @@ def main():
     elif args.doc_history:
         cmd_doc_history(args)
     elif args.doc_restore:
-        if not args.version:
-            parser.error("--doc-restore requires --version N")
+        if args.version is None:
+            parser.error("--doc-restore requires --version N (N >= 1)")
         cmd_doc_restore(args)
     elif args.related:
         cmd_related(args)
