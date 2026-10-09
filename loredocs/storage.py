@@ -1017,11 +1017,13 @@ def _insert_doc_cooccurrences(
 def _auto_link_doc_cooccurrences(
     conn: sqlite3.Connection,
     doc_id: str,
-    min_shared_terms: int = 3,
+    min_shared_terms: int = 5,
 ) -> None:
     """Create bidirectional auto-links in doc_links for docs sharing >= min_shared_terms terms.
 
     Uses label='auto:cooccurrence'. INSERT OR IGNORE preserves manual links.
+    Scoped to same-vault only to reduce noise. Threshold raised from 3 to 5
+    to avoid linking unrelated docs with minimal term overlap.
     Caps at 20 new links per document.
     """
     src_row = conn.execute(
@@ -1035,13 +1037,15 @@ def _auto_link_doc_cooccurrences(
         """SELECT dc2.doc_id, COUNT(*) as shared_count
            FROM doc_cooccurrences dc1
            JOIN doc_cooccurrences dc2 ON dc1.term = dc2.term
+           JOIN documents d2 ON dc2.doc_id = d2.id
            WHERE dc1.doc_id = ?
              AND dc2.doc_id != ?
+             AND d2.vault_id = ?
            GROUP BY dc2.doc_id
            HAVING COUNT(*) >= ?
            ORDER BY shared_count DESC
            LIMIT 20""",
-        (doc_id, doc_id, min_shared_terms)
+        (doc_id, doc_id, source_vault_id, min_shared_terms)
     ).fetchall()
 
     now = datetime.now(timezone.utc).isoformat()
@@ -1075,6 +1079,28 @@ def _auto_link_doc_cooccurrences(
             pass
 
 
+def _get_doc_text_for_embedding(conn: sqlite3.Connection, doc_id: str) -> str:
+    """Get document text for embedding query. Reads extracted.txt file."""
+    try:
+        row = conn.execute(
+            "SELECT vault_id FROM documents WHERE id = ? AND deleted = 0", (doc_id,)
+        ).fetchone()
+        if not row:
+            return ""
+        vault_id = row[0]
+        # Document text is stored in extracted.txt in the vaults directory
+        # The VaultStorage instance can read it via get_document_content,
+        # but we're in a module function with only a connection, so read directly.
+        from pathlib import Path
+        loredocs_root = Path.home() / ".loredocs"
+        extracted_path = loredocs_root / "vaults" / vault_id / "docs" / doc_id / "extracted.txt"
+        if extracted_path.exists():
+            return extracted_path.read_text(encoding="utf-8", errors="replace")
+        return ""
+    except Exception:
+        return ""
+
+
 def _auto_link_doc_embeddings(
     conn: sqlite3.Connection,
     doc_id: str,
@@ -1106,11 +1132,12 @@ def _auto_link_doc_embeddings(
 
     try:
         table = lance_index._open_table()
-        # Use first 256 tokens of extracted text for the query (same as semantic search)
-        extracted_row = conn.execute(
-            "SELECT name FROM documents WHERE id = ?", (doc_id,)
-        ).fetchone()
-        query_text = extracted_row[0] if extracted_row else ""
+        # Use actual document content for the query, not the name.
+        # The Lance index chunks document text; we embed the actual text
+        # for semantic similarity, not the title (which would only match similar titles).
+        query_text = _get_doc_text_for_embedding(conn, doc_id)
+        if not query_text:
+            return
         q_vec = lance_index._embed_one(query_text)
 
         # SH-101414: pre-filter by vault BEFORE ranking. A global top-50
