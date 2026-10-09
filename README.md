@@ -49,6 +49,26 @@ Once loaded, Claude has access to all 48 LoreDocs MCP tools automatically. Ask C
 
 > "Mount my ~/.loredocs folder"
 
+### Hermes Agent
+
+For Hermes Agent users, install LoreDocs from the official plugin catalog:
+
+```bash
+hermes plugins install loredocs
+hermes plugins enable loredocs
+```
+
+All 48 LoreDocs MCP tools are immediately available in your Hermes sessions.
+
+## Hermes Disclosures
+
+When using LoreDocs as a Hermes plugin:
+
+- **Installation:** First run downloads `loredocs==0.1.30` from PyPI via `uvx` with an exact version pin. There is no automatic self-update.
+- **Data Storage:** All vault data is stored locally at `~/.loredocs/` in SQLite format. No data is sent to cloud services or external servers.
+- **Pro License Validation:** Pro tier activation uses offline Ed25519 cryptography to validate your license key. No network request is made during validation.
+- **Telemetry:** LoreDocs does not collect or transmit telemetry or usage data.
+
 ## How It Works
 
 LoreDocs organizes knowledge into **vaults** -- named containers for related documents. Each vault can hold specs, guides, decisions, checklists, or any text you want Claude to remember.

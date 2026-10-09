@@ -7,6 +7,17 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
+## v0.1.30 (2026-10-07)
+
+### Added: Hermes Agent support (Portable Agent Plugins v1, SH-103531)
+
+Root `plugin.json` and `mcp.json` manifests are now generated outputs
+(`scripts/generate_runtime_config.py`). INSTALL.md updated to list Hermes as
+the primary installation path. README.md now includes a Hermes subsection with
+licensing, storage, and telemetry disclosures (spec 2026-10-07 R2-R4). Skill
+documentation remains host-neutral or includes Hermes alternatives where
+host-specific commands differ.
+
 ## v0.1.29 (2026-10-07)
 
 ### Added: fallback parity for related-docs, prime, workspace, import (SH-102201, SH-102595, SH-102202, SH-102596)

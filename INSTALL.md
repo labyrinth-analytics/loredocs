@@ -29,9 +29,22 @@ If that prints a version, you are good to go.
 
 ---
 
-## Option A: Install as a Cowork Plugin (Recommended)
+## Option A: Install for Hermes Agent (Recommended)
 
-The LoreDocs plugin is ready to install locally. First register the local marketplace,
+The easiest way to install LoreDocs on Hermes is through the official plugin catalog:
+
+```bash
+hermes plugins install loredocs
+hermes plugins enable loredocs
+```
+
+**If you previously added `mcp_servers.loredocs` to config.yaml**, remove it before or instead of enabling the plugin. Hermes keeps your config entry and skips the plugin's server, so both cannot run at once. Remove the `mcp_servers.loredocs` section from `~/.hermes/config.yaml` and restart Hermes.
+
+---
+
+## Option B: Install for Cowork or Claude Code
+
+The LoreDocs plugin is ready to install locally. For Cowork, first register the local marketplace,
 then install from it -- this is the same flow as the eventual public marketplace install:
 
 ```
@@ -47,7 +60,7 @@ Then restart Cowork. LoreDocs MCP tools will be available in your next session.
 
 ---
 
-## Option B: Developer Install
+## Option C: Developer Install
 
 Clone the repo and run the one-command installer:
 
@@ -73,7 +86,7 @@ uv run --with . loredocs
 
 ---
 
-## Connecting to Claude Code
+## Connecting to Claude Code (for Option B/C installs)
 
 After installation, register LoreDocs with Claude Code using the `claude mcp add` command:
 
@@ -151,29 +164,6 @@ Replace `<version>` with the version you want to pin to, `your-username` with yo
 **macOS note:** `~/.Codex/config.toml` (capital C) resolves to the same location on a case-insensitive filesystem. The canonical path is lowercase `~/.codex/config.toml`.
 
 Restart Codex after saving the file. LoreDocs MCP tools will be available in the next Codex session.
-
----
-
-## Connecting to Hermes Agent
-
-Hermes Agent uses its own YAML config file at `~/.hermes/config.yaml` -- it does **not** use `.mcp.json`. Add an entry under `mcp_servers:`:
-
-```yaml
-mcp_servers:
-  loredocs:
-    command: uvx
-    args:
-      - loredocs==<version>
-    enabled: true
-    env:
-      LOREDOCS_PRO: your-license-key
-```
-
-Replace `<version>` with the version you want to pin to and `your-license-key` with your Pro license key. Omit the `LOREDOCS_PRO` line if you are using the free tier.
-
-Restart Hermes Agent after saving the file. LoreDocs MCP tools will be available in the next Hermes session.
-
-> **Note:** Hermes Agent was verified compatible with LoreDocs on 2026-06-18.
 
 ---
 
