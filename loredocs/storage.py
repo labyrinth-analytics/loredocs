@@ -1091,17 +1091,18 @@ def _get_doc_text_for_embedding(conn: sqlite3.Connection, doc_id: str) -> str:
         # Document text is stored in extracted.txt in the vaults directory
         # The VaultStorage instance can read it via get_document_content,
         # but we're in a module function with only a connection, so read directly.
-        # Derive root from the database path via PRAGMA, respecting LOREDOCS_ROOT if set.
+        # Derive root from the database path via PRAGMA (ground truth for open
+        # connection), fall back to LOREDOCS_ROOT env var if PRAGMA fails.
         import os
         from pathlib import Path
-        root_override = os.environ.get("LOREDOCS_ROOT")
-        if root_override:
-            loredocs_root = Path(root_override).resolve()
+        db_row = conn.execute("PRAGMA database_list").fetchone()
+        if db_row and db_row[2]:
+            db_path = Path(db_row[2]).resolve()
+            loredocs_root = db_path.parent
         else:
-            db_row = conn.execute("PRAGMA database_list").fetchone()
-            if db_row and db_row[2]:
-                db_path = Path(db_row[2]).resolve()
-                loredocs_root = db_path.parent
+            root_override = os.environ.get("LOREDOCS_ROOT")
+            if root_override:
+                loredocs_root = Path(root_override).resolve()
             else:
                 loredocs_root = (Path.home() / ".loredocs").resolve()
         extracted_path = loredocs_root / "vaults" / vault_id / "docs" / doc_id / "extracted.txt"
