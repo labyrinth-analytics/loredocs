@@ -44,19 +44,14 @@ hermes plugins enable loredocs
 
 ## Option B: Install for Cowork or Claude Code
 
-The LoreDocs plugin is ready to install locally. For Cowork, first register the local marketplace,
-then install from it -- this is the same flow as the eventual public marketplace install:
+Add the Labyrinth Analytics plugin marketplace, then install LoreDocs from it:
 
 ```
-/plugin marketplace add ~/projects/side_hustle/marketplace/claude-plugins
+/plugin marketplace add labyrinth-analytics/claude-plugins
 /plugin install loredocs@labyrinth-analytics-claude-plugins
 ```
 
-Then restart Cowork. LoreDocs MCP tools will be available in your next session.
-
-> **Anthropic marketplace:** Once the plugin is listed on the Anthropic marketplace,
-> the `/plugin marketplace add` step will not be needed -- install directly with the
-> second command.
+Then restart Claude Code or Cowork. LoreDocs MCP tools will be available in your next session.
 
 ---
 
