@@ -63,6 +63,7 @@ When using LoreDocs with Hermes Agent:
 - **Data Storage:** All vault data is stored locally at `~/.loredocs/` in SQLite format. No data is sent to cloud services or external servers.
 - **Pro License Validation:** Pro tier activation uses offline Ed25519 cryptography to validate your license key. No network request is made during validation.
 - **Telemetry:** LoreDocs does not collect or transmit telemetry or usage data.
+- **Network calls:** Pro semantic search downloads the `BAAI/bge-small-en-v1.5` embedding model from Hugging Face once, on first use. The optional Notion import calls the Notion API with a token you provide. LoreDocs makes no other network calls.
 
 ## How It Works
 
