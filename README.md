@@ -11,9 +11,7 @@ LoreDocs gives Claude persistent access to your project documentation -- specs, 
 **Prerequisites:** [uv](https://docs.astral.sh/uv/getting-started/installation/) (fast Python package manager).
 
 ```bash
-# Install uv (one time)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
+# Install uv: https://docs.astral.sh/uv/getting-started/installation/
 # Clone and install
 cd /path/to/loredocs
 uv sync

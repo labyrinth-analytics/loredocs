@@ -13,11 +13,7 @@ LoreDocs runs through `uvx`, which downloads a pinned copy of the server and
 manages its own Python. You do not need to create a virtual environment, and you
 do not need a particular system Python.
 
-Install uv if you do not have it:
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
+Install uv if you do not have it: https://docs.astral.sh/uv/getting-started/installation/
 
 Check it is available:
 
