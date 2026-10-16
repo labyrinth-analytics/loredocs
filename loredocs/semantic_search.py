@@ -15,12 +15,37 @@ Stage: 2B (LoreDocs). Follows Stage 2A (LoreConvo, hybrid_search.py).
 import logging
 import os
 import re
+import threading
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 _log = logging.getLogger(__name__)
 
 CHUNK_MAX_CHARS = 1024  # approx 256 tokens at 4 chars/token average
+
+# SH-104074: one embedding model per process, shared by every caller.
+# Building a fresh fastembed/ONNX session per DocLanceIndex leaks native
+# memory the allocator never returns -- the Python heap stays flat while RSS
+# grows ~70 MB per instance; the LoreDocs suite peaked at 2.9 GB. The model
+# is stateless for inference, so sharing it is safe. Mirrors LoreConvo's
+# core.hybrid_search.get_shared_embedding_model (SH-104068).
+_shared_models: Dict[str, object] = {}
+_shared_models_lock = threading.Lock()
+
+
+def get_shared_embedding_model(name: str = 'BAAI/bge-small-en-v1.5'):
+    """Return the process-wide fastembed TextEmbedding for `name`."""
+    with _shared_models_lock:
+        model = _shared_models.get(name)
+        if model is None:
+            from fastembed import TextEmbedding  # ONNX runtime, no torch (spec A1)
+            _log.info(
+                "Loading embedding model %s; the first run downloads it "
+                "(~90MB) and may take a minute.", name
+            )
+            model = TextEmbedding(name)
+            _shared_models[name] = model
+        return model
 
 # Truncated UUIDs are [0-9a-f-]{1..12}; safe_id must not contain SQL metacharacters.
 # LanceDB 0.30.2 has no parameterized filter API; constrain input space here.
@@ -109,12 +134,7 @@ class DocLanceIndex:
 
     def _get_model(self):
         if self._model is None:
-            from fastembed import TextEmbedding  # ONNX runtime, no torch (spec A1)
-            _log.info(
-                "Loading embedding model BAAI/bge-small-en-v1.5; the first run "
-                "downloads it (~90MB) and may take a minute."
-            )
-            self._model = TextEmbedding('BAAI/bge-small-en-v1.5')
+            self._model = get_shared_embedding_model('BAAI/bge-small-en-v1.5')
         return self._model
 
     def _embed_one(self, text):
