@@ -51,20 +51,15 @@ Once loaded, Claude has access to all 48 LoreDocs MCP tools automatically. Ask C
 
 ### Hermes Agent
 
-For Hermes Agent users, install LoreDocs from the official plugin catalog:
+For Hermes Agent users, add LoreDocs as an MCP server under `mcp_servers:` in `~/.hermes/config.yaml` (see [INSTALL.md](INSTALL.md#option-a-install-for-hermes-agent) for the full entry), then restart Hermes.
 
-```bash
-hermes plugins install loredocs
-hermes plugins enable loredocs
-```
-
-All 48 LoreDocs MCP tools are immediately available in your Hermes sessions.
+All 48 LoreDocs MCP tools are then available in your Hermes sessions.
 
 ## Hermes Disclosures
 
-When using LoreDocs as a Hermes plugin:
+When using LoreDocs with Hermes Agent:
 
-- **Installation:** First run downloads `loredocs==0.1.30` from PyPI via `uvx` with an exact version pin. There is no automatic self-update.
+- **Installation:** First run downloads the `loredocs` version you pin from PyPI via `uvx`. There is no automatic self-update.
 - **Data Storage:** All vault data is stored locally at `~/.loredocs/` in SQLite format. No data is sent to cloud services or external servers.
 - **Pro License Validation:** Pro tier activation uses offline Ed25519 cryptography to validate your license key. No network request is made during validation.
 - **Telemetry:** LoreDocs does not collect or transmit telemetry or usage data.

@@ -29,16 +29,24 @@ If that prints a version, you are good to go.
 
 ---
 
-## Option A: Install for Hermes Agent (Recommended)
+## Option A: Install for Hermes Agent
 
-The easiest way to install LoreDocs on Hermes is through the official plugin catalog:
+Add LoreDocs as an MCP server in Hermes. Add an entry under `mcp_servers:` in `~/.hermes/config.yaml`:
 
-```bash
-hermes plugins install loredocs
-hermes plugins enable loredocs
+```yaml
+mcp_servers:
+  loredocs:
+    command: uvx
+    args:
+      - loredocs==<version>
+    enabled: true
+    env:
+      LOREDOCS_PRO: your-license-key
 ```
 
-**If you previously added `mcp_servers.loredocs` to config.yaml**, remove it before or instead of enabling the plugin. Hermes keeps your config entry and skips the plugin's server, so both cannot run at once. Remove the `mcp_servers.loredocs` section from `~/.hermes/config.yaml` and restart Hermes.
+Replace `<version>` with the version you want to pin to and `your-license-key` with your Pro license key. Omit the `LOREDOCS_PRO` line if you are using the free tier. There is no install path to substitute -- uvx resolves the package itself.
+
+Restart Hermes Agent after saving the file. LoreDocs MCP tools will be available in the next Hermes session.
 
 ---
 
