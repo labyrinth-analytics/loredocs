@@ -1,4 +1,4 @@
-# LoreDocs v0.1.29
+# LoreDocs v0.1.30
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -424,21 +424,31 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
-## v0.1.29 (2026-10-07)
+## v0.1.30 (2026-10-15)
 
 ### Added
 
-- More of LoreDocs now works without the MCP server. If the MCP server is
-  unreachable, the fallback script can find documents related to a given
-  document (Pro), build a priority-ranked context load for a vault within a
-  token budget, open or create the vault for a workspace folder, import a
-  whole folder of files into a vault, and report whether Notion import is
-  ready. Each uses the same code the MCP tools use, so results match.
+- LoreDocs now works with Hermes Agent. Add it as an MCP server in
+  `~/.hermes/config.yaml` (see INSTALL.md for the entry) and all LoreDocs
+  tools are available in your Hermes sessions. The README lists what
+  LoreDocs stores and where, and confirms it sends no telemetry.
 
 ### Changed
 
-- The description shown in the MCP Server Registry is shorter, to fit the
-  registry's length limit.
+- Related documents are better matched. When LoreDocs links related
+  documents automatically, it now compares what the documents actually say
+  rather than their titles. Links based on shared terms now stay within a
+  single vault and need more terms in common, so you will see fewer, more
+  relevant suggestions.
+- The install guide for Claude Code and Cowork now uses the public
+  Labyrinth Analytics plugin marketplace.
+
+### Fixed
+
+- Automatic related-document links were not created if you keep your
+  LoreDocs data somewhere other than the default `~/.loredocs` folder.
+- The fallback script now gives a clear error if you ask it to restore
+  document version 0 (versions start at 1).
 
 <!-- WHATS_NEW:END -->
 

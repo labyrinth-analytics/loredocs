@@ -7,16 +7,47 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
-## v0.1.30 (2026-10-07)
+## v0.1.30 (2026-10-15)
 
-### Added: Hermes Agent support (Portable Agent Plugins v1, SH-103531)
+### Added: Hermes Agent portable plugin manifests (SH-103529, SH-103530, SH-103627)
 
-Root `plugin.json` and `mcp.json` manifests are now generated outputs
-(`scripts/generate_runtime_config.py`). INSTALL.md updated to list Hermes as
-the primary installation path. README.md now includes a Hermes subsection with
-licensing, storage, and telemetry disclosures (spec 2026-10-07 R2-R4). Skill
-documentation remains host-neutral or includes Hermes alternatives where
-host-specific commands differ.
+Root `plugin.json` and `mcp.json` (Agent Plugins v1 portable format, with
+`$schema`) are now generated outputs of `scripts/generate_runtime_config.py`,
+pinned to the release version, so `release.sh` keeps them in step.
+`hermes plugins validate ron_skills/loredocs` passes (2026-10-09; findings
+are vendored-dependency false positives, spec R6b). Minimum Hermes is 0.21
+(`portable_plugin_manifest` first ships in 0.21.1).
+
+### Changed: Hermes install docs (SH-103531)
+
+README and INSTALL.md gain a Hermes section with licensing, storage and
+telemetry disclosures (spec R2-R4). Until the Hermes plugin catalog listing
+merges, the documented install is a `mcp_servers.loredocs` entry in
+`~/.hermes/config.yaml`; the catalog command is restored in a docs-only push
+after merge. INSTALL.md's Claude Code/Cowork option now adds the public
+marketplace (`labyrinth-analytics/claude-plugins`) instead of a local
+monorepo path, and the stale Anthropic-marketplace note is removed.
+`pyproject.toml` gains `[project.urls]` (Homepage, Repository, Bug Tracker).
+
+### Changed: vault_find_related autolink quality (SH-103637)
+
+`storage.py`: embedding autolink now queries the Lance index with the
+document's extracted text (`_get_doc_text_for_embedding()`) instead of its
+name, which only matched similar titles. Co-occurrence linking is scoped to
+the source document's vault, and `min_shared_terms` rises from 3 to 5.
+
+### Fixed: embedding autolink created no links outside the default root (SH-104182, SH-104185)
+
+The SH-103637 text lookup hardcoded `~/.loredocs`, so with `LOREDOCS_ROOT`
+set (and in tests) it found no `extracted.txt`, returned an empty query and
+skipped linking. The root is now derived from the open connection's
+`PRAGMA database_list`, then `LOREDOCS_ROOT`, then `~/.loredocs`.
+
+### Fixed: fallback `--doc-restore --version 0` error (SH-102603)
+
+`scripts/query_loredocs.py` treated `--version 0` as a missing argument
+(`if not args.version`). It now checks `is None`, so 0 reaches validation,
+and the usage error states `N >= 1`.
 
 ## v0.1.29 (2026-10-07)
 

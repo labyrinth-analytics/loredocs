@@ -4,6 +4,32 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## v0.1.30 (2026-10-15)
+
+### Added
+
+- LoreDocs now works with Hermes Agent. Add it as an MCP server in
+  `~/.hermes/config.yaml` (see INSTALL.md for the entry) and all LoreDocs
+  tools are available in your Hermes sessions. The README lists what
+  LoreDocs stores and where, and confirms it sends no telemetry.
+
+### Changed
+
+- Related documents are better matched. When LoreDocs links related
+  documents automatically, it now compares what the documents actually say
+  rather than their titles. Links based on shared terms now stay within a
+  single vault and need more terms in common, so you will see fewer, more
+  relevant suggestions.
+- The install guide for Claude Code and Cowork now uses the public
+  Labyrinth Analytics plugin marketplace.
+
+### Fixed
+
+- Automatic related-document links were not created if you keep your
+  LoreDocs data somewhere other than the default `~/.loredocs` folder.
+- The fallback script now gives a clear error if you ask it to restore
+  document version 0 (versions start at 1).
+
 ## v0.1.29 (2026-10-07)
 
 ### Added

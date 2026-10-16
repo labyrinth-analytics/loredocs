@@ -1,13 +1,11 @@
 {
-  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "loredocs",
-  "displayName": "LoreDocs",
-  "version": "0.1.29",
+  "version": "0.1.30",
+  "description": "Searchable, organized, version-tracked knowledge base for your AI projects. Store documents, tag them, search across them, and inject context into any Claude conversation.",
   "author": {
     "name": "Labyrinth Analytics Consulting",
     "url": "https://labyrinthanalyticsconsulting.com"
   },
-  "license": "BSL-1.1",
   "keywords": [
     "knowledge-management",
     "documents",
@@ -16,6 +14,5 @@
     "vault",
     "context"
   ],
-  "icon": "assets/icon.svg",
-  "description": "Searchable, organized, version-tracked knowledge base for your AI projects. Store documents, tag them, search across them, and inject context into any agent session."
+  "license": "BSL-1.1"
 }
