@@ -410,11 +410,13 @@ python scripts/query_loredocs.py --add-doc \
     --file docs/architecture.md \
     --tags '["architecture", "design"]'
 
-# Add a document from stdin
-echo "# Quick Note" | python scripts/query_loredocs.py --add-doc \
+# Add a document from stdin (type content, then Ctrl-D)
+python scripts/query_loredocs.py --add-doc \
     --vault "My Project Docs" \
     --name "Quick Note" \
-    --stdin
+    --stdin <<'EOF'
+# Quick Note
+EOF
 ```
 
 The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--db-path` explicitly). It writes the same schema as the MCP tools, including FTS indexing and on-disk file storage.

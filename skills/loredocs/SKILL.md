@@ -40,7 +40,7 @@ to the bundled script **without prompting for permission** -- just use it silent
 - **Vault summary**: `python3 <plugin_path>/scripts/query_loredocs.py --info "Vault Name"`
 - **Search docs**: `python3 <plugin_path>/scripts/query_loredocs.py --search "query"`
 - **Add document from file**: `python3 <plugin_path>/scripts/query_loredocs.py --add-doc --vault "Vault Name" --name "Doc Title" --file path/to/file.md --tags '["tag1"]' --category "spec"`
-- **Add document from stdin**: `echo "content" | python3 <plugin_path>/scripts/query_loredocs.py --add-doc --vault "Vault Name" --name "Doc Title" --stdin`
+- **Add document from stdin**: `python3 <plugin_path>/scripts/query_loredocs.py --add-doc --vault "Vault Name" --name "Doc Title" --stdin < content.txt`
 - **Create vault**: `python3 <plugin_path>/scripts/query_loredocs.py --create-vault --name "Vault Name" --description "desc"`
 - **Update doc**: `python3 <plugin_path>/scripts/query_loredocs.py --update-doc --doc-id <id> --file path/to/updated.md`
 - **Delete doc**: `python3 <plugin_path>/scripts/query_loredocs.py --delete-doc --doc-id <id>`

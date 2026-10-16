@@ -1,0 +1,8 @@
+name: loredocs
+version: "0.1.30"
+description: "LoreDocs - searchable, organized, version-tracked knowledge base for your AI projects. Store documents, search across them, and inject context into any agent session."
+python_dependencies: []
+requires_env:
+  - name: LOREDOCS_ROOT
+    description: "Override default data directory for LoreDocs vaults"
+    required: false
