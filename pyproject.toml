@@ -69,6 +69,11 @@ notion = [
 loredocs = "loredocs.server:main"
 loredocs-compat-check = "loredocs.compat_check:main"
 
+[project.urls]
+Homepage = "https://github.com/labyrinth-analytics/loredocs"
+Repository = "https://github.com/labyrinth-analytics/loredocs"
+"Bug Tracker" = "https://github.com/labyrinth-analytics/loredocs/issues"
+
 [build-system]
 requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
