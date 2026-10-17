@@ -7,6 +7,18 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
+## v0.1.31 (2026-10-16)
+
+### Security
+
+- Updated the MCP library (`mcp[cli]`) from 1.28.1 to 1.30.0 to fix
+  CVE-2026-59951. The startup compatibility check now expects 1.30.0.
+
+### Improved
+
+- Semantic search loads its embedding model once per process and shares it,
+  which cuts memory use and repeat load time.
+
 ## v0.1.30 (2026-10-15)
 
 ### Added: Hermes Agent portable plugin manifests (SH-103529, SH-103530, SH-103627)

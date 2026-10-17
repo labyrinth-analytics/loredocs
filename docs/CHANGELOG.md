@@ -4,6 +4,18 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## v0.1.31 (2026-10-16)
+
+### Security
+
+- Updated the MCP library (`mcp[cli]`) from 1.28.1 to 1.30.0 to fix
+  CVE-2026-59951. The startup compatibility check now expects 1.30.0.
+
+### Improved
+
+- Semantic search loads its embedding model once per process and shares it,
+  which cuts memory use and repeat load time.
+
 ## v0.1.30 (2026-10-15)
 
 ### Added

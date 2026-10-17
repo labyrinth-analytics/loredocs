@@ -1,4 +1,4 @@
-# LoreDocs v0.1.30
+# LoreDocs v0.1.31
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -425,31 +425,17 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
-## v0.1.30 (2026-10-15)
+## v0.1.31 (2026-10-16)
 
-### Added
+### Security
 
-- LoreDocs now works with Hermes Agent. Add it as an MCP server in
-  `~/.hermes/config.yaml` (see INSTALL.md for the entry) and all LoreDocs
-  tools are available in your Hermes sessions. The README lists what
-  LoreDocs stores and where, and confirms it sends no telemetry.
+- Updated the MCP library (`mcp[cli]`) from 1.28.1 to 1.30.0 to fix
+  CVE-2026-59951. The startup compatibility check now expects 1.30.0.
 
-### Changed
+### Improved
 
-- Related documents are better matched. When LoreDocs links related
-  documents automatically, it now compares what the documents actually say
-  rather than their titles. Links based on shared terms now stay within a
-  single vault and need more terms in common, so you will see fewer, more
-  relevant suggestions.
-- The install guide for Claude Code and Cowork now uses the public
-  Labyrinth Analytics plugin marketplace.
-
-### Fixed
-
-- Automatic related-document links were not created if you keep your
-  LoreDocs data somewhere other than the default `~/.loredocs` folder.
-- The fallback script now gives a clear error if you ask it to restore
-  document version 0 (versions start at 1).
+- Semantic search loads its embedding model once per process and shares it,
+  which cuts memory use and repeat load time.
 
 <!-- WHATS_NEW:END -->
 

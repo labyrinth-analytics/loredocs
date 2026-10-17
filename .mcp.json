@@ -4,7 +4,7 @@
     "loredocs": {
       "command": "uvx",
       "args": [
-        "loredocs==0.1.30"
+        "loredocs==0.1.31"
       ],
       "env": {
         "LOREDOCS_PRO": ""
