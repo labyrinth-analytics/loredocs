@@ -2656,11 +2656,45 @@ async def vault_import_dir(
     return "\n".join(lines)
 
 
+def _validate_export_directory(directory: str, export_root: Optional[Path] = None) -> Path:
+    """Resolve `directory` and refuse any target that escapes the export root.
+
+    SH-104430 / WG-32 D-26: vault_export handed the raw string to Path() and
+    mkdir(parents=True), so a relative path like '../x_escape' wrote a full
+    vault copy outside the intended directory, and an absolute '/etc/...' was
+    refused only by OS permissions, not by the tool. Resolve the target to a
+    canonical path first and require it to stay inside `export_root` (the
+    server's working directory by default). Absolute inputs are rejected
+    outright -- they are never "inside" a relative root -- and symlinks that
+    resolve outside the root are caught by the canonicalization + containment
+    check. Returns the canonical Path on success; raises ValueError otherwise.
+    """
+    raw = Path(directory)
+    if raw.is_absolute():
+        raise ValueError(
+            "Error: absolute export paths are not allowed; provide a path "
+            "inside the server's working directory."
+        )
+    root = (export_root or Path.cwd()).resolve()
+    resolved = (root / raw).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        raise ValueError(
+            "Error: export path escapes the server's working directory."
+        )
+    return resolved
+
+
 class ExportInput(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     vault: str = Field(..., description="Vault ID or name to export", min_length=1)
-    directory: str = Field(..., description="Absolute path to output directory")
+    directory: str = Field(
+        ...,
+        description="Directory to export into, relative to the server's "
+                    "working directory (must not escape it)",
+    )
 
 
 @mcp.tool(
@@ -2680,7 +2714,11 @@ async def vault_export(ctx: Context, vault: str, directory: str) -> str:
     if not vault:
         return f"Error: Vault '{params.vault}' not found."
 
-    output_dir = Path(params.directory)
+    try:
+        output_dir = _validate_export_directory(params.directory)
+    except ValueError as exc:
+        return str(exc)
+
     count = storage.export_vault(vault["id"], output_dir)
 
     if count == 0:
