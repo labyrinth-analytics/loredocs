@@ -3457,7 +3457,15 @@ class VaultStorage:
 
         # 7. Check for missing versions (holes).
         all_evidenced = _all_evidenced_numbers(history_dir)
-        check_max = max(fs_max, sidecar_max, version_count)
+        # The current version lives in current{ext}, NOT in history/, so it is
+        # never evidenced by a numbered history file or sidecar.  The highest
+        # version we can expect to be evidenced in history/ is
+        # version_count - 1 (the most recently archived version); the current
+        # version itself is excluded from the gap-free range.  Including
+        # version_count here made every fresh document report a false
+        # "Missing version numbers" for its own current version (WG-32 VERIF-10
+        # / D-33: 1617/1617 docs flagged identically).
+        check_max = max(fs_max, sidecar_max, version_count - 1)
         missing = [n for n in range(1, check_max + 1) if n not in all_evidenced]
         if missing:
             if len(missing) <= 20:
@@ -3533,9 +3541,69 @@ class VaultStorage:
 
         return "\n".join(report_lines)
 
+    def _verify_link_integrity(self, vault_id: str) -> List[str]:
+        """Report dangling doc_links / doc_cooccurrences rows for a vault.
+
+        A doc_link is dangling when its source_doc_id or target_doc_id does not
+        resolve to a live (deleted=0) document row -- i.e. the referenced
+        document was soft-deleted (deleted=1) or hard-deleted (row removed via
+        SQL).  A doc_cooccurrence is dangling when its doc_id does not resolve
+        to a live document row.
+
+        Scoping:
+        - doc_links are scoped to this vault via source_vault_id /
+          target_vault_id (the columns survive even when the referenced
+          document row is gone).
+        - doc_cooccurrences carry no vault id.  A soft-deleted document still
+          has a documents row, so those are scoped via d.vault_id.  A
+          hard-deleted document has no row at all, so its orphan
+          co-occurrence rows cannot be attributed to a vault and are reported
+          under every vault that is verified.
+
+        Read-only: never mutates the database.
+        """
+        lines: List[str] = []
+        with self._db() as conn:
+            live_ids = {r["id"] for r in conn.execute(
+                "SELECT id FROM documents WHERE deleted = 0"
+            ).fetchall()}
+
+            links = conn.execute(
+                "SELECT id, source_doc_id, target_doc_id FROM doc_links "
+                "WHERE source_vault_id = ? OR target_vault_id = ?",
+                (vault_id, vault_id),
+            ).fetchall()
+            for link in links:
+                if (link["source_doc_id"] not in live_ids
+                        or link["target_doc_id"] not in live_ids):
+                    lines.append(
+                        f"  [ISSUE] Dangling doc_link {link['id']}: "
+                        f"source={link['source_doc_id']} -> "
+                        f"target={link['target_doc_id']}"
+                    )
+
+            cooc = conn.execute(
+                "SELECT dc.doc_id, dc.term FROM doc_cooccurrences dc "
+                "LEFT JOIN documents d ON d.id = dc.doc_id "
+                "WHERE d.id IS NULL OR (d.deleted = 1 AND d.vault_id = ?)",
+                (vault_id,),
+            ).fetchall()
+            for row in cooc:
+                lines.append(
+                    f"  [ISSUE] Dangling doc_cooccurrence: "
+                    f"doc_id={row['doc_id']} (term='{row['term']}')"
+                )
+
+        return lines
+
     def verify_vault(self, vault_id: str, repair: bool = False,
                      confirm: Optional[str] = None) -> str:
         """Verify all documents in a vault. Calls verify_document for each.
+
+        Also reports dangling doc_links / doc_cooccurrences rows (references to
+        missing or soft-deleted documents) -- a vault-level integrity check that
+        verify_document cannot see because links/co-occurrences are stored at
+        the vault/DB level, not under a single document.
 
         Returns a human-readable report string.
         """
@@ -3545,13 +3613,14 @@ class VaultStorage:
                 (vault_id,)
             ).fetchall()
 
-        if not rows:
-            return f"Vault {vault_id} has no documents or was not found."
-
         report_lines: List[str] = []
         report_lines.append(f"Vault verification: {vault_id}")
         report_lines.append(f"  Documents: {len(rows)}")
         report_lines.append("")
+
+        if not rows:
+            report_lines.append("  No live documents in this vault.")
+            report_lines.append("")
 
         for row in rows:
             doc_report = self.verify_document(
@@ -3559,6 +3628,15 @@ class VaultStorage:
             )
             report_lines.append(doc_report)
             report_lines.append("-" * 40)
+
+        # Dangling link / co-occurrence integrity (vault-scoped).
+        report_lines.append("Link/co-occurrence integrity:")
+        dangling = self._verify_link_integrity(vault_id)
+        if dangling:
+            report_lines.extend(dangling)
+        else:
+            report_lines.append("  [OK] No dangling links or co-occurrences.")
+        report_lines.append("")
 
         return "\n".join(report_lines)
 
