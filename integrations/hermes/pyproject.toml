@@ -1,5 +1,0 @@
-[project]
-name = "hermes-plugin-loredocs"
-version = "0.1.30"
-description = "Hermes plugin for LoreDocs - searchable, organized, version-tracked knowledge base for your AI projects."
-dependencies = []
