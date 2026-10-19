@@ -1856,9 +1856,19 @@ class VaultStorage:
             return cursor.rowcount > 0
 
     def delete_vault(self, vault_id: str) -> bool:
-        """Permanently delete a vault and all its documents. Returns True if found."""
+        """Permanently delete a vault and all its documents. Returns True if found.
+
+        Also cleans up doc_cooccurrences and Lance rows for all docs in the
+        vault (SH-104431/WG-32).
+        """
         vault_dir = self.vaults_dir / vault_id
         with self._db() as conn:
+            # Collect doc IDs for Lance cleanup (before deleting rows)
+            doc_ids = [
+                row[0] for row in conn.execute(
+                    "SELECT id FROM documents WHERE vault_id = ?", (vault_id,)
+                ).fetchall()
+            ]
             # Remove FTS entries for all docs in this vault
             conn.execute("DELETE FROM doc_fts WHERE vault_id = ?", (vault_id,))
             # Remove doc_links
@@ -1866,11 +1876,21 @@ class VaultStorage:
                 "DELETE FROM doc_links WHERE source_vault_id = ? OR target_vault_id = ?",
                 (vault_id, vault_id)
             )
+            # Remove doc_cooccurrences for all docs in this vault (SH-104431)
+            conn.execute(
+                "DELETE FROM doc_cooccurrences WHERE doc_id IN "
+                "(SELECT id FROM documents WHERE vault_id = ?)",
+                (vault_id,)
+            )
             # Remove documents
             conn.execute("DELETE FROM documents WHERE vault_id = ?", (vault_id,))
             # Remove vault
             cursor = conn.execute("DELETE FROM vaults WHERE id = ?", (vault_id,))
             found = cursor.rowcount > 0
+
+        # Remove Lance rows for each doc (best-effort, after DB commit)
+        for doc_id in doc_ids:
+            self._lance_delete_safe(doc_id)
 
         if vault_dir.exists():
             shutil.rmtree(vault_dir)
@@ -2565,7 +2585,12 @@ class VaultStorage:
         return result
 
     def remove_document(self, doc_id: str) -> bool:
-        """Soft-delete a document. Returns True if found."""
+        """Soft-delete a document. Returns True if found.
+
+        Also cleans up doc_links (both directions), doc_cooccurrences,
+        and Lance rows so stale relationship data never surfaces in
+        find_related or inflates cooccurrence counts (SH-104431/WG-32).
+        """
         deleted = False
         with self._db() as conn:
             cursor = conn.execute(
@@ -2574,6 +2599,16 @@ class VaultStorage:
             )
             if cursor.rowcount > 0:
                 conn.execute("DELETE FROM doc_fts WHERE doc_id = ?", (doc_id,))
+                # Clean up link rows in both directions (SH-104431)
+                conn.execute(
+                    "DELETE FROM doc_links WHERE source_doc_id = ? OR target_doc_id = ?",
+                    (doc_id, doc_id)
+                )
+                # Clean up cooccurrence rows (SH-104431)
+                conn.execute(
+                    "DELETE FROM doc_cooccurrences WHERE doc_id = ?",
+                    (doc_id,)
+                )
                 deleted = True
         if deleted:
             self._lance_delete_safe(doc_id)
