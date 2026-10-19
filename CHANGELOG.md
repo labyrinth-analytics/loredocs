@@ -7,6 +7,26 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
+## Unreleased
+
+### Fixed: autolink backfill / relink tool (SH-104427, SH-104432)
+
+- `loredocs/storage.py`: `_auto_link_doc_cooccurrences` now emits deterministic
+  link IDs via `_make_link_id` (was `uuid.uuid4()[:12]`). The UNIQUE logical-key
+  index already dedups on `(source_vault_id, source_doc_id, target_vault_id,
+  target_doc_id, label)`, so behavior is unchanged for forward writes; the
+  deterministic IDs make a purge+regenerate cycle produce byte-identical rows.
+- `VaultStorage.relink_autolinks(include_embeddings=True)`: new method that
+  purges every `label LIKE 'auto:%'` row in `doc_links` and regenerates them
+  with the current SH-103637 logic (same-vault cooccurrence, threshold 5,
+  embedding-on-text-not-name) for all non-deleted documents. Explicit links
+  (any label not matching `auto:%`) are never touched. Pro+Lance-index stores
+  also regenerate `auto:embedding` links when `include_embeddings=True`.
+  Idempotent: running twice yields a byte-identical `doc_links` table.
+- `scripts/relink_autolinks.py`: admin CLI mirroring `backfill_doc_embeddings.py`
+  with `--dry-run`, `--root`, `--include-embeddings` flags. Verifies zero
+  cross-vault auto-links remain after relink.
+
 ## v0.1.31 (2026-10-16)
 
 ### Security

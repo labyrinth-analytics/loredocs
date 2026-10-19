@@ -4,6 +4,27 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## Unreleased
+
+### Fixed: rebuild document relationships after upgrade
+
+If you upgraded from a LoreDocs release before the autolink quality fix
+(SH-103637, shipped in v0.1.30), your vaults may still contain stale
+auto-discovered document relationships -- including links between documents
+in different vaults that should never have been connected. This drags down
+the relevance of "find related documents."
+
+A new admin script rebuilds them with the current logic:
+
+    python scripts/relink_autolinks.py --dry-run       # preview
+    python scripts/relink_autolinks.py                  # cooccurrence only
+    python scripts/relink_autolinks.py --include-embeddings  # Pro + Lance
+
+It purges every auto-generated link and regenerates them from scratch.
+Manual links you created yourself are never touched. The operation is
+idempotent: running it twice produces the same result. After it runs, zero
+cross-vault auto-links remain. See INSTALL.md for the full upgrade note.
+
 ## v0.1.31 (2026-10-16)
 
 ### Security

@@ -1058,13 +1058,25 @@ def _auto_link_doc_cooccurrences(
         if not tgt_row:
             continue
         target_vault_id = tgt_row[0]
+        # Deterministic link IDs (SH-104432): required for relink_autolinks
+        # idempotency. The UNIQUE INDEX is on the 5-tuple logical key, so
+        # INSERT OR IGNORE dedups regardless; but deterministic IDs make a
+        # purge+regenerate cycle produce byte-identical rows on rerun.
+        fwd_id = _make_link_id(
+            source_vault_id, doc_id, target_vault_id, other_doc_id,
+            "auto:cooccurrence",
+        )
+        rev_id = _make_link_id(
+            target_vault_id, other_doc_id, source_vault_id, doc_id,
+            "auto:cooccurrence",
+        )
         try:
             conn.execute(
                 """INSERT OR IGNORE INTO doc_links
                    (id, source_vault_id, source_doc_id, target_vault_id, target_doc_id,
                     created_at, label)
                    VALUES (?, ?, ?, ?, ?, ?, 'auto:cooccurrence')""",
-                (str(uuid.uuid4())[:12], source_vault_id, doc_id,
+                (fwd_id, source_vault_id, doc_id,
                  target_vault_id, other_doc_id, now)
             )
             conn.execute(
@@ -1072,7 +1084,7 @@ def _auto_link_doc_cooccurrences(
                    (id, source_vault_id, source_doc_id, target_vault_id, target_doc_id,
                     created_at, label)
                    VALUES (?, ?, ?, ?, ?, ?, 'auto:cooccurrence')""",
-                (str(uuid.uuid4())[:12], target_vault_id, other_doc_id,
+                (rev_id, target_vault_id, other_doc_id,
                  source_vault_id, doc_id, now)
             )
         except sqlite3.IntegrityError:
@@ -1389,6 +1401,92 @@ class VaultStorage:
             lance_dir = self.root / 'docs.lance'
             self._lance_index = DocLanceIndex(lance_dir)
         return self._lance_index
+
+    def relink_autolinks(self, include_embeddings: bool = True) -> Dict[str, int]:
+        """Purge all auto-generated doc_links and regenerate them with current logic.
+
+        SH-104427 / SH-104432: the SH-103637 autolink quality fix (same-vault
+        cooccurrence, threshold 5, embedding-on-text-not-name) was forward-only.
+        Existing stores still held pre-fix auto:cooccurrence / auto:embedding
+        rows (including cross-vault noise). This method purges every
+        ``label LIKE 'auto:%'`` row and regenerates them for all non-deleted
+        documents. Explicit links (any label not matching ``auto:%``) are
+        untouched.
+
+        Idempotent: a purge+regenerate cycle produces a byte-identical
+        doc_links table on rerun, because both autolink writers now emit
+        deterministic IDs via ``_make_link_id`` and use INSERT OR IGNORE
+        against the UNIQUE logical-key index.
+
+        Args:
+            include_embeddings: when True and the store is Pro with a usable
+                Lance index, regenerate ``auto:embedding`` links too. When
+                False, or on Free tier, or when the Lance index is missing,
+                only ``auto:cooccurrence`` links are regenerated.
+
+        Returns:
+            Dict with keys ``purged``, ``regenerated``, ``docs_processed``,
+            ``embedding_skipped`` (bool).
+        """
+        is_pro = get_tier(self.root) == TIER_PRO
+        lance_index = None
+        embedding_skipped = True
+        if include_embeddings and is_pro:
+            try:
+                lance_index = self._get_lance_index()
+                # Probe the index is actually openable; fall back to cooccurrence-only.
+                lance_index._open_table()
+                embedding_skipped = False
+            except Exception as exc:
+                logger.warning(
+                    "relink_autolinks: Lance index unavailable, "
+                    "skipping embedding links: %s", exc,
+                )
+                lance_index = None
+                embedding_skipped = True
+
+        with self._db() as conn:
+            # 1. Purge every auto-generated link. Explicit links (label NOT
+            #    LIKE 'auto:%') are preserved.
+            purged = conn.execute(
+                "DELETE FROM doc_links WHERE label LIKE 'auto:%'"
+            ).rowcount
+
+            # 2. Regenerate. Process docs in deterministic id order so the
+            #    created_at timestamps (one per doc) are stable across reruns.
+            doc_rows = conn.execute(
+                "SELECT id FROM documents WHERE deleted = 0 ORDER BY id"
+            ).fetchall()
+            regenerated = 0
+            for drow in doc_rows:
+                doc_id = drow["id"]
+                before = conn.execute("SELECT COUNT(*) FROM doc_links").fetchone()[0]
+                try:
+                    _auto_link_doc_cooccurrences(conn, doc_id)
+                except Exception as exc:
+                    logger.error(
+                        "relink_autolinks: cooccurrence failed for doc %s: %s",
+                        doc_id, exc,
+                    )
+                if lance_index is not None:
+                    try:
+                        _auto_link_doc_embeddings(
+                            conn, doc_id, lance_index, is_pro=True,
+                        )
+                    except Exception as exc:
+                        logger.error(
+                            "relink_autolinks: embedding failed for doc %s: %s",
+                            doc_id, exc,
+                        )
+                after = conn.execute("SELECT COUNT(*) FROM doc_links").fetchone()[0]
+                regenerated += max(0, after - before)
+
+        return {
+            "purged": purged,
+            "regenerated": regenerated,
+            "docs_processed": len(doc_rows),
+            "embedding_skipped": embedding_skipped,
+        }
 
     def release_idle_resources(self) -> None:
         """Drop the cached Lance index handle while idle (SH-13610).

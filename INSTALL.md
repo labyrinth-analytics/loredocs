@@ -491,6 +491,40 @@ bash install.sh
 
 The installer detects the existing venv and updates it in place.
 
+### Rebuilding document relationships after upgrade (v0.1.31 -> unreleased)
+
+If you upgraded from a release before the autolink quality fix (SH-103637,
+shipped in v0.1.30), your vaults may still contain stale auto-discovered
+document relationships -- including links between documents in different
+vaults that should never have been connected. These drag down the relevance
+of "find related documents." A one-time backfill purges them and regenerates
+them with the current logic.
+
+```bash
+# Preview how many auto-links will be purged and how many docs will be processed.
+python scripts/relink_autolinks.py --dry-run
+
+# Rebuild cooccurrence links (Free or Pro tier).
+python scripts/relink_autolinks.py
+
+# Also rebuild embedding-based links (Pro tier with a Lance index only).
+python scripts/relink_autolinks.py --include-embeddings
+```
+
+What it does:
+
+- Purges every `auto:cooccurrence` and `auto:embedding` row from `doc_links`.
+- Regenerates them for all non-deleted documents using the current logic
+  (same-vault only, threshold 5, embeddings on document text not title).
+- Manual links you created yourself are never touched.
+- Idempotent: running it twice produces the same result.
+- After it runs, zero cross-vault auto-links remain; the script verifies this
+  and warns if any remain.
+
+You only need to run this once after upgrading. New documents added after the
+upgrade get correct auto-links automatically. Point `--root` at a custom data
+directory if your `LOREDOCS_ROOT` is not `~/.loredocs/`.
+
 ---
 
 ## More Documentation
