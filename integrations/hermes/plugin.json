@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "loredocs",
   "displayName": "LoreDocs",
-  "version": "0.1.30",
+  "version": "0.1.31",
   "author": {
     "name": "Labyrinth Analytics Consulting",
     "url": "https://labyrinthanalyticsconsulting.com"
@@ -16,5 +16,6 @@
     "vault",
     "context"
   ],
+  "icon": "assets/icon.svg",
   "description": "Searchable, organized, version-tracked knowledge base for your AI projects. Store documents, tag them, search across them, and inject context into any agent session."
 }
