@@ -288,7 +288,7 @@ def ui(port, no_browser, no_token_warning):
 # Notion import subcommands (SH-13222: PART:interfaces)
 # ---------------------------------------------------------------------------
 
-@cli.group()
+@cli.group(name="import")
 def import_():
     """Import from external sources."""
     pass
