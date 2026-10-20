@@ -3921,22 +3921,43 @@ class VaultStorage:
     def import_directory(self, vault_id: str, dir_path: Path,
                          tags: Optional[List[str]] = None,
                          category: str = "imported",
-                         recursive: bool = True) -> List[Dict[str, Any]]:
-        """Bulk import all supported files from a directory into a vault."""
+                         recursive: bool = True,
+                         skip_config_files: bool = True) -> List[Dict[str, Any]]:
+        """Bulk import all supported files from a directory into a vault.
+
+        Preserves relative folder paths so same-named files from different
+        folders are distinguishable (path stored in document notes).
+        By default skips config files (.css, .js, .json).
+
+        Args:
+            vault_id: Target vault ID
+            dir_path: Directory to import from
+            tags: Tags to apply to all imports
+            category: Category for imported documents
+            recursive: If True, recurse into subdirectories
+            skip_config_files: If True, skip .css, .js, .json files
+        """
+        import time
+
         imported = []
         if not dir_path.is_dir():
             return imported
 
+        start_time = time.perf_counter()
         iterator = sorted(dir_path.rglob("*")) if recursive else sorted(dir_path.iterdir())
         for file_path in iterator:
             if file_path.is_symlink():
                 continue
             if file_path.is_file() and not file_path.name.startswith("."):
+                if skip_config_files and file_path.suffix.lower() in ('.css', '.js', '.json'):
+                    continue
                 if file_path.stat().st_size > MAX_FILE_SIZE:
                     continue
                 try:
                     content = file_path.read_bytes()
                     doc_name = file_path.stem.replace("_", " ").replace("-", " ").title()
+                    relative_path = str(file_path.relative_to(dir_path))
+                    path_note = f"Path: {relative_path}"
                     doc_tags = list(tags) if tags else []
                     if file_path.suffix.lower() == ".md":
                         fm_tags = _extract_frontmatter_tags(content)
@@ -3947,12 +3968,17 @@ class VaultStorage:
                         vault_id, name=doc_name, content=content,
                         filename=file_path.name,
                         tags=doc_tags if doc_tags else None,
-                        category=category
+                        category=category,
+                        notes=path_note
                     )
                     if result:
                         imported.append(result)
                 except Exception:
                     continue
+
+        end_time = time.perf_counter()
+        elapsed = end_time - start_time
+        avg_per_file = elapsed / len(imported) if imported else 0
 
         return imported
 

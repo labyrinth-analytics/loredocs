@@ -1268,6 +1268,7 @@ def cmd_import_dir(args):
 
     category = args.category or "imported"
     recursive = not args.no_recursive
+    skip_config_files = not args.include_config_files
 
     # Delegate to the shared import path (same as MCP vault_import_dir)
     from loredocs.storage import VaultStorage
@@ -1279,6 +1280,7 @@ def cmd_import_dir(args):
         tags=tags if tags else None,
         category=category,
         recursive=recursive,
+        skip_config_files=skip_config_files,
     )
 
     if not results:
@@ -1397,6 +1399,8 @@ def main():
                         help="Directory path for --import-dir")
     parser.add_argument("--no-recursive", action="store_true", dest="no_recursive",
                         help="With --import-dir: do not traverse subdirectories (single-level import)")
+    parser.add_argument("--include-config-files", action="store_true", dest="include_config_files",
+                        help="With --import-dir: include .css, .js, .json config files (default: skip them)")
     parser.add_argument("--import-notion-report", action="store_true", dest="import_notion_report",
                         help="Report Notion import readiness (equivalent to vault_import_notion_setup)")
     parser.add_argument("--include-archived", action="store_true", dest="include_archived",

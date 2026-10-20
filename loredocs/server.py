@@ -2603,6 +2603,7 @@ class ImportDirInput(BaseModel):
     tags: Optional[List[str]] = Field(default=None, description="Tags to apply to all imported documents")
     category: DocCategory = Field(default=DocCategory.IMPORTED, description="Category for imported documents")
     recursive: bool = Field(default=True, description="Traverse subdirectories recursively (default True). Set False for single-level import.")
+    skip_config_files: bool = Field(default=True, description="Skip .css, .js, .json files during import (default True)")
 
 
 @mcp.tool(
@@ -2617,18 +2618,21 @@ async def vault_import_dir(
     tags: Optional[List[str]] = None,
     category: DocCategory = DocCategory.IMPORTED,
     recursive: bool = True,
+    skip_config_files: bool = True,
 ) -> str:
     """Bulk import all supported files from a directory into a vault.
 
     Imports text files, PDFs, Word docs, Excel files, PowerPoints, and more.
     Each file becomes a separate document with text extracted for search indexing.
     Files over 30MB are skipped. Hidden files (starting with .) are skipped.
+    By default skips config files (.css, .js, .json).
 
     Supports Obsidian vaults: subdirectories are traversed recursively by default
     (set recursive=False for single-level import). Markdown files with YAML frontmatter
     tags (tags: [a, b] or block-list style) have those tags merged into the document.
+    Relative folder paths are preserved in document notes for disambiguation.
     """
-    params = ImportDirInput(vault=vault, directory=directory, tags=tags, category=category, recursive=recursive)
+    params = ImportDirInput(vault=vault, directory=directory, tags=tags, category=category, recursive=recursive, skip_config_files=skip_config_files)
     storage = _get_storage(ctx)
     vault = _resolve_vault(storage, params.vault)
     if not vault:
@@ -2644,6 +2648,7 @@ async def vault_import_dir(
         tags=params.tags,
         category=params.category.value,
         recursive=params.recursive,
+        skip_config_files=params.skip_config_files,
     )
 
     if not results:
