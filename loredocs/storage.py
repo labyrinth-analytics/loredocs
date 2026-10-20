@@ -178,6 +178,7 @@ REQUIRED_CROSS_LINK_SCHEMA_VERSION = 1
 _CROSS_LINK_THRESHOLD = 0.80   # cosine similarity floor
 _CROSS_LINK_L2_THRESHOLD = 0.6  # L2-normalized distance ceiling (cosine 0.80 ~ dist 0.632)
 _CROSS_LINK_CAP = 5             # max cross-product links per session/doc
+_CROSS_LINK_CAP_PER_DOC = 500   # max manual links to a single doc (WG-32 finding: unbounded growth up to 11,739)
 _CROSS_LINK_DEBOUNCE_SECS = 600 # 10-minute per-entity debounce
 _CROSS_LINK_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 _CROSS_LINK_EMBEDDING_DIM = 384
@@ -4447,8 +4448,8 @@ class VaultStorage:
     ) -> Dict[str, Any]:
         """Write a manual cross-product link from a LoreConvo session to a LoreDocs doc.
 
-        Checks vault opt-out. Manual links use embedding_model='manual', dim=0,
-        tier_required='free' (manual links are free-tier accessible per design).
+        Checks vault opt-out, session existence, and doc fan-out cap. Manual links use
+        embedding_model='manual', dim=0, tier_required='free' (free-tier accessible).
         """
         if not is_pro and link_type == "manual":
             # Manual links allowed for all tiers per architecture decision
@@ -4468,6 +4469,38 @@ class VaultStorage:
             ).fetchone()
             if not doc_row:
                 return {"ok": False, "reason": "document not found"}
+
+            # Check session exists in loreconvo (SH-104537: prevent dangling links from manual vault_link_session)
+            try:
+                lc_db = discover_product_db("loreconvo")
+            except DiscoveryError:
+                lc_db = None
+
+            if lc_db:
+                import sqlite3 as _sqlite3
+                try:
+                    lc_conn = _sqlite3.connect(f"file:{lc_db}?mode=ro", uri=True, timeout=2.0)
+                    lc_conn.row_factory = _sqlite3.Row
+                    session_exists = lc_conn.execute(
+                        "SELECT 1 FROM sessions WHERE id = ?", (session_id,)
+                    ).fetchone()
+                    lc_conn.close()
+                    if not session_exists:
+                        return {"ok": False, "reason": "session not found"}
+                except Exception:
+                    # If we can't check loreconvo, let the link through (graceful degrade)
+                    pass
+
+            # Check fan-out cap per doc (SH-104537: prevent unbounded growth, max 11,739 in WG-32)
+            link_count = conn.execute(
+                "SELECT COUNT(*) FROM cross_product_links WHERE target_product = 'loredocs' AND target_id = ?",
+                (doc_id,)
+            ).fetchone()[0]
+            if link_count >= _CROSS_LINK_CAP_PER_DOC:
+                return {
+                    "ok": False,
+                    "reason": f"document has reached maximum allowed cross-product links ({_CROSS_LINK_CAP_PER_DOC})"
+                }
 
             self._write_cross_product_link(
                 conn,
