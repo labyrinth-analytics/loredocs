@@ -4358,7 +4358,10 @@ class VaultStorage:
         limit: int = 5,
         is_pro: bool = False,
     ) -> Dict[str, Any]:
-        """Return cross-product links for a source entity.
+        """Return cross-product links for a source entity (bidirectional).
+
+        Searches for links where the entity is the source OR target, supporting
+        round-trip queries for vault_get_session_links and vault_get_linked_sessions.
 
         Filters stale-model links (marks them is_stale=True, still returned so
         callers can surface an upgrade message). Manual links bypass model check.
@@ -4376,28 +4379,47 @@ class VaultStorage:
             }
         with self._db() as conn:
             rows = conn.execute(
-                """SELECT target_product, target_id, similarity_score,
-                          embedding_model, embedding_dim, link_type, created_at
-                   FROM cross_product_links
-                   WHERE source_product = ? AND source_id = ?
+                """SELECT
+                     target_product, target_id, similarity_score,
+                     embedding_model, embedding_dim, link_type, created_at
+                   FROM (
+                     SELECT target_product, target_id, similarity_score,
+                            embedding_model, embedding_dim, link_type, created_at
+                     FROM cross_product_links
+                     WHERE source_product = ? AND source_id = ?
+                     UNION ALL
+                     SELECT source_product AS target_product, source_id AS target_id,
+                            similarity_score, embedding_model, embedding_dim, link_type, created_at
+                     FROM cross_product_links
+                     WHERE target_product = ? AND target_id = ?
+                   ) AS combined
                    ORDER BY
                      CASE link_type WHEN 'manual' THEN 0 ELSE 1 END,
                      CASE WHEN embedding_model = ? THEN 0 ELSE 1 END,
                      similarity_score DESC
                    LIMIT ?""",
-                (source_product, source_id, current_embedding_model, limit),
+                (source_product, source_id, source_product, source_id, current_embedding_model, limit),
             ).fetchall()
 
+        seen: set = set()
         links = []
         for row in rows:
-            is_stale = (row["link_type"] != "manual" and
-                        row["embedding_model"] != current_embedding_model)
+            target_product = row[0]
+            target_id = row[1]
+
+            link_key = (target_product, target_id)
+            if link_key in seen:
+                continue
+            seen.add(link_key)
+
+            is_stale = (row[5] != "manual" and
+                        row[3] != current_embedding_model)
             entry: Dict[str, Any] = {
-                "target_product": row["target_product"],
-                "target_id": row["target_id"],
-                "similarity_score": row["similarity_score"],
-                "link_type": row["link_type"],
-                "created_at": row["created_at"],
+                "target_product": target_product,
+                "target_id": target_id,
+                "similarity_score": row[2],
+                "link_type": row[5],
+                "created_at": row[6],
                 "is_stale": is_stale,
             }
             if is_stale:
