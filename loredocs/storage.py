@@ -182,6 +182,9 @@ _CROSS_LINK_DEBOUNCE_SECS = 600 # 10-minute per-entity debounce
 _CROSS_LINK_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 _CROSS_LINK_EMBEDDING_DIM = 384
 
+# Cap on find_related_docs() results (WG-32 D-10 median-result-count floor <= 15)
+FIND_RELATED_MAX_RESULTS = 15
+
 # File size limits (bytes)
 MAX_FILE_SIZE = 30 * 1024 * 1024  # 30 MB per file (matches Claude Projects)
 
@@ -4198,12 +4201,22 @@ class VaultStorage:
             return cursor.rowcount
 
     def find_related_docs(self, doc_id: str) -> List[Dict[str, Any]]:
-        """Return all documents linked to or from the given document.
+        """Return the strongest documents linked to or from the given document.
 
         Each result includes the related document's metadata and the link label.
         Embedding links (label='auto:embedding') are excluded for free-tier callers
         and deduplicated: if the same pair has both co-occurrence and embedding links,
         the co-occurrence entry wins.
+
+        Ordered explicit links first, then co-occurrence, then embedding, each by
+        recency, and capped at FIND_RELATED_MAX_RESULTS. Links carry no stored
+        strength score, so this ordering is the best available quality proxy:
+        explicit links are human/agent-curated, co-occurrence is an interpretable
+        term-overlap signal, embedding is the noisiest (widest similarity net).
+        Without the cap a doc that is a semantic "hub" for many others can
+        accumulate dozens of links since both the cooccurrence and embedding
+        auto-linkers write bidirectionally (WG-32 D-10: pre-cap median result
+        count was 23.5 against a target of <=15).
         """
         is_pro = get_tier(self.root) == TIER_PRO
         with self._db() as conn:
@@ -4216,7 +4229,11 @@ class VaultStorage:
                    WHERE dl.source_doc_id = ?
                      AND d.deleted = 0
                      AND (dl.archived_at IS NULL)
-                   ORDER BY dl.created_at DESC""",
+                   ORDER BY
+                     CASE WHEN dl.label NOT LIKE 'auto:%' THEN 0
+                          WHEN dl.label = 'auto:cooccurrence' THEN 1
+                          ELSE 2 END,
+                     dl.created_at DESC""",
                 (doc_id,)
             ).fetchall()
 
@@ -4241,7 +4258,7 @@ class VaultStorage:
                 else:
                     seen[target_id] = item
 
-            return list(seen.values())
+            return list(seen.values())[:FIND_RELATED_MAX_RESULTS]
 
     # -------------------------------------------------------------------
     # Vault manifest export (Phase 2)
