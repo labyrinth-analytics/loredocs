@@ -22,6 +22,7 @@ Storage is organized as:
 import hashlib
 import json
 import logging
+import math
 import os
 import platform
 import re
@@ -992,6 +993,10 @@ def _migrate_db(db_path: Path) -> None:
     conn.close()
 
 
+_COOCCURRENCE_CANDIDATE_POOL = 60
+_COOCCURRENCE_TERMS_PER_DOC = 30
+
+
 def _insert_doc_cooccurrences(
     conn: sqlite3.Connection,
     doc_id: str,
@@ -999,14 +1004,58 @@ def _insert_doc_cooccurrences(
     tags: List[str],
     content: str,
 ) -> None:
-    """(Re)index keyword co-occurrences for one document. Replaces prior index."""
+    """(Re)index keyword co-occurrences for one document. Replaces prior index.
+
+    SH-104433: raw in-document term frequency alone picks the same boilerplate
+    words (report headers, status labels) out of every document in a templated
+    vault (QA Reports, PM Dashboards, Editorial Reviews), so near-identical
+    report pairs share >= min_shared_terms terms regardless of topic -- that
+    inflates auto:cooccurrence link coverage without relevance (WG-32 D-10:
+    60% top-5 relevance, capped at the 15-result ceiling, well under the 70%
+    floor). Candidates are now re-ranked by TF * within-vault IDF (using the
+    doc_cooccurrences rows already written for other docs in the vault as the
+    document-frequency source) before the top 30 are kept, so a term common to
+    most reports in the vault scores lower than one distinctive to this doc.
+    """
     conn.execute("DELETE FROM doc_cooccurrences WHERE doc_id = ?", (doc_id,))
     text = " ".join(filter(None, [name, content]))
-    for term, freq in _extract_keywords(text):
-        conn.execute(
-            "INSERT OR REPLACE INTO doc_cooccurrences (term, doc_id, frequency) VALUES (?, ?, ?)",
-            (term, doc_id, freq)
-        )
+    candidates = _extract_keywords(text, top_n=_COOCCURRENCE_CANDIDATE_POOL)
+    if candidates:
+        vault_row = conn.execute(
+            "SELECT vault_id FROM documents WHERE id = ?", (doc_id,)
+        ).fetchone()
+        vault_id = vault_row[0] if vault_row else None
+        doc_freq: Dict[str, int] = {}
+        vault_doc_count = 0
+        if vault_id:
+            vault_doc_count = conn.execute(
+                "SELECT COUNT(*) FROM documents WHERE vault_id = ? AND deleted = 0",
+                (vault_id,)
+            ).fetchone()[0]
+            terms = [t for t, _ in candidates]
+            placeholders = ",".join("?" * len(terms))
+            doc_freq = dict(conn.execute(
+                f"""SELECT dc.term, COUNT(DISTINCT dc.doc_id)
+                    FROM doc_cooccurrences dc
+                    JOIN documents d ON d.id = dc.doc_id
+                    WHERE d.vault_id = ? AND dc.doc_id != ?
+                      AND dc.term IN ({placeholders})
+                    GROUP BY dc.term""",
+                [vault_id, doc_id] + terms
+            ).fetchall())
+        scored = []
+        for term, freq in candidates:
+            if vault_id and vault_doc_count > 0:
+                idf = math.log((vault_doc_count + 1) / (1 + doc_freq.get(term, 0)))
+            else:
+                idf = 1.0
+            scored.append((term, freq, freq * idf))
+        scored.sort(key=lambda row: row[2], reverse=True)
+        for term, freq, _weighted in scored[:_COOCCURRENCE_TERMS_PER_DOC]:
+            conn.execute(
+                "INSERT OR REPLACE INTO doc_cooccurrences (term, doc_id, frequency) VALUES (?, ?, ?)",
+                (term, doc_id, freq)
+            )
     # Boost tags as explicit terms
     for tag in tags:
         if isinstance(tag, str):
@@ -1686,40 +1735,82 @@ class VaultStorage:
             logging.getLogger(__name__).error("Lance coverage check failed: %s", exc)
             return 0, 0
 
-    def rebuild_lance_index(self, progress_cb=None) -> Dict[str, Any]:
+    def rebuild_lance_index(self, progress_cb=None, state_dict=None) -> Dict[str, Any]:
         """Rebuild the LanceDB index from all non-deleted documents. Pro only.
 
         Reads extracted.txt for each document. Returns a summary dict.
         progress_cb, if given, is called as progress_cb(done, total) after
         each document is embedded (SH-101414: long rebuilds must report
         progress instead of blocking silently).
+        state_dict, if given, is updated with progress during the scan phase.
         """
+        import sys
+
         docs = []
+        skipped_docs = {}  # {reason: [{id, vault_id, name}, ...]}
+
         with self._db() as conn:
             rows = conn.execute(
                 "SELECT id, vault_id, name FROM documents WHERE deleted = 0"
             ).fetchall()
-            for row in rows:
+
+            total_count = len(rows)
+            if state_dict is not None:
+                state_dict['total'] = total_count
+                state_dict['phase'] = 'scanning'
+
+            for idx, row in enumerate(rows):
                 doc_dir = self.vaults_dir / row["vault_id"] / "docs" / row["id"]
                 extracted_path = doc_dir / "extracted.txt"
+
+                skip_reason = None
+
                 if not extracted_path.exists():
-                    continue
-                try:
-                    text = extracted_path.read_text(encoding="utf-8")
-                except Exception:
-                    continue
-                if text.strip():
-                    docs.append({
-                        "doc_id": row["id"],
-                        "vault_id": row["vault_id"],
-                        "name": row["name"],
-                        "text": text,
+                    skip_reason = 'missing_extracted_txt'
+                else:
+                    try:
+                        text = extracted_path.read_text(encoding="utf-8")
+                    except Exception:
+                        skip_reason = 'read_error'
+                    else:
+                        if not text.strip():
+                            skip_reason = 'empty_text'
+                        else:
+                            docs.append({
+                                "doc_id": row["id"],
+                                "vault_id": row["vault_id"],
+                                "name": row["name"],
+                                "text": text,
+                            })
+
+                if skip_reason:
+                    if skip_reason not in skipped_docs:
+                        skipped_docs[skip_reason] = []
+                    skipped_docs[skip_reason].append({
+                        'id': row['id'],
+                        'vault_id': row['vault_id'],
+                        'name': row['name']
                     })
+
+                # Update state and progress
+                if state_dict is not None:
+                    state_dict['progress'] = idx + 1
+                    if total_count > 0:
+                        state_dict['progress_pct'] = int((idx + 1) * 100 / total_count)
+
+                # Log every 10 docs
+                if (idx + 1) % 10 == 0:
+                    sys.stderr.write(f"[LoreDocs] Scanned {idx+1}/{total_count} docs\n")
+                    sys.stderr.flush()
+
+        if state_dict is not None:
+            state_dict['phase'] = 'indexing'
 
         chunk_count = self._get_lance_index().rebuild(docs, progress_cb=progress_cb)
         return {
             "docs_indexed": len(docs),
             "chunks_indexed": chunk_count,
+            "docs_skipped": skipped_docs,
         }
 
     # -------------------------------------------------------------------
