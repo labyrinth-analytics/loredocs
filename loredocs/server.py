@@ -1155,7 +1155,7 @@ async def vault_open_workspace(
 # ===================================================================
 
 class DocAddInput(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = ConfigDict()
 
     vault: str = Field(..., description="Vault ID or name to add the document to", min_length=1)
     name: str = Field(..., description="Display name for the document (e.g., 'Depreciation Schedule 2025')", min_length=1, max_length=200)
