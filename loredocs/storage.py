@@ -1719,6 +1719,15 @@ class VaultStorage:
             current_count = int(row["cnt"])
         self.enforcer.check_vault_count(current_count)
 
+        # Check for duplicate vault name
+        with self._db() as conn:
+            existing = conn.execute(
+                "SELECT id FROM vaults WHERE name = ?",
+                (name,)
+            ).fetchone()
+            if existing:
+                raise ValueError(f"Vault name '{name}' already exists. Please choose a unique name.")
+
         vault_id = str(uuid.uuid4())[:12]
         now = self._now()
         tags = tags or []

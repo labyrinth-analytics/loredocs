@@ -2500,11 +2500,8 @@ async def vault_get_server_capabilities(ctx: Context) -> str:
 
     Useful for diagnosing injection behavior or verifying which features are active.
     """
-    import importlib.metadata
-    try:
-        version = importlib.metadata.version("loredocs")
-    except importlib.metadata.PackageNotFoundError:
-        version = "unknown"
+    import loredocs
+    version = loredocs.__version__
 
     admin_token_ok = _admin_token_valid()
     cap_tools_enabled = os.environ.get("LOREDOCS_ENABLE_CAP_TOOLS") == "1"
