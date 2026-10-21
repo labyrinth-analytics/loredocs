@@ -1459,11 +1459,42 @@ class VaultStorage:
             # 2. Regenerate. Process docs in deterministic id order so the
             #    created_at timestamps (one per doc) are stable across reruns.
             doc_rows = conn.execute(
-                "SELECT id FROM documents WHERE deleted = 0 ORDER BY id"
+                "SELECT id, vault_id, name, tags FROM documents "
+                "WHERE deleted = 0 ORDER BY id"
             ).fetchall()
             regenerated = 0
             for drow in doc_rows:
                 doc_id = drow["id"]
+                # SH-104433: backfill doc_cooccurrences before linking. Docs
+                # saved via the query_loredocs.py cmd_add_doc fallback (bug
+                # fixed in the same ticket) never got a term index written,
+                # so relink previously just re-linked the docs that already
+                # had one. _insert_doc_cooccurrences deletes-then-rebuilds,
+                # so this is safe to run unconditionally on every doc.
+                try:
+                    doc_tags = json.loads(drow["tags"]) if drow["tags"] else []
+                except (json.JSONDecodeError, TypeError):
+                    doc_tags = []
+                extracted_path = (
+                    self.vaults_dir / drow["vault_id"] / "docs" / doc_id
+                    / "extracted.txt"
+                )
+                extracted = ""
+                if extracted_path.exists():
+                    try:
+                        extracted = extracted_path.read_text(encoding="utf-8")
+                    except OSError:
+                        extracted = ""
+                try:
+                    _insert_doc_cooccurrences(
+                        conn, doc_id, drow["name"], doc_tags, extracted,
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "relink_autolinks: cooccurrence reindex failed for "
+                        "doc %s: %s", doc_id, exc,
+                    )
+
                 before = conn.execute("SELECT COUNT(*) FROM doc_links").fetchone()[0]
                 try:
                     _auto_link_doc_cooccurrences(conn, doc_id)

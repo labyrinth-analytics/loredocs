@@ -213,55 +213,6 @@ def _resolve_vault(conn, vault_ref):
     return None
 
 
-# -- Tier enforcement (SH-100324: parity with MCP server's vault_add_doc) --
-
-def _check_doc_tier_limits(root, conn, vault_id, content_size, vault_name):
-    """Check LoreDocs Free-tier limits before adding a document.
-
-    Mirrors the TierEnforcer check that the MCP server's vault_add_doc
-    performs. If the loredocs package is not importable, warns and
-    proceeds (graceful degradation for fallback use).
-
-    Returns True if the operation is allowed, False if rejected.
-    """
-    try:
-        from loredocs.tiers import TierEnforcer, TierLimitError
-    except ImportError:
-        print(
-            "WARNING: Could not import loredocs.tiers for tier "
-            "enforcement. Document added without tier cap check. "
-            "Install loredocs package for full tier enforcement.",
-            file=sys.stderr,
-        )
-        return True
-
-    enforcer = TierEnforcer(Path(root))
-
-    # Count current docs in vault
-    row = conn.execute(
-        "SELECT COUNT(*) as c FROM documents WHERE vault_id = ? AND deleted = 0",
-        (vault_id,)
-    ).fetchone()
-    doc_count = row["c"] if row else 0
-
-    # Get total storage
-    row = conn.execute(
-        "SELECT COALESCE(SUM(file_size_bytes), 0) as total "
-        "FROM documents WHERE deleted = 0"
-    ).fetchone()
-    total_bytes = row["total"] if row else 0
-
-    try:
-        enforcer.check_doc_count(doc_count, vault_name=vault_name)
-        enforcer.check_storage(total_bytes, content_size)
-    except TierLimitError as exc:
-        hint = f" {exc.upgrade_hint}" if exc.upgrade_hint else ""
-        print(f"Error: {exc}{hint}")
-        return False
-
-    return True
-
-
 # -- vault_list --
 
 def cmd_list(args):
@@ -770,17 +721,39 @@ def cmd_search(args):
 # -- vault_add_document --
 
 def cmd_add_doc(args):
-    """Add a document to a vault."""
-    conn, db_path = _connect(args.db_path)
+    """Add a document to a vault.
+
+    SH-104433: delegates to VaultStorage.add_document() -- the exact call
+    vault_add_doc makes -- instead of hand-rolling the documents/doc_fts
+    INSERT. The hand-rolled version skipped _insert_doc_cooccurrences /
+    _auto_link_doc_cooccurrences entirely, so every doc saved through this
+    fallback (the path autonomous agents use when MCP is unavailable) was
+    permanently unlinkable; that is the root cause of the near-zero link
+    coverage in templated vaults (QA Reports, Editorial Reviews, PM
+    Dashboards) this ticket was filed to diagnose.
+    """
+    db_path = args.db_path or _find_loredocs_db()
+    if not db_path:
+        print("ERROR: Could not find LoreDocs loredocs.db", file=sys.stderr)
+        sys.exit(1)
     root = _find_loredocs_root(db_path)
 
-    vault = _resolve_vault(conn, args.vault)
+    try:
+        from loredocs.storage import VaultStorage
+        from loredocs.tiers import TierLimitError
+    except ImportError:
+        print(
+            "ERROR: loredocs package not importable; --add-doc requires "
+            "the installed loredocs package.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    storage = VaultStorage(root=Path(root))
+    vault = _resolve_vault_via_storage(storage, args.vault)
     if not vault:
         print(f"Error: Vault '{args.vault}' not found.")
-        conn.close()
         return
-
-    vault_id = vault["id"]
 
     # Read content
     if args.stdin:
@@ -790,25 +763,11 @@ def cmd_add_doc(args):
         filepath = Path(args.file)
         if not filepath.is_file():
             print(f"Error: File '{args.file}' not found.")
-            conn.close()
             return
         content = filepath.read_bytes()
         filename = filepath.name
     else:
         print("Error: Must specify --file or --stdin for document content.")
-        conn.close()
-        return
-
-    # Validate filename
-    if not filename or '..' in filename or '\x00' in filename or os.path.isabs(filename):
-        print("Error: Invalid filename.")
-        conn.close()
-        return
-
-    # SH-100324: Enforce Free-tier doc-per-vault and storage caps
-    # (parity with MCP server's vault_add_doc path)
-    if not _check_doc_tier_limits(root, conn, vault_id, len(content), vault["name"]):
-        conn.close()
         return
 
     # Parse tags
@@ -821,77 +780,22 @@ def cmd_add_doc(args):
         except (json.JSONDecodeError, TypeError):
             tags = [args.tags]
 
-    doc_id = str(uuid.uuid4())[:12]
-    now = datetime.now(timezone.utc).isoformat()
-    ext = Path(filename).suffix.lower()
-    category = args.category or "general"
-    priority = args.priority or "normal"
-    notes = args.notes or ""
-
-    # Write file to disk
-    vaults_dir = Path(root) / "vaults"
-    doc_dir = vaults_dir / vault_id / "docs" / doc_id
-    doc_dir.mkdir(parents=True, exist_ok=True)
-    (doc_dir / "history").mkdir(exist_ok=True)
-
-    current_file = doc_dir / f"current{ext}"
-    current_file.write_bytes(content)
-
-    # Extract text for search (simple: just decode if text-like)
     try:
-        extracted = content.decode("utf-8")
-    except UnicodeDecodeError:
-        extracted = ""
-
-    (doc_dir / "extracted.txt").write_text(extracted, encoding="utf-8")
-
-    # Write metadata
-    meta = {
-        "id": doc_id,
-        "vault_id": vault_id,
-        "name": args.name,
-        "original_filename": filename,
-        "file_extension": ext,
-        "category": category,
-        "priority": priority,
-        "tags": tags,
-        "notes": notes,
-        "created_at": now,
-        "updated_at": now,
-        "file_size_bytes": len(content),
-        "version_count": 1,
-    }
-    (doc_dir / "metadata.json").write_text(
-        json.dumps(meta, indent=2), encoding="utf-8"
-    )
-
-    # Insert into database
-    conn.execute(
-        """INSERT INTO documents
-           (id, vault_id, name, original_filename, file_extension,
-            category, priority, tags, notes, created_at, updated_at,
-            file_size_bytes, version_count, deleted)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)""",
-        (doc_id, vault_id, args.name, filename, ext, category, priority,
-         json.dumps(tags), notes, now, now, len(content), 1)
-    )
-
-    # Index in FTS
-    conn.execute(
-        """INSERT INTO doc_fts (doc_id, vault_id, name, content, tags, notes)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (doc_id, vault_id, args.name, extracted, " ".join(tags), notes)
-    )
-
-    # Update vault timestamp
-    conn.execute(
-        "UPDATE vaults SET updated_at = ? WHERE id = ?", (now, vault_id)
-    )
-    conn.commit()
-    conn.close()
+        meta = storage.add_document(
+            vault["id"], args.name, content, filename,
+            tags=tags, category=args.category or "general",
+            priority=args.priority or "normal", notes=args.notes or "",
+        )
+    except TierLimitError as exc:
+        hint = f" {exc.upgrade_hint}" if exc.upgrade_hint else ""
+        print(f"Error: {exc}{hint}")
+        return
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        return
 
     print(f"Added document '{args.name}' to vault '{vault['name']}'")
-    print(f"  doc_id: {doc_id}")
+    print(f"  doc_id: {meta['id']}")
     print(f"  filename: {filename}")
     print(f"  size: {_fmt_size(len(content))}")
 
