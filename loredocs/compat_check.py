@@ -26,6 +26,8 @@ import os
 import sys
 from typing import Dict, List, Optional
 
+from . import __version__ as loredocs_version
+
 _PRODUCT_DIST_NAME = "loredocs"
 
 # [SH-13566 / SH-13501 follow-up] When bumping this constant for a new mcp release,
@@ -155,9 +157,10 @@ def check() -> Dict:
 
     product_version: Optional[str] = None
     try:
-        # Get product version (best-effort; failure is non-fatal)
+        # Get product version from loredocs.__version__ (reads pyproject.toml first)
+        # Falls back to importlib.metadata if __version__ unavailable
         try:
-            product_version: Optional[str] = importlib.metadata.version(_PRODUCT_DIST_NAME)
+            product_version = loredocs_version
         except Exception:
             product_version = None
 
