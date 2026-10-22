@@ -35,7 +35,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .fts_query import sanitize_fts_query
+from .fts_query import sanitize_fts_query, validate_fts_query
 from .tiers import TierEnforcer, TierLimitError, get_tier, TIER_PRO  # noqa: F401 (re-exported)
 from .version_storage import (
     HistoryDivergedError, RecoveryAbortedError, DocumentLockedError,
@@ -2900,7 +2900,21 @@ class VaultStorage:
 
         If vault_id is provided, searches only that vault.
         Otherwise searches all vaults (cross-vault search).
+
+        Returns a dict with an "error" key (and empty results) when the
+        query is malformed FTS5 syntax, so callers can surface a structured
+        error instead of silently-sanitized results (WG-32 D-35).
         """
+        # WG-32 D-35: reject malformed FTS5 input before sanitization hides it.
+        fts_error = validate_fts_query(query)
+        if fts_error is not None:
+            return {
+                "query": query,
+                "scope": vault_id or "all_vaults",
+                "count": 0,
+                "results": [],
+                "error": fts_error,
+            }
         # OPP-010: Sanitize FTS5 MATCH input to prevent operator injection
         safe_query = self._sanitize_fts_query(query)
         with self._db() as conn:
@@ -4079,6 +4093,18 @@ class VaultStorage:
             return imported
 
         start_time = time.perf_counter()
+        # WG-32 D-27: idempotent re-import. A file is identified by its
+        # original filename plus the stored relative path (notes), so the
+        # same directory imported twice does not double the document count.
+        existing_keys = set()
+        with self._db() as conn:
+            rows = conn.execute(
+                "SELECT original_filename, notes FROM documents "
+                "WHERE vault_id = ? AND deleted = 0",
+                (vault_id,),
+            ).fetchall()
+            existing_keys = {(r["original_filename"], r["notes"]) for r in rows}
+
         iterator = sorted(dir_path.rglob("*")) if recursive else sorted(dir_path.iterdir())
         for file_path in iterator:
             if file_path.is_symlink():
@@ -4093,6 +4119,10 @@ class VaultStorage:
                     doc_name = file_path.stem.replace("_", " ").replace("-", " ").title()
                     relative_path = str(file_path.relative_to(dir_path))
                     path_note = f"Path: {relative_path}"
+                    dedup_key = (file_path.name, path_note)
+                    if dedup_key in existing_keys:
+                        # Already imported in a prior run -- skip.
+                        continue
                     doc_tags = list(tags) if tags else []
                     if file_path.suffix.lower() == ".md":
                         fm_tags = _extract_frontmatter_tags(content)

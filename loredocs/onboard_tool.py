@@ -110,6 +110,19 @@ def run_onboard(
     domains = domains or []
     agents = agents or []
 
+    # WG-32 D-34: onboard on an existing install should not inject a Config
+    # vault + setup doc. A store that already has vaults but no "Config" vault
+    # is an in-use install that was never onboarded -- adding structure is a
+    # silent surprise, so this is a no-op. (A "Config" vault present means
+    # onboard already ran: fall through to the update path below.)
+    if storage.list_vaults(include_archived=False) and not storage.find_vault_by_name("Config"):
+        existing_count = len(storage.list_vaults(include_archived=False))
+        return (
+            f"LoreDocs is already set up ({existing_count} vault(s) exist); "
+            "loredocs_onboard is a no-op on an existing install. Use "
+            "vault_create or vault_open_workspace to add more vaults."
+        )
+
     # Find or create Config vault
     config_vault = _find_or_create_vault(
         storage, "Config",

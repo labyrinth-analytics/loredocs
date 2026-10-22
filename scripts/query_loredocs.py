@@ -104,6 +104,7 @@ _fts_spec = importlib.util.spec_from_file_location(
 _fts_query = importlib.util.module_from_spec(_fts_spec)
 _fts_spec.loader.exec_module(_fts_query)
 sanitize_fts_query = _fts_query.sanitize_fts_query
+validate_fts_query = _fts_query.validate_fts_query
 
 # DB_FILE is imported from loredocs.storage (the same constant server.py's
 # VaultStorage() uses) so the env-var discovery candidate below never drifts
@@ -655,6 +656,13 @@ def _cmd_search_semantic(args):
 def cmd_search(args):
     """Search documents across all vaults by keyword (or semantically with --semantic)."""
     if getattr(args, "semantic", False) and _cmd_search_semantic(args):
+        return
+
+    # WG-32 D-35: surface malformed FTS5 syntax as a structured error, matching
+    # the server's behavior, rather than silently returning sanitized results.
+    fts_error = validate_fts_query(args.search)
+    if fts_error is not None:
+        print(f"Error: {fts_error}")
         return
 
     conn, db_path = _connect(args.db_path)

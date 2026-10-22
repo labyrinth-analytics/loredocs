@@ -686,6 +686,23 @@ def _get_storage(ctx: Context) -> VaultStorage:
     return ctx.request_context.lifespan_context["storage"]
 
 
+# Top-level directories that are system-owned and never a user's workspace.
+# WG-32 D-29: vault_open_workspace must refuse these rather than create a
+# vault scoped to (e.g.) /etc or /usr.
+_SYSTEM_DIRECTORIES = frozenset({
+    "/", "/etc", "/usr", "/bin", "/sbin", "/var", "/opt", "/dev",
+    "/proc", "/sys", "/boot", "/srv", "/mnt", "/media", "/root",
+    "/System", "/Library", "/Applications", "/private", "/private/etc",
+    "/private/var", "/private/tmp", "/tmp", "/cores", "/Volumes",
+})
+
+
+def _is_system_directory(resolved_path: str) -> bool:
+    """Return True if `resolved_path` (already expanduser().resolve()) is a
+    system directory that must not be treated as a workspace."""
+    return resolved_path in _SYSTEM_DIRECTORIES
+
+
 def _forbid_unknown_tool_params(tool_name: str) -> None:
     """Make a registered tool's FastMCP argument model reject unknown params.
 
@@ -1115,6 +1132,15 @@ async def vault_open_workspace(
     params = VaultOpenWorkspaceInput(workspace_path=workspace_path, description=description)
     storage = _get_storage(ctx)
     resolved = str(Path(params.workspace_path).expanduser().resolve())
+
+    # WG-32 D-29: refuse system directories that are never a user workspace.
+    # Accepting e.g. /etc created a vault named "etc" scoped to a system path.
+    if _is_system_directory(resolved):
+        return (
+            f"Error: '{params.workspace_path}' resolves to a system directory "
+            "which cannot be a workspace. Provide a path under your home or "
+            "a project directory."
+        )
 
     existing = storage.get_vault_by_workspace_path(resolved)
     if existing:
@@ -1572,6 +1598,12 @@ async def vault_search(
         limit=params.limit,
         offset=params.offset,
     )
+
+    if result.get("error"):
+        # WG-32 D-35: surface malformed FTS5 syntax as a structured error.
+        if params.response_format == ResponseFormat.JSON:
+            return json.dumps(result, indent=2)
+        return f"Error: {result['error']}"
 
     if params.response_format == ResponseFormat.JSON:
         if setup_tip:
