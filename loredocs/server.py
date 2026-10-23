@@ -335,6 +335,11 @@ _mcp_server_accepting_connections: bool = False
 # (SH-101414).
 _idle_watchdog = None
 
+# Rebuild state tracking for vault_rebuild_index_status (SH-104534)
+import threading
+_rebuild_state: Dict[str, Any] = {}
+_rebuild_lock = threading.Lock()
+
 _SESSION_TOKEN_REGISTRY_ENABLED: bool = (
     os.environ.get("LOREDOCS_SESSION_TOKEN_REGISTRY", "0") == "1"
 )
@@ -1669,7 +1674,21 @@ async def vault_rebuild_index(ctx: Context, confirm: bool = False) -> str:
             "Use vault_set_tier with tier='pro' to activate your license."
         )
 
+    global _rebuild_state
+
     try:
+        # Initialize rebuild state (SH-104534)
+        with _rebuild_lock:
+            _rebuild_state = {
+                'in_progress': True,
+                'done': False,
+                'phase': 'starting',
+                'progress': 0,
+                'total': 0,
+                'progress_pct': 0,
+                'started_at': time.time(),
+            }
+
         # SH-101414: run the rebuild in a worker thread and report progress.
         # The rebuild is CPU/IO-bound (embedding + LanceDB writes) and can
         # take 30+ minutes on a real vault; running it on the event loop
@@ -1699,15 +1718,102 @@ async def vault_rebuild_index(ctx: Context, confirm: bool = False) -> str:
                 fut.add_done_callback(_swallow)
 
         result = await loop.run_in_executor(
-            None, lambda: storage.rebuild_lance_index(progress_cb=_progress)
+            None, lambda: storage.rebuild_lance_index(
+                progress_cb=_progress,
+                state_dict=_rebuild_state
+            )
         )
+
+        # Mark complete and store elapsed time
+        elapsed = time.time() - _rebuild_state['started_at']
+        result['elapsed_s'] = elapsed
+
+        with _rebuild_lock:
+            _rebuild_state['done'] = True
+            _rebuild_state['in_progress'] = False
+            _rebuild_state['result'] = result
+
     except Exception as exc:
+        with _rebuild_lock:
+            _rebuild_state['done'] = True
+            _rebuild_state['in_progress'] = False
+            _rebuild_state['error'] = str(exc)
         return f"Error during index rebuild: {exc}"
 
-    return (
-        f"Semantic index rebuilt: {result['docs_indexed']} documents, "
-        f"{result['chunks_indexed']} chunks indexed."
-    )
+    # Format success message with skipped docs summary
+    skipped = result.get('docs_skipped', {})
+    msg = f"Semantic index rebuilt: {result['docs_indexed']} documents, {result['chunks_indexed']} chunks indexed."
+
+    if skipped:
+        msg += " Skipped: "
+        skip_parts = []
+        for reason, docs in skipped.items():
+            skip_parts.append(f"{len(docs)} {reason}")
+        msg += ", ".join(skip_parts) + "."
+
+    return msg
+
+
+@mcp.tool(
+    title="Rebuild Index Status",
+    name="vault_rebuild_index_status",
+    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
+)
+async def vault_rebuild_index_status(ctx: Context) -> str:
+    """Return the current status of a background semantic-index rebuild.
+
+    Call after vault_rebuild_index to monitor progress. Returns 'idle' when
+    no rebuild has been started or the last rebuild has finished.
+
+    Returns a JSON dict with:
+    - status: 'idle' | 'running' | 'complete' | 'error'
+    - message: human description
+    - For running: phase, progress, total, progress_pct, elapsed_s
+    - For complete: indexed, total_in_db, exclusions {reason: count}, elapsed_s
+    """
+    with _rebuild_lock:
+        state = dict(_rebuild_state)
+
+    now = time.time()
+
+    if not state:
+        return json.dumps({
+            'status': 'idle',
+            'message': 'No rebuild in progress.',
+        })
+
+    if state.get('done'):
+        if state.get('error'):
+            return json.dumps({
+                'status': 'error',
+                'message': f'Rebuild failed: {state["error"]}',
+                'phase': state.get('phase'),
+            })
+
+        result = state.get('result', {})
+        # Count exclusions by reason
+        exclusions = {}
+        for reason, docs_list in result.get('docs_skipped', {}).items():
+            exclusions[reason] = len(docs_list)
+
+        return json.dumps({
+            'status': 'complete',
+            'message': 'Rebuild finished successfully.',
+            'indexed': result.get('docs_indexed'),
+            'total_in_db': result.get('docs_indexed', 0),
+            'exclusions': exclusions,
+            'elapsed_s': round(result.get('elapsed_s', 0), 1),
+        })
+
+    # Running state
+    return json.dumps({
+        'status': 'running',
+        'phase': state.get('phase', 'unknown'),
+        'progress': state.get('progress', 0),
+        'total': state.get('total', 0),
+        'progress_pct': state.get('progress_pct', 0),
+        'elapsed_s': round(now - state.get('started_at', now), 1),
+    })
 
 
 class SearchByTagInput(BaseModel):

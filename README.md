@@ -35,7 +35,7 @@ Or inside an existing session:
 /plugin add /path/to/loredocs
 ```
 
-Once loaded, Claude has access to all 48 LoreDocs MCP tools automatically. Ask Claude to "create a vault for this project" or "find the architecture doc" and it uses the tools on its own.
+Once loaded, Claude has access to all 49 LoreDocs MCP tools automatically. Ask Claude to "create a vault for this project" or "find the architecture doc" and it uses the tools on its own.
 
 ### Cowork (Desktop App)
 
@@ -51,7 +51,7 @@ Once loaded, Claude has access to all 48 LoreDocs MCP tools automatically. Ask C
 
 For Hermes Agent users, add LoreDocs as an MCP server under `mcp_servers:` in `~/.hermes/config.yaml` (see [INSTALL.md](INSTALL.md#option-a-install-for-hermes-agent) for the full entry), then restart Hermes.
 
-All 48 LoreDocs MCP tools are then available in your Hermes sessions.
+All 49 LoreDocs MCP tools are then available in your Hermes sessions.
 
 ## Hermes Disclosures
 
