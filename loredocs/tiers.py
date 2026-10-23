@@ -16,10 +16,16 @@ Pro tier: unlimited on all dimensions.
 import json
 import os
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+try:
+    import fcntl
+except ImportError:  # Windows
+    fcntl = None  # type: ignore
 
 
 # ---------------------------------------------------------------------------
@@ -98,9 +104,59 @@ def _load_config(root: Path) -> dict:
 
 
 def _save_config(root: Path, config: dict) -> None:
-    """Write config.json to root."""
+    """Write config.json to root (atomic replace, chmod 600)."""
     path = root / CONFIG_FILE
-    path.write_text(json.dumps(config, indent=2), encoding="utf-8")
+    tmp_path = str(path) + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2)
+    os.chmod(tmp_path, 0o600)
+    os.replace(tmp_path, str(path))
+
+
+def _locked_config_update(
+    root: Path,
+    update_fn,
+    timeout: float = 2.0,
+) -> None:
+    """Read-modify-write config.json under an advisory lock with atomic
+    replace.
+
+    Prevents lost updates between concurrent writers (e.g. ``set_tier`` and
+    ``configure_tools``).  Bounded retry on the lock -- never blocks.
+    """
+    config_path = root / CONFIG_FILE
+    lock_path = str(config_path) + ".lock"
+    deadline = time.monotonic() + timeout
+
+    lock_fd: Optional[int] = None
+    while True:
+        lock_fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+        if fcntl is None:
+            break  # Windows -- atomic replace only, no advisory lock
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except (BlockingIOError, OSError):
+            os.close(lock_fd)
+            lock_fd = None
+            if time.monotonic() > deadline:
+                raise TimeoutError(
+                    "config.json is locked by another writer; try again."
+                )
+            time.sleep(0.05)
+
+    try:
+        config = _load_config(root)
+        update_fn(config)
+        _save_config(root, config)
+    finally:
+        if lock_fd is not None:
+            if fcntl is not None:
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                except Exception:
+                    pass
+            os.close(lock_fd)
 
 
 _LEGACY_TIER_GRACE_DAYS = 30
@@ -241,9 +297,27 @@ def set_tier(root: Path, tier: str) -> None:
     """Persist a tier change to config.json."""
     if tier not in VALID_TIERS:
         raise ValueError(f"Invalid tier '{tier}'. Valid values: {sorted(VALID_TIERS)}")
-    config = _load_config(root)
-    config["tier"] = tier
-    _save_config(root, config)
+
+    def _apply(cfg: dict) -> None:
+        cfg["tier"] = tier
+
+    _locked_config_update(root, _apply)
+
+
+def save_tool_groups(root: Path, groups: list[str]) -> None:
+    """Persist the enabled tool-group selection to config.json.
+
+    Called by the ``configure_tools`` MCP tool.  Validates group names before
+    writing.
+    """
+    from .tool_groups import validate_group_names
+
+    validated = validate_group_names(groups)
+
+    def _apply(cfg: dict) -> None:
+        cfg["tool_groups"] = validated
+
+    _locked_config_update(root, _apply)
 
 
 def get_limits(root: Path) -> TierLimits:
