@@ -218,7 +218,7 @@ and usage anytime with `vault_tier_status`. Activate a Pro license with `vault_s
 
 ## MCP Tools
 
-LoreDocs provides 48 MCP tools by default (49 with the `notion` extra installed; 50 with LOREDOCS_ENABLE_CAP_TOOLS=1 and the notion extra) organized by function:
+LoreDocs provides 49 MCP tools by default (50 with the `notion` extra installed; 51 with LOREDOCS_ENABLE_CAP_TOOLS=1 and the notion extra) organized by function:
 
 ### Vault Management (8 tools)
 | Tool | What it does |
@@ -245,7 +245,7 @@ LoreDocs provides 48 MCP tools by default (49 with the `notion` extra installed;
 | `vault_doc_history` | View version history of a document |
 | `vault_doc_restore` | Restore a document to a previous version |
 
-### Search and Discovery (5 tools)
+### Search and Discovery (6 tools)
 | Tool | What it does |
 |------|-------------|
 | `vault_search` | Full-text search across all vaults |
@@ -253,6 +253,7 @@ LoreDocs provides 48 MCP tools by default (49 with the `notion` extra installed;
 | `vault_find_related` | Discover documents related to a given doc (Pro only) |
 | `vault_suggest` | Proactive suggestions for relevant docs to load |
 | `vault_rebuild_index` | Rebuild the LanceDB semantic search index (Pro only; run once after installing Pro deps) |
+| `vault_rebuild_index_status` | Return the current status of a background semantic-index rebuild (Pro only) |
 
 ### Organization (5 tools)
 | Tool | What it does |

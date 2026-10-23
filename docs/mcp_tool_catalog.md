@@ -1,6 +1,6 @@
 # LoreDocs MCP Tool Catalog
 
-LoreDocs provides 48 MCP tools that Claude calls during your sessions (49 with the `notion` extra installed). You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
+LoreDocs provides 49 MCP tools that Claude calls during your sessions (50 with the `notion` extra installed). You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
 
 > **Version 0.1.8:** Added file-based document ingest to `vault_add_doc` (read documents from disk with the `path` parameter).
 
@@ -221,6 +221,16 @@ Find all documents with a specific tag, across one vault or all vaults.
 Rebuild the LanceDB semantic search index from all stored documents. Pro only. Run this after first installing Pro dependencies (`pip install loredocs[pro]`) or after restoring from backup. New documents added after install are indexed automatically; existing documents need this one-time rebuild to become semantically searchable.
 
 **When Claude uses it:** When you say "rebuild the search index" or after upgrading to Pro and existing documents are not returning semantic results.
+
+**Key parameters:** none required
+
+---
+
+### `vault_rebuild_index_status`
+
+Return the current status of a background semantic-index rebuild. Pro only. Call after `vault_rebuild_index` to monitor progress. Returns 'idle' when no rebuild has been started or the last rebuild has finished.
+
+**When Claude uses it:** When you say "what is the status of the index rebuild?" or to check progress after running `vault_rebuild_index`.
 
 **Key parameters:** none required
 
