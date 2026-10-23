@@ -43,8 +43,15 @@ from .tiers import (
     get_tier,
     legacy_tier_notice,
     set_tier,
+    save_tool_groups,
     TIER_LIMITS,
     TIER_PRO,
+)
+from .tool_groups import (
+    TOOL_GROUPS,
+    ALWAYS_ON,
+    classify_tool,
+    resolve_enabled_groups,
 )
 from .license import get_license_status
 from .onboard_tool import run_onboard as _run_onboard
@@ -1717,6 +1724,17 @@ async def vault_rebuild_index(ctx: Context, confirm: bool = False) -> str:
 
                 fut.add_done_callback(_swallow)
 
+            with _rebuild_lock:
+                _rebuild_state['phase'] = 'indexing'
+                _rebuild_state['progress'] = d
+                _rebuild_state['total'] = t
+                _rebuild_state['progress_pct'] = (d / t) * 100 if t > 0 else 0
+
+            if d % 5 == 0 or d == t:
+                pct = _rebuild_state.get('progress_pct', 0)
+                import sys
+                print(f"Indexing: {d}/{t} ({pct:.1f}%)", file=sys.stderr)
+
         result = await loop.run_in_executor(
             None, lambda: storage.rebuild_lance_index(
                 progress_cb=_progress,
@@ -1806,14 +1824,23 @@ async def vault_rebuild_index_status(ctx: Context) -> str:
         })
 
     # Running state
-    return json.dumps({
+    resp = {
         'status': 'running',
         'phase': state.get('phase', 'unknown'),
         'progress': state.get('progress', 0),
         'total': state.get('total', 0),
         'progress_pct': state.get('progress_pct', 0),
         'elapsed_s': round(now - state.get('started_at', now), 1),
-    })
+    }
+
+    progress = resp['progress']
+    total = resp['total']
+    elapsed = resp['elapsed_s']
+    if progress > 0 and total > progress and elapsed > 0:
+        eta_s = (elapsed / progress) * (total - progress)
+        resp['eta_s'] = round(eta_s, 1)
+
+    return json.dumps(resp)
 
 
 class SearchByTagInput(BaseModel):
@@ -3828,6 +3855,120 @@ def vault_import_notion_setup() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Configurable tool groups
+# ---------------------------------------------------------------------------
+
+
+def _loredocs_root() -> Path:
+    """Resolve the LoreDocs data root (LOREDOCS_ROOT or ~/.loredocs)."""
+    root_override = os.environ.get("LOREDOCS_ROOT")
+    if root_override:
+        return Path(root_override)
+    return Path.home() / ".loredocs"
+
+
+@mcp.tool(
+    title="Configure Tool Groups",
+    name="configure_tools",
+    annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
+)
+async def configure_tools(groups: list[str] | None = None) -> str:
+    """List or set enabled MCP tool groups.
+
+    Called with no arguments: lists every group name, its tool count, and
+    whether it is currently enabled.
+
+    Called with a list of group names: validates and persists the selection
+    to config.json.  The change takes effect on server restart -- already-
+    connected clients may continue to see removed tools in their cached schema
+    until they reconnect, and calls to a removed tool after restart return a
+    standard 'unknown tool' protocol error.
+
+    If the LOREDOCS_TOOL_GROUPS environment variable is set, this tool
+    returns an error instead of writing (the env var overrides config).
+    """
+    env_var = os.environ.get("LOREDOCS_TOOL_GROUPS")
+    if env_var is not None:
+        return json.dumps({
+            "error": (
+                "LOREDOCS_TOOL_GROUPS env var is set and overrides config. "
+                "Unset it and restart to use configure_tools."
+            ),
+        })
+
+    root = _loredocs_root()
+    config_path = root / "config.json"
+
+    if groups is None:
+        # List mode
+        enabled = resolve_enabled_groups(config_path)
+        group_info = []
+        for gname in sorted(TOOL_GROUPS.keys()):
+            group_info.append({
+                "group": gname,
+                "tool_count": len(TOOL_GROUPS[gname]),
+                "enabled": gname in enabled,
+            })
+        return json.dumps({
+            "groups": group_info,
+            "always_on": sorted(ALWAYS_ON),
+            "note": (
+                "Changes take effect on server restart. Set groups to a list "
+                "of group names to enable. 'core' is always enabled."
+            ),
+        }, indent=2)
+
+    # Write mode
+    try:
+        save_tool_groups(root, groups)
+    except ValueError as exc:
+        return json.dumps({"error": str(exc)})
+    except TimeoutError as exc:
+        return json.dumps({"error": str(exc)})
+
+    return json.dumps({
+        "status": "saved",
+        "groups": groups,
+        "note": (
+            "Restart the MCP server for the change to take effect. "
+            "Already-connected clients may see stale tool schemas until "
+            "they reconnect."
+        ),
+    })
+
+
+def _apply_tool_group_gating() -> None:
+    """Remove tools whose group is not in the enabled set.
+
+    Runs at server startup after all @mcp.tool decorators have registered.
+    Tools in ALWAYS_ON are never removed.  A tool with no group assignment
+    raises KeyError and fails startup (fail-closed).
+    """
+    root = _loredocs_root()
+    config_path = root / "config.json"
+    enabled = resolve_enabled_groups(config_path)
+
+    import asyncio
+    live_tools = asyncio.run(mcp.list_tools())
+    live_names = {t.name for t in live_tools}
+
+    removed = []
+    for name in sorted(live_names):
+        if name in ALWAYS_ON:
+            continue
+        group = classify_tool(name)  # raises if no assignment
+        if group not in enabled:
+            mcp.remove_tool(name)
+            removed.append(name)
+
+    if removed:
+        logger.info(
+            "Tool group gating: removed %d tools (enabled groups: %s)",
+            len(removed), sorted(enabled),
+        )
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -3835,6 +3976,8 @@ def main():
     """Run the LoreDocs MCP server."""
     _compat_emit(_compat_check())
     _check_egg_info_conflict()
+    # Apply tool group gating before starting the server.
+    _apply_tool_group_gating()
     # Idle watchdog is installed in app_lifespan() once VaultStorage exists
     # (its release_func needs the storage instance -- SH-13610).
     mcp.run()
