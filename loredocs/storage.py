@@ -4500,7 +4500,16 @@ class VaultStorage:
         link_type: str = "auto",
         tier_required: str = "pro",
     ) -> None:
-        """Write a single cross-product link. All cross-product writes go through here."""
+        """Write a single cross-product link. All cross-product writes go through here.
+
+        Design note: link direction varies by link_type:
+        - Manual links (link_session_to_doc): session as source, doc as target
+        - Auto links (cross_link_doc): doc as source, session as target
+
+        This asymmetry is intentional. The read side (get_cross_product_links) is
+        deliberately bidirectional (UNION ALL) to compensate, so both products can
+        query links regardless of write direction.
+        """
         conn.execute(
             """INSERT OR IGNORE INTO cross_product_links
                (source_product, source_id, target_product, target_id,
