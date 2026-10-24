@@ -702,10 +702,10 @@ def _get_storage(ctx: Context) -> VaultStorage:
 # WG-32 D-29: vault_open_workspace must refuse these rather than create a
 # vault scoped to (e.g.) /etc or /usr.
 _SYSTEM_DIRECTORIES = frozenset({
-    "/", "/etc", "/usr", "/bin", "/sbin", "/var", "/opt", "/dev",
+    "/", "/etc", "/usr", "/bin", "/sbin", "/opt", "/dev",
     "/proc", "/sys", "/boot", "/srv", "/mnt", "/media", "/root",
-    "/System", "/Library", "/Applications", "/private", "/private/etc",
-    "/private/var", "/private/tmp", "/tmp", "/cores", "/Volumes",
+    "/System", "/Library", "/Applications", "/private/etc",
+    "/cores", "/Volumes",
 })
 
 
