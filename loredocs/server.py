@@ -712,7 +712,7 @@ _SYSTEM_DIRECTORIES = frozenset({
 def _is_system_directory(resolved_path: str) -> bool:
     """Return True if `resolved_path` (already expanduser().resolve()) is a
     system directory that must not be treated as a workspace."""
-    return resolved_path in _SYSTEM_DIRECTORIES
+    return any(resolved_path == d or resolved_path.startswith(d + "/") for d in _SYSTEM_DIRECTORIES)
 
 
 def _forbid_unknown_tool_params(tool_name: str) -> None:
