@@ -292,13 +292,14 @@ LoreDocs provides 49 MCP tools by default (50 with the `notion` extra installed;
 | `vault_link_doc` | Create a link between two documents |
 | `vault_unlink_doc` | Remove a link between documents |
 
-### Administration (4 tools)
+### Administration (5 tools)
 | Tool | What it does |
 |------|-------------|
 | `vault_tier_status` | Check current tier limits and usage |
 | `vault_set_tier` | Set the active tier (free or pro) |
 | `get_license_tier` | Check current tier and license key status |
 | `vault_verify` | Check document version-history integrity, optionally repair |
+| `configure_tools` | List or choose which groups of LoreDocs tools the server exposes (takes effect after restart) |
 
 ### Cross-product Session Links (3 tools, Pro)
 | Tool | What it does |

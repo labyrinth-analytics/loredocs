@@ -537,6 +537,18 @@ Return LoreDocs documents linked to a given LoreConvo session. Searches both dir
 
 ---
 
+## Tool Group Configuration (1 tool)
+
+### `configure_tools`
+
+List which groups of LoreDocs tools the server exposes, or choose a different set. With no arguments it lists each group, how many tools it holds, and whether it is enabled. With a list of group names it saves your choice. The change takes effect when the server restarts; a client that is already connected can keep showing removed tools until it reconnects. The core group is always on. If the `LOREDOCS_TOOL_GROUPS` environment variable is set it overrides the saved choice, and this tool returns an error instead of writing.
+
+**When Claude uses it:** When you say "which LoreDocs tool groups are enabled?" or "turn off the import tools."
+
+**Key parameters:** `groups` (optional, list of group names)
+
+---
+
 ## Quick Reference
 
 | # | Tool | One-line summary |
@@ -589,3 +601,4 @@ Return LoreDocs documents linked to a given LoreConvo session. Searches both dir
 | 46 | `vault_get_linked_sessions` | Return LoreDocs documents linked to a given LoreConvo session (Pro) |
 | 47 | `vault_import_notion_setup` | Check Notion import readiness (token, dependencies) |
 | 48 | `vault_import_notion` | Import Notion pages and databases into a vault |
+| 49 | `configure_tools` | List or choose which groups of tools the server exposes |
