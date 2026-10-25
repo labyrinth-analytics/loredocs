@@ -1376,6 +1376,25 @@ def _parse_json_list(value) -> list:
         return []
 
 
+def _parse_json_list_tolerant(value) -> list:
+    """Parse JSON list field tolerating bare strings (WG-32 D-26).
+
+    Handles: None, '', JSON array, or bare string (treated as one-element list).
+    Always returns a list.
+    """
+    if not value:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        try:
+            result = json.loads(value)
+            return result if isinstance(result, list) else []
+        except json.JSONDecodeError:
+            return [value] if value.strip() else []
+    return []
+
+
 class VaultStorage:
     """Manages the local filesystem and SQLite database for LoreDocs."""
 
@@ -4057,9 +4076,27 @@ class VaultStorage:
         )
 
     def move_document(self, doc_id: str, target_vault_id: str) -> Optional[Dict[str, Any]]:
-        """Move a document to another vault. Returns new document metadata."""
+        """Move a document to another vault. Returns new document metadata.
+
+        Preserves explicit and auto links by re-pointing them to the new document id.
+        """
         new_doc = self.copy_document(doc_id, target_vault_id)
         if new_doc:
+            new_doc_id = new_doc["id"]
+            with self._db() as conn:
+                conn.execute(
+                    "UPDATE doc_links SET source_doc_id = ? WHERE source_doc_id = ?",
+                    (new_doc_id, doc_id)
+                )
+                conn.execute(
+                    "UPDATE doc_links SET target_doc_id = ? WHERE target_doc_id = ?",
+                    (new_doc_id, doc_id)
+                )
+                conn.execute(
+                    "INSERT OR IGNORE INTO doc_cooccurrences (term, doc_id, frequency) "
+                    "SELECT term, ?, frequency FROM doc_cooccurrences WHERE doc_id = ?",
+                    (new_doc_id, doc_id)
+                )
             self.remove_document(doc_id)
         return new_doc
 
@@ -4144,6 +4181,7 @@ class VaultStorage:
         end_time = time.perf_counter()
         elapsed = end_time - start_time
         avg_per_file = elapsed / len(imported) if imported else 0
+        logger.debug(f"import_directory: {len(imported)} files in {elapsed:.2f}s ({avg_per_file:.3f}s/file)")
 
         return imported
 
@@ -4443,7 +4481,7 @@ class VaultStorage:
 
             vault_dict = dict(vault)
             vault_dict["tags"] = json.loads(vault_dict.get("tags") or "[]")
-            vault_dict["linked_projects"] = json.loads(vault_dict.get("linked_projects") or "[]")
+            vault_dict["linked_projects"] = _parse_json_list_tolerant(vault_dict.get("linked_projects"))
 
             docs = conn.execute(
                 """SELECT id, name, original_filename, category, priority, tags,
@@ -4829,6 +4867,32 @@ class VaultStorage:
         except Exception as exc:
             log.warning("cross_link_doc: unavailable (%s)", type(exc).__name__)
             return 0
+
+    def _repair_bare_string_linked_projects(self) -> int:
+        """Repair vaults with bare-string linked_projects (WG-32 D-26).
+
+        Converts bare strings to JSON lists, idempotent and non-destructive.
+        Returns count of vaults repaired.
+        """
+        repaired_count = 0
+        with self._db() as conn:
+            rows = conn.execute(
+                "SELECT id, linked_projects FROM vaults WHERE linked_projects IS NOT NULL"
+            ).fetchall()
+
+            for vault_id, linked_projects in rows:
+                try:
+                    json.loads(linked_projects)
+                except json.JSONDecodeError:
+                    parsed = _parse_json_list_tolerant(linked_projects)
+                    new_value = json.dumps(parsed)
+                    conn.execute(
+                        "UPDATE vaults SET linked_projects = ? WHERE id = ?",
+                        (new_value, vault_id)
+                    )
+                    repaired_count += 1
+
+        return repaired_count
 
     # -------------------------------------------------------------------
     # Suggestions (Phase 2)
