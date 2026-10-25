@@ -465,19 +465,28 @@ class NotionImporter:
             child_truncated = False
             for child in child_results:
                 ct, ctrunc = self._flatten_block(client, child, depth + 1)
-                child_parts.append(ct)
+                if ct:
+                    child_parts.append(ct)
                 if ctrunc:
                     child_truncated = True
             if child_parts:
                 indent = "  " * depth
                 text += "\n" + "\n".join(indent + cp for cp in child_parts)
+            if block_type == "toggle":
+                # SH-104533: _render_block_text leaves the toggle's <details>
+                # tag open so children land inside it, not after it.
+                text += "\n\n</details>"
             return text, child_truncated
         elif has_children and depth >= self._max_block_depth:
             # [r5/H4] Block-depth truncation is explicit
             marker = f"[truncated: nested content below depth {self._max_block_depth} not imported]"
             text += f"\n{marker}"
+            if block_type == "toggle":
+                text += "\n\n</details>"
             return text, True
 
+        if block_type == "toggle":
+            text += "\n\n</details>"
         return text, False
 
     def _render_block_text(self, block, block_type):
@@ -539,15 +548,24 @@ class NotionImporter:
             rich_text = block_data.get("rich_text", [])
             return f"> [!NOTE] {self._rich_text_to_markdown(rich_text)}"
 
-        # Toggle (collapsible section; children are flattened below it)
+        # Toggle (collapsible section). SH-104533: the closing </details> tag
+        # is NOT emitted here -- _flatten_block appends it after any children
+        # so they land inside the tag instead of after it.
         if block_type == "toggle":
             rich_text = block_data.get("rich_text", [])
             summary = self._rich_text_to_markdown(rich_text)
-            return f"<details>\n<summary>{summary}</summary>\n\n</details>"
+            return f"<details>\n<summary>{summary}</summary>"
 
         # Divider
         if block_type == "divider":
             return "---"
+
+        # Table row (child of a table block; the table itself renders the
+        # single placeholder below, so rows render as nothing -- SH-104533
+        # relies on _flatten_block dropping empty child parts to avoid
+        # emitting blank lines under the table placeholder).
+        if block_type == "table_row":
+            return ""
 
         # Image / file (just note the caption)
         if block_type in ("image", "file", "video", "pdf", "bookmark"):
@@ -555,11 +573,25 @@ class NotionImporter:
             cap_text = self._rich_text_to_markdown(caption)
             if cap_text:
                 return f"[{block_type}: {cap_text}]"
+            # SH-104533: block_data["type"] is "file" (uploaded) or
+            # "external" (linked URL); bookmarks carry neither and are
+            # always external.
+            if block_data.get("type") == "file":
+                return f"[{block_type}: uploaded file -- not imported]"
             return f"[{block_type}: external content -- not imported]"
 
         # Table (just note it exists)
         if block_type == "table":
             return "[table: structured data -- import as separate document if needed]"
+
+        # Inline child database (SH-104533: previously silently dropped)
+        if block_type == "child_database":
+            title = block_data.get("title", "")
+            db_id = block.get("id", "")
+            return (
+                f"[child_database: {title} (id: {db_id}) -- "
+                f"import separately with --database-id {db_id}]"
+            )
 
         # Default: plain text from any rich_text field (paragraph and any
         # block type without a specific handler above)
