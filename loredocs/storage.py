@@ -4092,6 +4092,25 @@ class VaultStorage:
                     "UPDATE doc_links SET target_doc_id = ? WHERE target_doc_id = ?",
                     (new_doc_id, doc_id)
                 )
+                # UPDATE OR IGNORE -- copy_document -> add_document may already
+                # have created fresh auto:embedding / auto:cooccurrence links
+                # between the new document and existing docs in the target vault.
+                # Repointing the old doc's auto-links onto the same
+                # (source_vault_id, source_doc_id, target_vault_id, target_doc_id,
+                # label) key as one of those fresh rows would violate
+                # idx_doc_links_unique_key (SH-104973 / SH-104974). OR IGNORE keeps
+                # the freshly-generated link and leaves the stale repointed row at
+                # its pre-move vault_id; that stale row is cross-vault and is
+                # removed when either vault is deleted (delete_vault matches on
+                # vault_id), so no dangling same-vault duplicate survives.
+                conn.execute(
+                    "UPDATE OR IGNORE doc_links SET source_vault_id = ? WHERE source_doc_id = ?",
+                    (target_vault_id, new_doc_id)
+                )
+                conn.execute(
+                    "UPDATE OR IGNORE doc_links SET target_vault_id = ? WHERE target_doc_id = ?",
+                    (target_vault_id, new_doc_id)
+                )
                 conn.execute(
                     "INSERT OR IGNORE INTO doc_cooccurrences (term, doc_id, frequency) "
                     "SELECT term, ?, frequency FROM doc_cooccurrences WHERE doc_id = ?",
