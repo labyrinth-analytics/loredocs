@@ -6,6 +6,19 @@ What changed in each release, written for users (not developers).
 
 ## Unreleased
 
+### Fixed: Notion import fidelity -- toggles, tables, inline databases, images
+
+Notion import had four rendering gaps found during a live import:
+
+- Toggle (collapsible section) content showed up after the collapsible
+  block instead of inside it.
+- A 3x3 table left extra blank lines under its placeholder.
+- An inline database on a page was silently dropped -- no note that it
+  existed at all. It now shows a placeholder with the database's name,
+  id, and the command to import it separately.
+- An uploaded image was mislabeled as "external content"; uploaded and
+  linked images now read differently.
+
 ### Fixed: rebuild document relationships after upgrade
 
 If you upgraded from a LoreDocs release before the autolink quality fix

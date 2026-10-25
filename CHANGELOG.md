@@ -9,6 +9,23 @@ none has been reconstructed.
 
 ## Unreleased
 
+### Fixed: Notion import block-rendering fidelity (SH-104473, SH-104533)
+
+- `loredocs/notion_import.py` `_render_block_text`: toggle blocks no longer
+  close `<details>` themselves; `_flatten_block` appends the closing tag
+  after flattening and indenting any children, so toggle children render
+  inside the `<details>` element instead of after it.
+- `_flatten_block` now drops empty (falsy) child-block text before joining,
+  so a table's `table_row` children (which render as `""`) no longer leave
+  blank indented lines under the table's placeholder.
+- Image/file/video/pdf/bookmark placeholders (no caption) now read
+  `block_data["type"]` to distinguish an uploaded file (`"uploaded file"`)
+  from a linked URL (`"external content"`); previously both said "external
+  content".
+- `child_database` blocks, previously unhandled and silently dropped, now
+  render a placeholder naming the database title, id, and the
+  `--database-id <id>` re-import hint.
+
 ### Fixed: autolink backfill / relink tool (SH-104427, SH-104432)
 
 - `loredocs/storage.py`: `_auto_link_doc_cooccurrences` now emits deterministic
