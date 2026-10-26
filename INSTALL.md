@@ -530,5 +530,5 @@ directory if your `LOREDOCS_ROOT` is not `~/.loredocs/`.
 ## More Documentation
 
 - [Quickstart Guide](docs/quickstart.md) -- get up and running in 5 minutes
-- [MCP Tool Catalog](docs/mcp_tool_catalog.md) -- all 42 tools explained in plain English
+- [MCP Tool Catalog](docs/mcp_tool_catalog.md) -- all 49 tools explained in plain English
 - [Changelog](docs/CHANGELOG.md) -- what changed in each release
