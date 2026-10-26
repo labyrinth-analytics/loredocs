@@ -310,7 +310,7 @@ class DocLanceIndex:
             _log.error("Lance indexed_doc_count failed: %s", exc)
             return 0
 
-    def rebuild(self, docs: list, progress_cb=None) -> int:
+    def rebuild(self, docs: list, progress_cb=None, phase_cb=None) -> int:
         """Rebuild the Lance index from a list of doc dicts.
 
         Each dict must have: doc_id, vault_id, name, text.
@@ -327,6 +327,12 @@ class DocLanceIndex:
         progress_cb, if given, is called as progress_cb(done, total) after
         each document is embedded, so long rebuilds can report progress
         instead of blocking silently for 30+ minutes.
+
+        phase_cb, if given, is called once as phase_cb('finalizing') after
+        the embedding loop ends and before the table-build + FTS-index step
+        starts (SH-104947 D-38). That step has no per-item progress signal
+        of its own, so the caller uses this to stop reporting the
+        embedding-phase ETA once it would read as falsely near-zero.
         """
         valid = [d for d in docs if d.get('doc_id') and d.get('text', '').strip()]
 
@@ -350,6 +356,9 @@ class DocLanceIndex:
                 })
             if progress_cb:
                 progress_cb(idx + 1, len(valid))
+
+        if phase_cb:
+            phase_cb('finalizing')
 
         db = self._get_db()
         staging = 'docs_new'

@@ -1825,9 +1825,15 @@ class VaultStorage:
         if state_dict is not None:
             state_dict['phase'] = 'indexing'
 
-        chunk_count = self._get_lance_index().rebuild(docs, progress_cb=progress_cb)
+        def _phase_cb(phase):
+            if state_dict is not None:
+                state_dict['phase'] = phase
+
+        chunk_count = self._get_lance_index().rebuild(
+            docs, progress_cb=progress_cb, phase_cb=_phase_cb)
         return {
             "docs_indexed": len(docs),
+            "total_in_db": total_count,
             "chunks_indexed": chunk_count,
             "docs_skipped": skipped_docs,
         }

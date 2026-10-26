@@ -1786,7 +1786,9 @@ async def vault_rebuild_index_status(ctx: Context) -> str:
     Returns a JSON dict with:
     - status: 'idle' | 'running' | 'complete' | 'error'
     - message: human description
-    - For running: phase, progress, total, progress_pct, elapsed_s
+    - For running: phase, progress, total, progress_pct, elapsed_s, and
+      eta_s when phase != 'finalizing' (no reliable ETA for the untimed
+      table-build/FTS-index step that follows embedding)
     - For complete: indexed, total_in_db, exclusions {reason: count}, elapsed_s
     """
     with _rebuild_lock:
@@ -1818,27 +1820,36 @@ async def vault_rebuild_index_status(ctx: Context) -> str:
             'status': 'complete',
             'message': 'Rebuild finished successfully.',
             'indexed': result.get('docs_indexed'),
-            'total_in_db': result.get('docs_indexed', 0),
+            'total_in_db': result.get('total_in_db', result.get('docs_indexed', 0)),
             'exclusions': exclusions,
             'elapsed_s': round(result.get('elapsed_s', 0), 1),
         })
 
     # Running state
+    phase = state.get('phase', 'unknown')
     resp = {
         'status': 'running',
-        'phase': state.get('phase', 'unknown'),
+        'phase': phase,
         'progress': state.get('progress', 0),
         'total': state.get('total', 0),
         'progress_pct': state.get('progress_pct', 0),
         'elapsed_s': round(now - state.get('started_at', now), 1),
     }
 
-    progress = resp['progress']
-    total = resp['total']
-    elapsed = resp['elapsed_s']
-    if progress > 0 and total > progress and elapsed > 0:
-        eta_s = (elapsed / progress) * (total - progress)
-        resp['eta_s'] = round(eta_s, 1)
+    # SH-104947 D-38: once embedding finishes, the rebuild still has to write
+    # the Lance tables and build 4 FTS indexes (staging + live, name + text)
+    # with no per-item progress signal. That step was previously invisible
+    # to this formula: progress/total both read ~100% embedded, so
+    # (total - progress) collapsed to ~0 and eta_s reported as seconds left
+    # when in reality a long, untimed finalization step was still running.
+    # Report no eta_s in that phase rather than a number known to be wrong.
+    if phase != 'finalizing':
+        progress = resp['progress']
+        total = resp['total']
+        elapsed = resp['elapsed_s']
+        if progress > 0 and total > progress and elapsed > 0:
+            eta_s = (elapsed / progress) * (total - progress)
+            resp['eta_s'] = round(eta_s, 1)
 
     return json.dumps(resp)
 
