@@ -54,10 +54,25 @@ def sanitize_fts_query(query: str) -> str:
     tokens are implicitly ANDed (the FTS5 default). This preserves the
     expected behavior where "data warehouse migration" matches documents
     containing all three words anywhere, not just as a consecutive phrase.
+
+    SH-104947 D-14b: a trailing '*' is FTS5's prefix-query operator, but
+    quoting the whole token (the strategy above) put the '*' INSIDE the
+    quotes -- "vaultstor*" is then a literal phrase match for the three
+    characters v-a-u-l-t-s-t-o-r-*, which no real document contains, so
+    every prefix query returned zero rows while the equivalent full word
+    worked fine. FTS5 accepts '*' as a prefix operator immediately after a
+    closing quote with no intervening whitespace ("vaultstor"*), so a
+    trailing '*' is now split off and re-appended outside the quotes.
     """
     safe = query.strip()
     if not safe:
         return '""'
     tokens = safe.split()
-    quoted = ['"' + t.replace('"', '') + '"' for t in tokens if t.replace('"', '')]
+    quoted = []
+    for t in tokens:
+        is_prefix = len(t) > 1 and t.endswith('*')
+        core = (t[:-1] if is_prefix else t).replace('"', '')
+        if not core:
+            continue
+        quoted.append('"' + core + '"*' if is_prefix else '"' + core + '"')
     return ' '.join(quoted) if quoted else '""'
