@@ -5099,8 +5099,15 @@ class VaultStorage:
                     row = lc_conn.execute(
                         "SELECT cross_link_opt_out FROM sessions WHERE id = ?", (sid,)
                     ).fetchone()
+                    if row is None:
+                        # WG-32 D-31: the LoreConvo sessions.lance vector index
+                        # is not pruned when a session row is deleted/expired,
+                        # so a stale embedding can still surface here. Writing
+                        # a link anyway produces a permanently dangling
+                        # cross_product_links endpoint -- skip instead.
+                        continue
                     # cross_link_opt_out may not exist on older schemas -- treat as 0
-                    if row and row[0]:
+                    if row[0]:
                         continue
                     cosine = max(0.0, 1.0 - dist)
                     self._write_cross_product_link(
