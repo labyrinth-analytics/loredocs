@@ -4667,11 +4667,19 @@ class VaultStorage:
         and deduplicated: if the same pair has both co-occurrence and embedding links,
         the co-occurrence entry wins.
 
-        Ordered explicit links first, then co-occurrence, then embedding, each by
-        recency, and capped at FIND_RELATED_MAX_RESULTS. Links carry no stored
-        strength score, so this ordering is the best available quality proxy:
-        explicit links are human/agent-curated, co-occurrence is an interpretable
-        term-overlap signal, embedding is the noisiest (widest similarity net).
+        Ordered explicit links first, then co-occurrence, then embedding, and
+        capped at FIND_RELATED_MAX_RESULTS. Explicit links carry no stored
+        strength, so within that bucket they are ordered by recency. Within the
+        co-occurrence bucket, links are ordered by the shared-term count between
+        the source doc and each candidate (computed from doc_cooccurrences at
+        read time, since the term overlap used to create the link is not itself
+        stored on doc_links), falling back to recency as a tiebreak. Embedding
+        carries no comparable per-pair score and stays recency-ordered. This
+        matters because the result list is capped well above the relevance
+        floor's top-5 window (WG-32 D-10): when a doc has more co-occurrence
+        candidates than fit in the top 5, which 5 land there determines the
+        measured relevance, and shared-term strength is a better proxy for "is
+        this one of the 5 best matches" than insertion recency.
         Without the cap a doc that is a semantic "hub" for many others can
         accumulate dozens of links since both the cooccurrence and embedding
         auto-linkers write bidirectionally (WG-32 D-10: pre-cap median result
@@ -4681,10 +4689,18 @@ class VaultStorage:
         with self._db() as conn:
             rows = conn.execute(
                 """SELECT d.id, d.vault_id, d.name, d.category, d.tags, d.notes,
-                          d.updated_at, dl.label, v.name as vault_name
+                          d.updated_at, dl.label, v.name as vault_name,
+                          COALESCE(cooc.shared_count, 0) AS cooc_strength
                    FROM doc_links dl
                    JOIN documents d ON dl.target_doc_id = d.id
                    JOIN vaults v ON d.vault_id = v.id
+                   LEFT JOIN (
+                       SELECT dc2.doc_id AS target_id, COUNT(*) AS shared_count
+                       FROM doc_cooccurrences dc1
+                       JOIN doc_cooccurrences dc2 ON dc1.term = dc2.term
+                       WHERE dc1.doc_id = ? AND dc2.doc_id != ?
+                       GROUP BY dc2.doc_id
+                   ) cooc ON cooc.target_id = dl.target_doc_id
                    WHERE dl.source_doc_id = ?
                      AND d.deleted = 0
                      AND (dl.archived_at IS NULL)
@@ -4692,8 +4708,9 @@ class VaultStorage:
                      CASE WHEN dl.label NOT LIKE 'auto:%' THEN 0
                           WHEN dl.label = 'auto:cooccurrence' THEN 1
                           ELSE 2 END,
+                     cooc_strength DESC,
                      dl.created_at DESC""",
-                (doc_id,)
+                (doc_id, doc_id, doc_id)
             ).fetchall()
 
             seen: Dict[str, dict] = {}
