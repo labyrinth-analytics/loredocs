@@ -1958,7 +1958,32 @@ class VaultStorage:
                 skip_reason = None
 
                 if not extracted_path.exists():
-                    skip_reason = 'missing_extracted_txt'
+                    # WG-32 D-16b: extracted.txt should always exist (every
+                    # add_document call writes it), but can go missing out of
+                    # band -- e.g. lost in a manual file-level backup/restore.
+                    # The source document (current{ext}) is still on disk in
+                    # that case, so re-derive extracted.txt from it instead of
+                    # permanently dropping the doc from the semantic index.
+                    current_files = sorted(doc_dir.glob("current.*"))
+                    text = None
+                    if current_files:
+                        try:
+                            text = extract_text(current_files[0])
+                        except Exception:
+                            text = None
+                    if text and text.strip():
+                        try:
+                            extracted_path.write_text(text, encoding="utf-8")
+                        except Exception:
+                            pass
+                        docs.append({
+                            "doc_id": row["id"],
+                            "vault_id": row["vault_id"],
+                            "name": row["name"],
+                            "text": text,
+                        })
+                    else:
+                        skip_reason = 'missing_extracted_txt'
                 else:
                     try:
                         text = extracted_path.read_text(encoding="utf-8")
