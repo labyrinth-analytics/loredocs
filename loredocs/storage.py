@@ -997,12 +997,20 @@ _COOCCURRENCE_CANDIDATE_POOL = 60
 _COOCCURRENCE_TERMS_PER_DOC = 30
 
 
+def _cooccurrence_candidates(name: str, content: str) -> List[Tuple[str, int]]:
+    """Candidate (term, frequency) pool for one document's co-occurrence index."""
+    text = " ".join(filter(None, [name, content]))
+    return _extract_keywords(text, top_n=_COOCCURRENCE_CANDIDATE_POOL)
+
+
 def _insert_doc_cooccurrences(
     conn: sqlite3.Connection,
     doc_id: str,
     name: str,
     tags: List[str],
     content: str,
+    candidates: Optional[List[Tuple[str, int]]] = None,
+    vault_doc_freq: Optional[Dict[str, int]] = None,
 ) -> None:
     """(Re)index keyword co-occurrences for one document. Replaces prior index.
 
@@ -1016,10 +1024,16 @@ def _insert_doc_cooccurrences(
     doc_cooccurrences rows already written for other docs in the vault as the
     document-frequency source) before the top 30 are kept, so a term common to
     most reports in the vault scores lower than one distinctive to this doc.
+
+    SH-105175: relink_autolinks passes ``vault_doc_freq`` (term -> number of
+    vault docs whose candidate pool contains it, self included) computed up
+    front from every doc's text, so the IDF does not read a partially rebuilt
+    doc_cooccurrences table. Incremental saves omit it and keep reading the
+    rows already written for the vault's other docs.
     """
     conn.execute("DELETE FROM doc_cooccurrences WHERE doc_id = ?", (doc_id,))
-    text = " ".join(filter(None, [name, content]))
-    candidates = _extract_keywords(text, top_n=_COOCCURRENCE_CANDIDATE_POOL)
+    if candidates is None:
+        candidates = _cooccurrence_candidates(name, content)
     if candidates:
         vault_row = conn.execute(
             "SELECT vault_id FROM documents WHERE id = ?", (doc_id,)
@@ -1034,6 +1048,10 @@ def _insert_doc_cooccurrences(
             ).fetchone()[0]
             terms = [t for t, _ in candidates]
             placeholders = ",".join("?" * len(terms))
+        if vault_id and vault_doc_freq is not None:
+            # Precomputed counts include this doc; exclude it like the query does.
+            doc_freq = {t: vault_doc_freq.get(t, 1) - 1 for t in terms}
+        elif vault_id:
             doc_freq = dict(conn.execute(
                 f"""SELECT dc.term, COUNT(DISTINCT dc.doc_id)
                     FROM doc_cooccurrences dc
@@ -1050,7 +1068,8 @@ def _insert_doc_cooccurrences(
             else:
                 idf = 1.0
             scored.append((term, freq, freq * idf))
-        scored.sort(key=lambda row: row[2], reverse=True)
+        # Tie-break on the term so equal weights keep the same top 30 every run.
+        scored.sort(key=lambda row: (-row[2], row[0]))
         for term, freq, _weighted in scored[:_COOCCURRENCE_TERMS_PER_DOC]:
             conn.execute(
                 "INSERT OR REPLACE INTO doc_cooccurrences (term, doc_id, frequency) VALUES (?, ?, ?)",
@@ -1096,7 +1115,7 @@ def _auto_link_doc_cooccurrences(
              AND d2.vault_id = ?
            GROUP BY dc2.doc_id
            HAVING COUNT(*) >= ?
-           ORDER BY shared_count DESC
+           ORDER BY shared_count DESC, dc2.doc_id
            LIMIT 20""",
         (doc_id, doc_id, source_vault_id, min_shared_terms)
     ).fetchall()
@@ -1485,10 +1504,13 @@ class VaultStorage:
         documents. Explicit links (any label not matching ``auto:%``) are
         untouched.
 
-        Idempotent: a purge+regenerate cycle produces a byte-identical
-        doc_links table on rerun, because both autolink writers now emit
-        deterministic IDs via ``_make_link_id`` and use INSERT OR IGNORE
-        against the UNIQUE logical-key index.
+        Idempotent (a fixed point, SH-105175): a second run produces the same
+        doc_cooccurrences rows and the same auto-link set (ids, endpoints,
+        labels) as the first. Term indexes are rebuilt for every doc before
+        any linking, IDF comes from document frequencies computed up front,
+        ties sort deterministically, and both autolink writers emit
+        deterministic IDs via ``_make_link_id``. ``created_at`` is refreshed
+        each run.
 
         Args:
             include_embeddings: when True and the store is Pro with a usable
@@ -1530,15 +1552,22 @@ class VaultStorage:
                 "SELECT id, vault_id, name, tags FROM documents "
                 "WHERE deleted = 0 ORDER BY id"
             ).fetchall()
-            regenerated = 0
+            # SH-105175: two phases. Reindexing and linking each doc inside
+            # one loop made both order-dependent -- the within-vault IDF read
+            # other docs' half-rebuilt term rows, and linking doc N compared
+            # against docs N+1.. still holding their old term sets -- so the
+            # result shifted on every rerun. Phase 1 rebuilds every term index
+            # from document frequencies computed up front from each doc's own
+            # text; phase 2 links against the finished index.
+            #
+            # SH-104433: phase 1 also backfills doc_cooccurrences for docs saved
+            # via the pre-fix query_loredocs.py cmd_add_doc fallback, which
+            # never got a term index; _insert_doc_cooccurrences
+            # deletes-then-rebuilds, so it is safe to run on every doc.
+            prepared = []
+            vault_doc_freq: Dict[str, Dict[str, int]] = {}
             for drow in doc_rows:
                 doc_id = drow["id"]
-                # SH-104433: backfill doc_cooccurrences before linking. Docs
-                # saved via the query_loredocs.py cmd_add_doc fallback (bug
-                # fixed in the same ticket) never got a term index written,
-                # so relink previously just re-linked the docs that already
-                # had one. _insert_doc_cooccurrences deletes-then-rebuilds,
-                # so this is safe to run unconditionally on every doc.
                 try:
                     doc_tags = json.loads(drow["tags"]) if drow["tags"] else []
                 except (json.JSONDecodeError, TypeError):
@@ -1553,16 +1582,28 @@ class VaultStorage:
                         extracted = extracted_path.read_text(encoding="utf-8")
                     except OSError:
                         extracted = ""
+                candidates = _cooccurrence_candidates(drow["name"], extracted)
+                freq = vault_doc_freq.setdefault(drow["vault_id"], {})
+                for term in {t for t, _ in candidates}:
+                    freq[term] = freq.get(term, 0) + 1
+                prepared.append((drow, doc_tags, extracted, candidates))
+
+            for drow, doc_tags, extracted, candidates in prepared:
                 try:
                     _insert_doc_cooccurrences(
-                        conn, doc_id, drow["name"], doc_tags, extracted,
+                        conn, drow["id"], drow["name"], doc_tags, extracted,
+                        candidates=candidates,
+                        vault_doc_freq=vault_doc_freq[drow["vault_id"]],
                     )
                 except Exception as exc:
                     logger.error(
                         "relink_autolinks: cooccurrence reindex failed for "
-                        "doc %s: %s", doc_id, exc,
+                        "doc %s: %s", drow["id"], exc,
                     )
 
+            regenerated = 0
+            for drow, _tags, _extracted, _candidates in prepared:
+                doc_id = drow["id"]
                 before = conn.execute("SELECT COUNT(*) FROM doc_links").fetchone()[0]
                 try:
                     _auto_link_doc_cooccurrences(conn, doc_id)

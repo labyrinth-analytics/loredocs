@@ -8,8 +8,9 @@ cross-vault noise that drags ``vault_find_related`` relevance below target.
 
 This script purges every ``label LIKE 'auto:%'`` row in ``doc_links`` and
 regenerates them with the current logic for all non-deleted documents.
-Explicit (manual) links are never touched. The operation is idempotent:
-running it twice yields a byte-identical ``doc_links`` table.
+Explicit (manual) links are never touched. The operation is idempotent
+(SH-105175): running it twice yields the same term index and the same
+auto-link set (ids, endpoints, labels); only ``created_at`` is refreshed.
 
 Usage:
     # Dry run -- count auto-links that would be purged and docs to process
