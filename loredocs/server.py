@@ -2957,6 +2957,7 @@ class UnlinkDocInput(BaseModel):
 
     source_doc: str = Field(..., description="Source document ID", min_length=1)
     target_doc: str = Field(..., description="Target document ID", min_length=1)
+    label: Optional[str] = Field(default=None, description="Remove only the link with this exact label (e.g. 'auto:cooccurrence'). Omit to remove manually-created links only -- auto-generated links are never removed without an explicit label.")
 
 
 @mcp.tool(
@@ -2964,14 +2965,17 @@ class UnlinkDocInput(BaseModel):
     name="vault_unlink_doc",
     annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False}
 )
-async def vault_unlink_doc(ctx: Context, source_doc: str, target_doc: str) -> str:
+async def vault_unlink_doc(ctx: Context, source_doc: str, target_doc: str, label: Optional[str] = None) -> str:
     """Remove a link between two documents (both directions).
 
-    If no link exists between the two documents, reports that cleanly.
+    By default removes manually-created links only -- an auto-generated link
+    (e.g. 'auto:cooccurrence') on the same pair is left in place. Pass
+    label explicitly to target an auto link.
+    If no matching link exists between the two documents, reports that cleanly.
     """
-    params = UnlinkDocInput(source_doc=source_doc, target_doc=target_doc)
+    params = UnlinkDocInput(source_doc=source_doc, target_doc=target_doc, label=label)
     storage = _get_storage(ctx)
-    deleted = storage.unlink_doc(params.source_doc, params.target_doc)
+    deleted = storage.unlink_doc(params.source_doc, params.target_doc, params.label)
     if deleted == 0:
         return f"No link found between '{params.source_doc}' and '{params.target_doc}'."
     return (

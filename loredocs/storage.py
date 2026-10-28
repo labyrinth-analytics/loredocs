@@ -184,6 +184,22 @@ _CROSS_LINK_DEBOUNCE_SECS = 600 # 10-minute per-entity debounce
 _CROSS_LINK_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 _CROSS_LINK_EMBEDDING_DIM = 384
 
+# SH-104967: cross_link_doc previously instantiated a fresh TextEmbedding per
+# document, reloading the ONNX model (~0.14s init) once per imported file. Cache
+# a single instance so a bulk import loads it exactly once.
+_cross_link_embedder_cache: Dict[str, Any] = {}
+
+
+def _get_cross_link_embedder() -> Any:
+    """Return a cached singleton TextEmbedding for cross-product linking."""
+    model_name = _CROSS_LINK_EMBEDDING_MODEL
+    embedder = _cross_link_embedder_cache.get(model_name)
+    if embedder is None:
+        from fastembed import TextEmbedding as _TE
+        embedder = _TE(model_name)
+        _cross_link_embedder_cache[model_name] = embedder
+    return embedder
+
 # Cap on find_related_docs() results (WG-32 D-10 median-result-count floor <= 15)
 FIND_RELATED_MAX_RESULTS = 15
 
@@ -1632,6 +1648,122 @@ class VaultStorage:
             "embedding_skipped": embedding_skipped,
         }
 
+    def _bulk_index_and_link(self, doc_ids: List[str]) -> None:
+        """Batched co-occurrence indexing + auto-linking for newly imported docs.
+
+        Companion to add_document(defer_links=True). Runs the deferred index and
+        link steps in two phases (the SH-105175 relink_autolinks pattern): rebuild
+        every new doc's term index from document frequencies computed up front, then
+        link against the finished index. Avoids the O(n^2) per-file IDF queries and
+        per-file auto-linking that make import_directory slow on large trees.
+
+        Errors are logged, never raised (best-effort, matching add_document).
+        """
+        if not doc_ids:
+            return
+        prepared: List[Tuple[Any, List[str], str, List[Tuple[str, int]]]] = []
+        with self._db() as conn:
+            rows = conn.execute(
+                "SELECT id, vault_id, name, tags FROM documents "
+                "WHERE id IN (%s) AND deleted = 0" % ",".join("?" * len(doc_ids)),
+                doc_ids,
+            ).fetchall()
+            doc_rows = {r["id"]: r for r in rows}
+
+            # Existing per-vault term frequencies (docs already in the store).
+            vault_freqs: Dict[str, Dict[str, int]] = {}
+            for vid in {r["vault_id"] for r in doc_rows.values()}:
+                freq: Dict[str, int] = {}
+                for term, cnt in conn.execute(
+                    "SELECT dc.term, COUNT(DISTINCT dc.doc_id) "
+                    "FROM doc_cooccurrences dc JOIN documents d ON d.id = dc.doc_id "
+                    "WHERE d.vault_id = ? AND d.deleted = 0 GROUP BY dc.term",
+                    (vid,),
+                ).fetchall():
+                    freq[term] = cnt
+                vault_freqs[vid] = freq
+
+            # Phase 1: compute candidates and fold new terms into the freq map.
+            for doc_id in doc_ids:
+                drow = doc_rows.get(doc_id)
+                if not drow:
+                    continue
+                try:
+                    doc_tags = json.loads(drow["tags"]) if drow["tags"] else []
+                except (json.JSONDecodeError, TypeError):
+                    doc_tags = []
+                extracted_path = (
+                    self.vaults_dir / drow["vault_id"] / "docs" / doc_id
+                    / "extracted.txt"
+                )
+                extracted = ""
+                if extracted_path.exists():
+                    try:
+                        extracted = extracted_path.read_text(encoding="utf-8")
+                    except OSError:
+                        extracted = ""
+                candidates = _cooccurrence_candidates(drow["name"], extracted)
+                freq = vault_freqs[drow["vault_id"]]
+                for term in {t for t, _ in candidates}:
+                    freq[term] = freq.get(term, 0) + 1
+                prepared.append((drow, doc_tags, extracted, candidates))
+
+            # Phase 2: rebuild each new doc's term index against the finished
+            # document-frequency map (no partial-table reads).
+            for drow, doc_tags, extracted, candidates in prepared:
+                try:
+                    _insert_doc_cooccurrences(
+                        conn, drow["id"], drow["name"], doc_tags, extracted,
+                        candidates=candidates,
+                        vault_doc_freq=vault_freqs[drow["vault_id"]],
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "_bulk_index_and_link: cooccurrence reindex failed for "
+                        "doc %s: %s", drow["id"], exc,
+                    )
+
+            # Phase 3: link each new doc against the finished index.
+            for drow, _tags, _extracted, _candidates in prepared:
+                try:
+                    _auto_link_doc_cooccurrences(conn, drow["id"])
+                except Exception as exc:
+                    logger.error(
+                        "_bulk_index_and_link: cooccurrence link failed for "
+                        "doc %s: %s", drow["id"], exc,
+                    )
+
+        # Phase 4: Lance write + embedding links (Pro only, best-effort).
+        is_pro = get_tier(self.root) == TIER_PRO
+        if is_pro:
+            lance_index = None
+            try:
+                lance_index = self._get_lance_index()
+            except Exception:
+                lance_index = None
+            for drow, _tags, extracted, _candidates in prepared:
+                try:
+                    self._lance_write_safe(
+                        drow["id"], drow["vault_id"], drow["name"], extracted,
+                    )
+                except Exception:
+                    pass
+                if lance_index is not None:
+                    with self._db() as conn:
+                        try:
+                            _auto_link_doc_embeddings(
+                                conn, drow["id"], lance_index, is_pro=True,
+                            )
+                        except Exception:
+                            pass
+
+        # Phase 5: cross-product linking (best-effort).
+        for drow, _tags, _extracted, _candidates in prepared:
+            try:
+                self.cross_link_doc(drow["id"], drow["vault_id"])
+            except Exception:
+                pass
+
     def release_idle_resources(self) -> None:
         """Drop the cached Lance index handle while idle (SH-13610).
 
@@ -2122,9 +2254,15 @@ class VaultStorage:
     def add_document(self, vault_id: str, name: str, content: bytes,
                      filename: str, tags: Optional[List[str]] = None,
                      category: str = "general", priority: str = "normal",
-                     notes: str = "") -> Optional[Dict[str, Any]]:
+                     notes: str = "", defer_links: bool = False) -> Optional[Dict[str, Any]]:
         """Add a document to a vault. Content is raw bytes.
         Returns document metadata dict, or None if vault not found.
+
+        defer_links=True (bulk-import fast path): skips co-occurrence
+        indexing, auto-linking, Lance write, and cross-product linking so
+        import_directory can run them in one batched pass over all new docs
+        instead of O(n^2) per-file passes. Callers MUST run
+        ``_bulk_index_and_link`` on the returned doc IDs afterwards.
         """
         # Verify vault exists
         vault = self.get_vault(vault_id)
@@ -2213,26 +2351,28 @@ class VaultStorage:
             )
 
             # Index co-occurrences and auto-link related docs (best-effort)
-            try:
-                _insert_doc_cooccurrences(conn, doc_id, name, tags, extracted)
-                _auto_link_doc_cooccurrences(conn, doc_id)
-            except Exception:
-                pass
-
-        self._lance_write_safe(doc_id, vault_id, name, extracted)
-        # Phase 2a: embedding-based auto-link (Pro only, errors never propagate)
-        is_pro = get_tier(self.root) == TIER_PRO
-        if is_pro and self._lance_index is not None:
-            with self._db() as conn:
+            if not defer_links:
                 try:
-                    _auto_link_doc_embeddings(conn, doc_id, self._lance_index, is_pro=True)
+                    _insert_doc_cooccurrences(conn, doc_id, name, tags, extracted)
+                    _auto_link_doc_cooccurrences(conn, doc_id)
                 except Exception:
                     pass
-        # Phase 2b: save-triggered cross-product linking (Pro only, best-effort)
-        try:
-            self.cross_link_doc(doc_id, vault_id)
-        except Exception:
-            pass
+
+        if not defer_links:
+            self._lance_write_safe(doc_id, vault_id, name, extracted)
+            # Phase 2a: embedding-based auto-link (Pro only, errors never propagate)
+            is_pro = get_tier(self.root) == TIER_PRO
+            if is_pro and self._lance_index is not None:
+                with self._db() as conn:
+                    try:
+                        _auto_link_doc_embeddings(conn, doc_id, self._lance_index, is_pro=True)
+                    except Exception:
+                        pass
+            # Phase 2b: save-triggered cross-product linking (Pro only, best-effort)
+            try:
+                self.cross_link_doc(doc_id, vault_id)
+            except Exception:
+                pass
         return meta
 
     def add_document_from_text(self, vault_id: str, name: str, text_content: str,
@@ -4237,12 +4377,19 @@ class VaultStorage:
                         filename=file_path.name,
                         tags=doc_tags if doc_tags else None,
                         category=category,
-                        notes=path_note
+                        notes=path_note,
+                        defer_links=True
                     )
                     if result:
                         imported.append(result)
                 except Exception:
                     continue
+
+        # Batch the deferred index + auto-link work (SH-104967): one pass for
+        # co-occurrence indexing and one for linking, instead of per-file
+        # O(n^2) passes inside add_document.
+        new_doc_ids = [r["id"] for r in imported if r and r.get("id")]
+        self._bulk_index_and_link(new_doc_ids)
 
         end_time = time.perf_counter()
         elapsed = end_time - start_time
@@ -4384,10 +4531,14 @@ class VaultStorage:
             link_id = str(uuid.uuid4())
             reverse_id = str(uuid.uuid4())
 
-            # Check if forward link already exists
+            # Check if a link with THIS label already exists for the pair. A
+            # row under a different label (e.g. auto:cooccurrence) must not
+            # short-circuit an explicit link request -- the unique index
+            # (idx_doc_links_unique_key) keys on label too, so an explicit
+            # and an auto row coexist on the same pair.
             existing = conn.execute(
-                "SELECT id FROM doc_links WHERE source_doc_id = ? AND target_doc_id = ?",
-                (source_doc_id, target_doc_id)
+                "SELECT id FROM doc_links WHERE source_doc_id = ? AND target_doc_id = ? AND label = ?",
+                (source_doc_id, target_doc_id, label)
             ).fetchone()
             if existing:
                 return {
@@ -4427,18 +4578,35 @@ class VaultStorage:
                 "already_existed": False,
             }
 
-    def unlink_doc(self, source_doc_id: str, target_doc_id: str) -> int:
-        """Remove all links between two documents (both directions).
+    def unlink_doc(self, source_doc_id: str, target_doc_id: str,
+                   label: Optional[str] = None) -> int:
+        """Remove links between two documents (both directions).
 
-        Returns the number of link rows deleted (0 if no link existed).
+        label=None (default) removes every manually-created link on the pair
+        but never an auto-generated one (label LIKE 'auto:%') -- a caller
+        that didn't ask to remove the system-maintained relationship
+        shouldn't lose it as a side effect. Pass an explicit label (e.g.
+        'auto:cooccurrence') to target an auto link specifically.
+
+        Returns the number of link rows deleted (0 if no matching link existed).
         """
         with self._db() as conn:
-            cursor = conn.execute(
-                """DELETE FROM doc_links
-                   WHERE (source_doc_id = ? AND target_doc_id = ?)
-                      OR (source_doc_id = ? AND target_doc_id = ?)""",
-                (source_doc_id, target_doc_id, target_doc_id, source_doc_id)
-            )
+            if label is None:
+                cursor = conn.execute(
+                    """DELETE FROM doc_links
+                       WHERE ((source_doc_id = ? AND target_doc_id = ?)
+                           OR (source_doc_id = ? AND target_doc_id = ?))
+                         AND label NOT LIKE 'auto:%'""",
+                    (source_doc_id, target_doc_id, target_doc_id, source_doc_id)
+                )
+            else:
+                cursor = conn.execute(
+                    """DELETE FROM doc_links
+                       WHERE ((source_doc_id = ? AND target_doc_id = ?)
+                           OR (source_doc_id = ? AND target_doc_id = ?))
+                         AND label = ?""",
+                    (source_doc_id, target_doc_id, target_doc_id, source_doc_id, label)
+                )
             return cursor.rowcount
 
     def archive_embedding_links(self) -> int:
@@ -4858,12 +5026,12 @@ class VaultStorage:
 
         try:
             import lancedb as _lancedb
-            from fastembed import TextEmbedding as _TE  # ONNX, no torch (spec A1)
 
             # Same BGE-small model as before, ONNX-quantized. Vectors differ
             # slightly from the old torch fp32 output, which is why the 0.1.16
-            # CHANGELOG recommends a one-time vault_rebuild_index.
-            model = _TE(_CROSS_LINK_EMBEDDING_MODEL)
+            # CHANGELOG recommends a one-time vault_rebuild_index. Cached
+            # singleton (SH-104967) so a bulk import loads it once, not per file.
+            model = _get_cross_link_embedder()
             q_vec = next(iter(model.embed([doc_text]))).tolist()
 
             lc_lance_db = _lancedb.connect(str(lc_lance_dir))
