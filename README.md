@@ -323,7 +323,7 @@ SQLite. Neither sends anything to an external server.
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.11-3.14
 - macOS or Linux
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) package manager
 - `mcp` and `pydantic` (auto-installed by `uv sync`)
