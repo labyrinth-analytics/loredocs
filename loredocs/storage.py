@@ -215,6 +215,18 @@ class DiscoveryError(Exception):
     """Raised when an env-var DB path override is set but invalid."""
 
 
+def _readonly_sqlite_uri(path: Path) -> str:
+    """Build a read-only SQLite URI with the filesystem path URL-encoded.
+
+    A bare f-string ``file:{path}?mode=ro`` breaks when the path contains
+    spaces or URI-special characters (``?``, ``#``, ``%``), which sqlite3
+    would then interpret as URI syntax instead of path text. quote() encodes
+    those while leaving ``/`` path separators intact (SH-105513 B3).
+    """
+    from urllib.parse import quote
+    return f"file:{quote(str(path), safe='/')}?mode=ro"
+
+
 def discover_product_db(product: str) -> Optional[Path]:
     """Return the DB path for another Lore product, or None if not installed.
 
@@ -251,7 +263,7 @@ def discover_product_db(product: str) -> Optional[Path]:
         # Validate it is a readable SQLite file
         try:
             import sqlite3 as _sqlite3
-            c = _sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+            c = _sqlite3.connect(_readonly_sqlite_uri(p), uri=True)
             c.execute("SELECT 1")
             c.close()
         except Exception as exc:
@@ -4987,7 +4999,7 @@ class VaultStorage:
             if lc_db:
                 import sqlite3 as _sqlite3
                 try:
-                    lc_conn = _sqlite3.connect(f"file:{lc_db}?mode=ro", uri=True, timeout=2.0)
+                    lc_conn = _sqlite3.connect(_readonly_sqlite_uri(lc_db), uri=True, timeout=2.0)
                     lc_conn.row_factory = _sqlite3.Row
                     session_exists = lc_conn.execute(
                         "SELECT 1 FROM sessions WHERE id = ?", (session_id,)
@@ -5120,7 +5132,7 @@ class VaultStorage:
 
             # Check LoreConvo DB for session opt-out
             import sqlite3 as _sqlite3
-            lc_conn = _sqlite3.connect(f"file:{lc_db}?mode=ro", uri=True)
+            lc_conn = _sqlite3.connect(_readonly_sqlite_uri(lc_db), uri=True)
             lc_conn.row_factory = _sqlite3.Row
             written = 0
             with self._db() as conn:

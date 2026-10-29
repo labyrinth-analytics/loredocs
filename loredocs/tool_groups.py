@@ -155,7 +155,10 @@ def validate_group_names(names: list[str]) -> list[str]:
     set of valid names if any entry is not a known group.
     """
     valid = set(TOOL_GROUPS.keys())
-    unknown = [n for n in names if n not in valid]
+    # Non-string entries (e.g. a nested list inside tool_groups) are unhashable
+    # and would raise TypeError on set membership; treat them as unknown so a
+    # malformed config fails closed instead of crashing (SH-105513 B2).
+    unknown = [n for n in names if not isinstance(n, str) or n not in valid]
     if unknown:
         raise ValueError(
             f"Unknown group name(s): {unknown}. "
@@ -194,6 +197,11 @@ def resolve_enabled_groups(config_path: Path | None = None) -> set[str]:
         try:
             config = json.loads(config_path.read_text(encoding="utf-8"))
         except Exception:
+            return {"core"}
+        # Valid JSON that is not an object (a top-level list or scalar) has no
+        # .get, so guard before dereferencing -- fail closed to core rather
+        # than raising AttributeError (SH-105513 B2).
+        if not isinstance(config, dict):
             return {"core"}
         raw = config.get("tool_groups")
         if "tool_groups" not in config:

@@ -705,8 +705,13 @@ _SYSTEM_DIRECTORIES = frozenset({
     "/", "/etc", "/usr", "/bin", "/sbin", "/opt", "/dev",
     "/proc", "/sys", "/boot", "/srv", "/mnt", "/media", "/root",
     "/System", "/Library", "/Applications", "/private/etc",
-    "/cores", "/Volumes",
+    "/cores", "/Volumes", "/var",
 })
+# Note: "/private/var" is deliberately absent. On macOS "/var" is a symlink to
+# "/private/var", whose "/private/var/folders" subtree holds per-user temp
+# directories -- a legitimate workspace location (see test_wg32_fixes.py), so
+# we refuse the "/var" root (resolved form on Linux) without over-blocking the
+# temp-dir carve-out.
 
 # Max attempts to allocate a non-colliding vault name in vault_open_workspace
 # before giving up on a concurrent-create race (SH-105511 F19).
@@ -715,8 +720,20 @@ _MAX_WORKSPACE_NAME_ATTEMPTS = 5
 
 def _is_system_directory(resolved_path: str) -> bool:
     """Return True if `resolved_path` (already expanduser().resolve()) is a
-    system directory that must not be treated as a workspace."""
-    return any(resolved_path == d or resolved_path.startswith(d + "/") for d in _SYSTEM_DIRECTORIES)
+    system directory that must not be treated as a workspace.
+
+    The comparison is case-insensitive on macOS (its default filesystem is
+    case-insensitive, so ``/USR/local`` and ``/Library/...`` resolve to the
+    same objects as their canonical spellings) and exact elsewhere (SH-105513
+    B4).
+    """
+    if sys.platform == "darwin":
+        path = resolved_path.casefold()
+        dirs = [d.casefold() for d in _SYSTEM_DIRECTORIES]
+    else:
+        path = resolved_path
+        dirs = _SYSTEM_DIRECTORIES
+    return any(path == d or path.startswith(d + "/") for d in dirs)
 
 
 def _forbid_unknown_tool_params(tool_name: str) -> None:

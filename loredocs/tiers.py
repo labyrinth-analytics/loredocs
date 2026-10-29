@@ -93,13 +93,21 @@ CONFIG_FILE = "config.json"
 
 
 def _load_config(root: Path) -> dict:
-    """Load config.json from root. Returns empty dict if missing."""
+    """Load config.json from root. Returns empty dict if missing or malformed.
+
+    A file that parses as valid JSON but is not an object (a top-level list or
+    scalar) is treated as absent, so writers like ``configure_tools`` can
+    overwrite it with a fresh dict instead of crashing on item assignment
+    (SH-105513 B2).
+    """
     path = root / CONFIG_FILE
     if path.exists():
         try:
-            return json.loads(path.read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             return {}
+        if isinstance(data, dict):
+            return data
     return {}
 
 
