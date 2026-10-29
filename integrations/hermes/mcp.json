@@ -4,7 +4,7 @@
     "loredocs": {
       "command": "uvx",
       "args": [
-        "loredocs==0.1.31"
+        "loredocs==0.1.32"
       ],
       "type": "stdio",
       "env": {

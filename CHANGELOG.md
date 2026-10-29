@@ -7,42 +7,128 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
-## Unreleased
+## v0.1.32 (2026-10-28)
 
-### Fixed: Notion import block-rendering fidelity (SH-104473, SH-104533)
+### Changed: Python floor 3.11; fastembed 0.9.1 + pillow 13.0.0 (SH-105347)
 
-- `loredocs/notion_import.py` `_render_block_text`: toggle blocks no longer
-  close `<details>` themselves; `_flatten_block` appends the closing tag
-  after flattening and indenting any children, so toggle children render
-  inside the `<details>` element instead of after it.
-- `_flatten_block` now drops empty (falsy) child-block text before joining,
-  so a table's `table_row` children (which render as `""`) no longer leave
-  blank indented lines under the table's placeholder.
-- Image/file/video/pdf/bookmark placeholders (no caption) now read
-  `block_data["type"]` to distinguish an uploaded file (`"uploaded file"`)
-  from a linked URL (`"external content"`); previously both said "external
-  content".
-- `child_database` blocks, previously unhandled and silently dropped, now
-  render a placeholder naming the database title, id, and the
-  `--database-id <id>` re-import hint.
+- `pyproject.toml`: `requires-python >=3.11` (was `>=3.10`); `fastembed==0.9.1`
+  (was 0.8.0) and an explicit `pillow==13.0.0` pin on fastembed's transitive
+  dependency. pillow 13.0.0 fixes 37 advisories in 12.3.0 and needs Python
+  >=3.11. `pip-audit -r requirements.txt`: no known vulnerabilities. fastembed
+  pins carry CVE-monitor comments (SH-104652).
 
-### Fixed: autolink backfill / relink tool (SH-104427, SH-104432)
+### Added: configurable MCP tool groups (SH-104672)
 
-- `loredocs/storage.py`: `_auto_link_doc_cooccurrences` now emits deterministic
-  link IDs via `_make_link_id` (was `uuid.uuid4()[:12]`). The UNIQUE logical-key
-  index already dedups on `(source_vault_id, source_doc_id, target_vault_id,
-  target_doc_id, label)`, so behavior is unchanged for forward writes; the
-  deterministic IDs make a purge+regenerate cycle produce byte-identical rows.
-- `VaultStorage.relink_autolinks(include_embeddings=True)`: new method that
-  purges every `label LIKE 'auto:%'` row in `doc_links` and regenerates them
-  with the current SH-103637 logic (same-vault cooccurrence, threshold 5,
-  embedding-on-text-not-name) for all non-deleted documents. Explicit links
-  (any label not matching `auto:%`) are never touched. Pro+Lance-index stores
-  also regenerate `auto:embedding` links when `include_embeddings=True`.
-  Idempotent: running twice yields a byte-identical `doc_links` table.
-- `scripts/relink_autolinks.py`: admin CLI mirroring `backfill_doc_embeddings.py`
-  with `--dry-run`, `--root`, `--include-embeddings` flags. Verifies zero
-  cross-vault auto-links remain after relink.
+- Core + optional tool-group registry. Optional groups are disabled via the
+  `configure_tools` MCP tool, `LOREDOCS_TOOL_GROUPS`, or `tool_groups` in
+  `config.json`; disabled tools are removed from the FastMCP registry at
+  startup with `remove_tool()` (uncallable, not hidden). Malformed config
+  fails closed to core + ALWAYS_ON.
+
+### Added: `vault_rebuild_index_status` (SH-104534, SH-104688, SH-104947 D-38)
+
+- The orphaned status tool is now registered. `storage.rebuild_lance_index`
+  returns the real `total_in_db` (all non-deleted docs, not the post-skip
+  count), and the ETA no longer extrapolates embedding-phase progress into the
+  untimed table-build/FTS step.
+
+### Added: autolink relink tool (SH-104427, SH-104432, SH-105175)
+
+- `_auto_link_doc_cooccurrences` emits deterministic IDs via `_make_link_id`
+  (was `uuid4()[:12]`).
+- `VaultStorage.relink_autolinks(include_embeddings=True)` purges every
+  `label LIKE 'auto:%'` row and regenerates with the SH-103637 logic; explicit
+  links are never touched. SH-105175 made it a fixed point: two phases
+  (rebuild every term index from up-front document frequencies, then link
+  against the finished index) instead of one per-doc loop that read a mix of
+  rebuilt and stale `doc_cooccurrences`.
+- `scripts/relink_autolinks.py`: admin CLI with `--dry-run`, `--root`,
+  `--include-embeddings`; verifies zero cross-vault auto-links afterwards.
+
+### Fixed: find_related ranking and coverage (SH-104433, SH-104947 D-10)
+
+- `find_related_docs` caps at 15 and orders explicit > cooccurrence >
+  embedding; within the cooccurrence bucket, by shared-term count computed
+  from `doc_cooccurrences` at read time, recency as tiebreak.
+- `query_loredocs.py --add-doc` delegates to `VaultStorage.add_document()`
+  instead of a hand-rolled INSERT that skipped
+  `_insert_doc_cooccurrences`/`_auto_link_doc_cooccurrences`, the cause of
+  near-zero link coverage in agent-templated vaults.
+- `cross_link_doc` caches one `TextEmbedding` instead of reloading the ONNX
+  model per document (SH-104967).
+
+### Fixed: link lifecycle and integrity (SH-104429, SH-104431, SH-104946, SH-104974, SH-104947 D-13x)
+
+- `remove_document` deletes `doc_links` (both directions) and
+  `doc_cooccurrences` in the same transaction; `delete_vault` deletes the
+  vault's `doc_cooccurrences` and calls `_lance_delete_safe` per doc.
+- `vault_verify` detects dangling `doc_links`/`doc_cooccurrences` and drops a
+  false "Missing version numbers" finding.
+- `move_document`: SQL fix (D-23) and `UPDATE OR IGNORE` on the `vault_id`
+  update so a UNIQUE logical-key collision with fresh auto-links no longer
+  aborts the move.
+- `link_doc`/`unlink_doc`: explicit links coexist with auto-links for the same
+  pair.
+
+### Fixed: search (SH-104947 D-14, SH-104538 D-35)
+
+- `sanitize_fts_query` checks for quoted phrases before tokenizing, restoring
+  FTS5 phrase search that was flattened to a bare AND query.
+- Malformed FTS5 (unbalanced double quote or parentheses) returns an error
+  string naming the problem.
+
+### Fixed: semantic index self-heal (SH-104947 D-16b)
+
+- `rebuild_lance_index` re-extracts from `current{ext}` when `extracted.txt`
+  is missing instead of skipping the doc (`missing_extracted_txt`).
+
+### Fixed: cross-product session links (SH-104536, SH-104537, SH-104947 D-31)
+
+- `get_cross_product_links()` queries both directions with a UNION, so
+  `vault_get_session_links` and `vault_get_linked_sessions` agree.
+- `vault_link_session` checks the session exists in LoreConvo (read-only
+  connection; degrades open if LoreConvo is unavailable) and caps manual links
+  per doc at 500 (`_CROSS_LINK_CAP_PER_DOC`).
+- Discovery skips a LoreConvo session whose row is deleted/expired but still
+  has a stale vector in `sessions.lance`.
+
+### Fixed: input validation and path safety (SH-104430, SH-104538, SH-104685, SH-104812)
+
+- `vault_export` refuses absolute paths and paths escaping the server's
+  working directory.
+- `create_vault` refuses a duplicate vault name (`ValueError`).
+- `DocAddInput` no longer sets `str_strip_whitespace`, preserving trailing
+  newlines (D-05).
+- `loredocs_onboard` is a no-op on a store with vaults but no Config vault
+  (D-34); directory import is idempotent (D-27).
+- `_is_system_directory` rejects descendants of `_SYSTEM_DIRECTORIES`, not
+  only exact matches; `vault_open_workspace` refuses them (D-29).
+
+### Fixed: import (SH-104472, SH-104474, SH-104473, SH-104533)
+
+- CLI: `@cli.group(name='import')`. Click 8.3 registered `import_()` as
+  `import-`.
+- `storage.import_directory` stores each file's relative path in notes and
+  takes `skip_config_files` (default on); `vault_import_dir` passes it
+  through; `query_loredocs.py --include-config-files`.
+- `notion_import.py`: toggle children render inside `<details>`
+  (`_flatten_block` appends the closing tag); falsy child text is dropped so
+  `table_row` children leave no blank lines; image/file placeholders read
+  `block_data["type"]` (`uploaded file` vs `external content`);
+  `child_database` blocks render a placeholder with title, id, and the
+  `--database-id <id>` hint.
+
+### Changed: packaging and metadata (SH-104371, SH-104686, SH-104850, SH-105439, SH-104538)
+
+- Hermes portable manifests (`plugin.json`, `mcp.json` with `type: stdio`)
+  are generated into `integrations/hermes/`; the subdir `pyproject.toml` was
+  removed.
+- `compat_check.py` reports `loredocs.__version__` as `product_version`;
+  version metadata falls back cleanly on `PackageNotFoundError`.
+- `server.json` (MCP Registry) version surfaces are synced by the release
+  inventory; `glama.json` added for Glama maintainer recognition.
+- `check_doc_sync.py` detects every tool-count phrasing in README/INSTALL
+  (SH-105036).
 
 ## v0.1.31 (2026-10-16)
 
