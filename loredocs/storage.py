@@ -2064,10 +2064,14 @@ class VaultStorage:
             current_count = int(row["cnt"])
         self.enforcer.check_vault_count(current_count)
 
-        # Check for duplicate vault name
+        # Check for duplicate vault name. Matching is case-insensitive and
+        # includes archived vaults (an archived vault still reserves its name)
+        # -- SH-105511 F20: duplicate checks were case-sensitive while
+        # find_vault_by_name is case-insensitive, so "App" and "app" could
+        # coexist and make name lookups ambiguous.
         with self._db() as conn:
             existing = conn.execute(
-                "SELECT id FROM vaults WHERE name = ?",
+                "SELECT id FROM vaults WHERE LOWER(name) = LOWER(?)",
                 (name,)
             ).fetchone()
             if existing:
@@ -2185,19 +2189,20 @@ class VaultStorage:
     def unique_vault_name(self, base: str) -> str:
         """Return base, or "base (N)" for the lowest N >= 2 not already taken.
 
-        Uses the same exact-name match as create_vault's duplicate check
-        (archived vaults included), so the result is always accepted
-        (SH-105506).
+        Matching is case-insensitive and includes archived vaults, mirroring
+        create_vault's duplicate check, so the result is always accepted
+        (SH-105506, SH-105511 F20). Vault names are unique case-insensitively:
+        "App" and "app" are the same name.
         """
         with self._db() as conn:
-            taken = {r["name"] for r in conn.execute(
-                "SELECT name FROM vaults WHERE name = ? OR name LIKE ?",
+            taken = {r["name"].lower() for r in conn.execute(
+                "SELECT name FROM vaults WHERE LOWER(name) = LOWER(?) OR name LIKE ?",
                 (base, base + " (%)"),
             )}
-        if base not in taken:
+        if base.lower() not in taken:
             return base
         n = 2
-        while f"{base} ({n})" in taken:
+        while f"{base} ({n})".lower() in taken:
             n += 1
         return f"{base} ({n})"
 

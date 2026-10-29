@@ -4,6 +4,27 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## Unreleased
+
+### Changed
+
+- `vault_export` now writes to LoreDocs' exports folder (`~/.loredocs/exports/`
+  by default, or `$LOREDOCS_ROOT/exports/` when set) instead of the program's
+  working directory, and its success message reports the full path. A `~` path
+  is refused with a clear error.
+- Vault names are now unique regardless of letter case: creating a vault named
+  "app" when "App" already exists is refused, and opening a workspace whose
+  folder name matches an existing vault (archived or not) creates a
+  "name (2)"-style vault instead of failing.
+- The fallback script's `--create-vault` now refuses duplicate vault names,
+  matching the MCP tools.
+
+### Fixed
+
+- Onboarding no longer fails when an archived vault already holds a name it
+  wants to use (for example a "Config" vault); it creates a fresh, uniquely
+  named vault instead.
+
 ## v0.1.32 (2026-10-28)
 
 ### Changed

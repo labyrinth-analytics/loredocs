@@ -423,9 +423,10 @@ Export my "my-notes" vault to loredocs-export/my-notes
 
 This calls `vault_export`, which writes each document to a file you can read
 without LoreDocs installed. The directory must be a relative path: it is
-created inside the LoreDocs server's working directory, which your client
-sets (often your project folder or home directory). Absolute paths and paths
-that would land outside that directory are refused.
+created inside LoreDocs' exports folder (`~/.loredocs/exports/`, or
+`$LOREDOCS_ROOT/exports/` when `LOREDOCS_ROOT` is set). Absolute paths, `~`
+paths, and paths that would land outside that folder are refused, and the
+success message reports the full resolved path.
 
 **Export a manifest (all vaults, machine-readable):**
 

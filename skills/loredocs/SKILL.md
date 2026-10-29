@@ -109,7 +109,7 @@ so Claude has a map of available docs without loading everything.
 ## Import and Export
 
 - `vault_import_dir("vault-name", dir_path="/path/to/dir")` - Bulk-import a directory of files
-- `vault_export(doc_id, output_path="...")` - Export a single doc to disk
+- `vault_export("vault-name", directory="relative-dir")` - Export all docs in a vault to a directory under the LoreDocs exports folder (`~/.loredocs/exports/`)
 - `vault_export_manifest("vault-name")` - Export vault metadata as JSON manifest
 
 ## Document Links

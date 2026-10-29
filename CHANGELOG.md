@@ -7,6 +7,31 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
+## Unreleased
+
+### Changed: vault-name uniqueness is now case-insensitive (SH-105511)
+
+- `storage.create_vault` duplicate check and `unique_vault_name` now match
+  `find_vault_by_name`'s case-insensitive lookup (`LOWER(name) = LOWER(?)`),
+  including archived vaults. "App" and "app" can no longer coexist (F20).
+- `onboard_tool._find_or_create_vault` catches the duplicate-name `ValueError`
+  and retries with a `unique_vault_name`-derived name, so an archived vault
+  holding a name onboarding creates no longer raises (F16).
+- `scripts/query_loredocs.py --create-vault` performs the same case-insensitive
+  duplicate check before inserting (F17).
+- `vault_open_workspace` and the fallback `--workspace` retry with a freshly
+  derived unique name when a concurrent create wins the race between
+  `unique_vault_name` and `create_vault` (F19/B14).
+
+### Changed: vault_export anchors on the data root, not cwd (SH-105512)
+
+- `server._get_export_root` returns `storage.root / "exports"`; `vault_export`
+  passes it to `_validate_export_directory` so a relative export directory
+  lands under `$LOREDOCS_ROOT/exports` (or `~/.loredocs/exports`), never the
+  server's working directory.
+- `_validate_export_directory` refuses a literal `~` prefix.
+- `vault_export` success message reports the resolved output path.
+
 ## v0.1.32 (2026-10-28)
 
 ### Changed: Python floor 3.11; fastembed 0.9.1 + pillow 13.0.0 (SH-105347)

@@ -708,6 +708,10 @@ _SYSTEM_DIRECTORIES = frozenset({
     "/cores", "/Volumes",
 })
 
+# Max attempts to allocate a non-colliding vault name in vault_open_workspace
+# before giving up on a concurrent-create race (SH-105511 F19).
+_MAX_WORKSPACE_NAME_ATTEMPTS = 5
+
 
 def _is_system_directory(resolved_path: str) -> bool:
     """Return True if `resolved_path` (already expanduser().resolve()) is a
@@ -1170,17 +1174,30 @@ async def vault_open_workspace(
         }, indent=2)
 
     # SH-105506: vault names are unique, so a folder whose name is already a
-    # vault gets "name (2)" rather than failing.
-    vault_name = storage.unique_vault_name(Path(resolved).name or "Workspace")
-    try:
-        vault = storage.create_vault(
-            name=vault_name,
-            description=params.description or f"Workspace vault for {resolved}",
-            workspace_path=resolved,
-        )
-    except TierLimitError as exc:
-        hint = f" {exc.upgrade_hint}" if exc.upgrade_hint else ""
-        return f"Error: {exc}{hint}"
+    # vault gets "name (2)" rather than failing. SH-105511 F19/B14:
+    # unique_vault_name() and create_vault() open separate connections, so a
+    # concurrent create in the gap makes create_vault raise a duplicate-name
+    # ValueError; retry with a freshly derived unique name rather than leaking
+    # the raw exception.
+    base_name = Path(resolved).name or "Workspace"
+    vault = None
+    last_error = None
+    for _ in range(_MAX_WORKSPACE_NAME_ATTEMPTS):
+        vault_name = storage.unique_vault_name(base_name)
+        try:
+            vault = storage.create_vault(
+                name=vault_name,
+                description=params.description or f"Workspace vault for {resolved}",
+                workspace_path=resolved,
+            )
+            break
+        except TierLimitError as exc:
+            hint = f" {exc.upgrade_hint}" if exc.upgrade_hint else ""
+            return f"Error: {exc}{hint}"
+        except ValueError as exc:
+            last_error = exc
+    if vault is None:
+        return f"Error: {last_error}"
 
     return json.dumps({
         "status": "created",
@@ -2847,16 +2864,23 @@ def _validate_export_directory(directory: str, export_root: Optional[Path] = Non
     vault copy outside the intended directory, and an absolute '/etc/...' was
     refused only by OS permissions, not by the tool. Resolve the target to a
     canonical path first and require it to stay inside `export_root` (the
-    server's working directory by default). Absolute inputs are rejected
-    outright -- they are never "inside" a relative root -- and symlinks that
-    resolve outside the root are caught by the canonicalization + containment
-    check. Returns the canonical Path on success; raises ValueError otherwise.
+    caller supplies the fixed product exports directory). Absolute inputs are
+    rejected outright -- they are never "inside" a relative root -- and
+    symlinks that resolve outside the root are caught by the canonicalization
+    + containment check. A literal '~' prefix is rejected: the anchor is
+    already a fixed product directory, so '~' has no unambiguous meaning.
+    Returns the canonical Path on success; raises ValueError otherwise.
     """
     raw = Path(directory)
     if raw.is_absolute():
         raise ValueError(
             "Error: absolute export paths are not allowed; provide a path "
             "inside the server's working directory."
+        )
+    if str(directory).startswith("~"):
+        raise ValueError(
+            "Error: '~' is not supported in export paths; provide a relative "
+            "directory name."
         )
     root = (export_root or Path.cwd()).resolve()
     resolved = (root / raw).resolve()
@@ -2869,14 +2893,26 @@ def _validate_export_directory(directory: str, export_root: Optional[Path] = Non
     return resolved
 
 
+def _get_export_root(storage: VaultStorage) -> Path:
+    """Return the fixed directory vault exports anchor on.
+
+    SH-105512 / Brock B1: exports anchor on the LoreDocs data root's `exports/`
+    subdirectory (i.e. $LOREDOCS_ROOT/exports, or ~/.loredocs/exports), not the
+    server's working directory. Desktop launchers often start the server with
+    cwd / or $HOME, so a cwd-relative export landed in a sensitive place and a
+    prompt-injected agent could plant a file there.
+    """
+    return storage.root / "exports"
+
+
 class ExportInput(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     vault: str = Field(..., description="Vault ID or name to export", min_length=1)
     directory: str = Field(
         ...,
-        description="Directory to export into, relative to the server's "
-                    "working directory (must not escape it)",
+        description="Directory to export into, relative to the LoreDocs "
+                    "exports directory (must not escape it)",
     )
 
 
@@ -2898,7 +2934,9 @@ async def vault_export(ctx: Context, vault: str, directory: str) -> str:
         return f"Error: Vault '{params.vault}' not found."
 
     try:
-        output_dir = _validate_export_directory(params.directory)
+        output_dir = _validate_export_directory(
+            params.directory, export_root=_get_export_root(storage)
+        )
     except ValueError as exc:
         return str(exc)
 
@@ -2906,7 +2944,7 @@ async def vault_export(ctx: Context, vault: str, directory: str) -> str:
 
     if count == 0:
         return f"No documents to export from vault '{vault['name']}'."
-    return f"Exported {count} documents from vault '{vault['name']}' to {params.directory}"
+    return f"Exported {count} documents from vault '{vault['name']}' to {output_dir}"
 
 
 # ---------------------------------------------------------------------------

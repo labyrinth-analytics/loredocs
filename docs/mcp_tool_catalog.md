@@ -449,7 +449,7 @@ Export all documents from a vault to a local directory.
 
 **When Claude uses it:** When you say "export this vault to a folder."
 
-**Key parameters:** `vault_id` (required), `output_directory` (required)
+**Key parameters:** `vault` (required), `directory` (required, relative to `~/.loredocs/exports/`)
 
 ---
 

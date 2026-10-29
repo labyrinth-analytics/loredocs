@@ -91,6 +91,10 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Max attempts to allocate a non-colliding vault name in cmd_workspace before
+# giving up on a concurrent-create race (SH-105511 F19).
+_MAX_WORKSPACE_NAME_ATTEMPTS = 5
+
 # Load the shared FTS sanitizer by file location -- no package install, no
 # sys.path mutation. loredocs/fts_query.py is stdlib-only for this reason.
 # This is the same definition storage.py uses; never re-implement it here.
@@ -833,6 +837,22 @@ def cmd_create_vault(args):
         except (json.JSONDecodeError, TypeError):
             linked_projects = [args.linked_projects]
 
+    # SH-105511 F17: --create-vault must refuse duplicate names with the same
+    # case-insensitive rule as VaultStorage.create_vault (archived vaults keep
+    # their names reserved), so the fallback matches the MCP surface.
+    existing = conn.execute(
+        "SELECT id FROM vaults WHERE LOWER(name) = LOWER(?)",
+        (args.name,)
+    ).fetchone()
+    if existing:
+        print(
+            f"Error: Vault name '{args.name}' already exists. "
+            "Please choose a unique name.",
+            file=sys.stderr,
+        )
+        conn.close()
+        sys.exit(1)
+
     vault_id = str(uuid.uuid4())[:12]
     now = datetime.now(timezone.utc).isoformat()
     description = args.description or ""
@@ -902,16 +922,28 @@ def cmd_workspace(args):
         print(f"  doc_count: {existing.get('doc_count', 0)}")
         return
 
-    vault_name = storage.unique_vault_name(Path(resolved).name or "Workspace")  # SH-105506
-    try:
-        vault = storage.create_vault(
-            name=vault_name,
-            description=args.description or f"Workspace vault for {resolved}",
-            workspace_path=resolved,
-        )
-    except TierLimitError as exc:
-        hint = f" {exc.upgrade_hint}" if getattr(exc, "upgrade_hint", "") else ""
-        print(f"Error: {exc}{hint}", file=sys.stderr)
+    # SH-105511 F19/B14: unique_vault_name() and create_vault() open separate
+    # connections; a concurrent create in the gap makes create_vault raise a
+    # duplicate-name ValueError. Retry with a freshly derived unique name.
+    vault = None
+    last_error = None
+    for _ in range(_MAX_WORKSPACE_NAME_ATTEMPTS):
+        vault_name = storage.unique_vault_name(Path(resolved).name or "Workspace")
+        try:
+            vault = storage.create_vault(
+                name=vault_name,
+                description=args.description or f"Workspace vault for {resolved}",
+                workspace_path=resolved,
+            )
+            break
+        except TierLimitError as exc:
+            hint = f" {exc.upgrade_hint}" if getattr(exc, "upgrade_hint", "") else ""
+            print(f"Error: {exc}{hint}", file=sys.stderr)
+            sys.exit(1)
+        except ValueError as exc:
+            last_error = exc
+    if vault is None:
+        print(f"Error: {last_error}", file=sys.stderr)
         sys.exit(1)
 
     print(f"Created workspace vault '{vault['name']}'")

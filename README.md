@@ -283,7 +283,7 @@ LoreDocs provides 49 MCP tools by default (50 with the `notion` extra installed;
 | `vault_import_dir` | Import a directory of files into a vault |
 | `vault_import_notion` | Import Notion pages and databases into a vault (one-time, no live sync) |
 | `vault_import_notion_setup` | Report Notion import readiness and how to enable it (read-only) |
-| `vault_export` | Export a document to a file on disk |
+| `vault_export` | Export all documents from a vault to a directory under the LoreDocs exports folder |
 | `vault_export_manifest` | Export vault metadata as a JSON manifest |
 
 ### Document Links (2 tools)
