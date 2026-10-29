@@ -53,7 +53,9 @@ none has been reconstructed.
 - `query_loredocs.py --add-doc` delegates to `VaultStorage.add_document()`
   instead of a hand-rolled INSERT that skipped
   `_insert_doc_cooccurrences`/`_auto_link_doc_cooccurrences`, the cause of
-  near-zero link coverage in agent-templated vaults.
+  near-zero link coverage in agent-templated vaults. Consequence: `--add-doc`
+  now requires the `loredocs` package importable by the running interpreter;
+  the 0.1.31 hand-rolled path worked without it.
 - `cross_link_doc` caches one `TextEmbedding` instead of reloading the ONNX
   model per document (SH-104967).
 
@@ -96,13 +98,24 @@ none has been reconstructed.
 
 - `vault_export` refuses absolute paths and paths escaping the server's
   working directory.
-- `create_vault` refuses a duplicate vault name (`ValueError`).
+- `create_vault` refuses a duplicate vault name (`ValueError`; exact match,
+  archived vaults included). The `vault_create` tool returns it as an
+  `Error: ...` string. `VaultStorage.unique_vault_name()` returns the base
+  name or `"base (N)"`; `vault_open_workspace` and `query_loredocs.py
+  --workspace` use it, so a folder named like an existing vault no longer
+  fails (SH-105506, Meg release QA F1/F10).
 - `DocAddInput` no longer sets `str_strip_whitespace`, preserving trailing
   newlines (D-05).
 - `loredocs_onboard` is a no-op on a store with vaults but no Config vault
   (D-34); directory import is idempotent (D-27).
 - `_is_system_directory` rejects descendants of `_SYSTEM_DIRECTORIES`, not
-  only exact matches; `vault_open_workspace` refuses them (D-29).
+  only exact matches; `vault_open_workspace` refuses them (D-29). The set
+  covers `/`, `/etc`, `/usr`, `/bin`, `/sbin`, `/opt`, `/dev`, `/proc`,
+  `/sys`, `/boot`, `/srv`, `/mnt`, `/media`, `/root`, `/System`, `/Library`,
+  `/Applications`, `/private/etc`, `/cores`, `/Volumes`, so `/usr/local`,
+  external volumes and WSL `/mnt/c` are refused too.
+- INSTALL.md export example uses a relative directory and states the
+  working-directory rule (SH-105506).
 
 ### Fixed: import (SH-104472, SH-104474, SH-104473, SH-104533)
 

@@ -13,9 +13,20 @@ What changed in each release, written for users (not developers).
   that fixes 37 published security advisories.
 - Creating a vault with the same name as an existing vault is now refused
   with a clear message, instead of silently creating a second vault with
-  that name.
+  that name. Archived vaults keep their names reserved. Opening a workspace
+  whose folder name is already a vault creates "name (2)" instead.
 - `vault_export` now refuses absolute paths and any path that would land
-  outside the server's working directory.
+  outside the server's working directory. Give it a relative directory; see
+  INSTALL.md.
+- Opening a workspace is refused for system locations: `/etc`, `/usr`
+  (including `/usr/local`), `/opt`, `/srv`, `/mnt`, `/media`, `/Volumes`,
+  `/root`, `/System`, `/Library`, `/Applications` and everything under
+  them. On WSL this includes Windows drives under `/mnt`. Keep workspaces
+  under your home directory.
+- The fallback script's `--add-doc` now needs the LoreDocs package
+  importable by the Python that runs it (`pip install loredocs`). If you
+  only use LoreDocs as a Claude plugin, the plugin's own Python is not on
+  your PATH, so install the package or use the MCP tools to add documents.
 
 ### Added
 
@@ -70,8 +81,6 @@ What changed in each release, written for users (not developers).
 - Running onboarding on a LoreDocs install that already has vaults no longer
   adds a setup vault.
 - Importing the same folder twice no longer creates duplicate documents.
-- Opening a workspace inside a system directory (for example under `/etc`)
-  is refused.
 - Trailing newlines in added documents are preserved.
 - The `loredocs import` command works again with Click 8.3.
 - The Hermes plugin manifests now live in `integrations/hermes/`.
