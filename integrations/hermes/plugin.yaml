@@ -1,8 +1,19 @@
 name: loredocs
-version: "0.1.32"
-description: "LoreDocs - searchable, organized, version-tracked knowledge base for your AI projects. Store documents, search across them, and inject context into any agent session."
+version: "0.1.33"
+description: LoreDocs - searchable, organized, version-tracked knowledge base for
+  your AI projects. Store documents, search across them, and inject context into any
+  agent session.
 python_dependencies: []
 requires_env:
-  - name: LOREDOCS_ROOT
-    description: "Override default data directory for LoreDocs vaults"
-    required: false
+- name: LOREDOCS_ROOT
+  description: Override default data directory for LoreDocs vaults
+  required: false
+- name: LOREDOCS_PRO
+  description: Pro license key (LAB-... format).  Optional -- press Enter to skip;
+    free tier works without it.  An existing on-disk licence is used if unset.  Activates
+    Pro tier for Hermes-native access to Pro-only tools (semantic search, auto-discovered
+    relationships, etc.).
+  required: false
+  secret: true
+  default: ''
+requires_hermes: '>=0.21.1'

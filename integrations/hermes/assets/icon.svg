@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- LoreDocs: Gothic grimoire with vault lock emblem -->
+  <!-- Background: dark stone rounded square -->
+  <rect width="128" height="128" rx="24" fill="#1a1028"/>
+  <rect width="128" height="128" rx="24" fill="none" stroke="#7b2d8e" stroke-width="1.5" opacity="0.6"/>
+
+  <!-- Grimoire / tome -->
+  <!-- Book spine -->
+  <rect x="32" y="24" width="8" height="80" rx="2" fill="#c9a84c" opacity="0.8"/>
+  <!-- Book front cover -->
+  <path d="M40 24 L92 24 C95 24 96 26 96 28 L96 100 C96 102 95 104 92 104 L40 104 Z" fill="#2a1a3e" stroke="#c9a84c" stroke-width="1"/>
+
+  <!-- Vault lock emblem (diamond with keyhole) -->
+  <g transform="translate(66, 58)">
+    <path d="M0 -16 L16 0 L0 16 L-16 0 Z" fill="none" stroke="#c9a84c" stroke-width="1.5"/>
+    <circle cx="0" cy="-3" r="4" fill="#c9a84c" opacity="0.9"/>
+    <rect x="-1.5" y="0" width="3" height="8" rx="1" fill="#c9a84c" opacity="0.7"/>
+  </g>
+
+  <!-- Corner rune flourishes -->
+  <path d="M26 18 L26 26 M22 22 L30 22" stroke="#9b4dae" stroke-width="1.5" stroke-linecap="round" opacity="0.8"/>
+  <path d="M102 18 L102 26 M98 22 L106 22" stroke="#9b4dae" stroke-width="1.5" stroke-linecap="round" opacity="0.8"/>
+  <path d="M26 102 L26 110 M22 106 L30 106" stroke="#9b4dae" stroke-width="1.5" stroke-linecap="round" opacity="0.8"/>
+  <path d="M102 102 L102 110 M98 106 L106 106" stroke="#9b4dae" stroke-width="1.5" stroke-linecap="round" opacity="0.8"/>
+
+  <!-- Page edges visible -->
+  <line x1="42" y1="28" x2="42" y2="100" stroke="#9b4dae" stroke-width="0.5" opacity="0.4"/>
+  <line x1="44" y1="30" x2="44" y2="98" stroke="#9b4dae" stroke-width="0.5" opacity="0.25"/>
+</svg>
