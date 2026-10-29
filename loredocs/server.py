@@ -3562,6 +3562,73 @@ def vault_get_linked_sessions(ctx: Context, session_id: str, limit: int = 5) -> 
 
 
 # ---------------------------------------------------------------------------
+# WG-32 D-31: Maintenance -- prune dangling auto links / trim over-cap docs
+# ---------------------------------------------------------------------------
+
+@mcp.tool(title="Prune Dangling Auto Links", name="vault_prune_dangling_links")
+def vault_prune_dangling_links(ctx: Context, execute: bool = False) -> dict:
+    """Find and optionally delete dangling auto cross-product links.
+
+    A dangling link is one where the LoreConvo session (source or target)
+    no longer exists.  Only link_type='auto' rows are deleted; manual links
+    are never touched.  Dry-run by default (execute=False).
+
+    A timestamped backup of loredocs.db is taken before any deletion.
+
+    REFUSES to run if the LoreConvo DB cannot be discovered or if its
+    sessions table is empty -- a wrong path would make every link look
+    dangling and wipe all of them.
+
+    Args:
+        execute  -- if True, delete dangling auto links (default False)
+
+    Returns dict with:
+        ok                 -- bool
+        total_auto         -- total auto links in the table
+        dangling_auto      -- dangling auto links found
+        dangling_manual    -- dangling manual links (left alone)
+        over_cap_docs      -- docs with > 500 auto links
+        deleted            -- rows deleted (0 if dry run)
+        backup_path        -- str if a backup was taken
+        error              -- str if ok is False
+    """
+    storage = _get_storage(ctx)
+    try:
+        return storage.prune_dangling_auto_links(execute=execute)
+    except DiscoveryError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@mcp.tool(title="Trim Over-Cap Auto Links", name="vault_trim_overcap_links")
+def vault_trim_overcap_links(ctx: Context, execute: bool = False) -> dict:
+    """Trim each doc's auto session links to the top 500 by similarity_score.
+
+    Manual links are never counted against or removed by the trim.
+    Dry-run by default (execute=False).
+
+    A timestamped backup of loredocs.db is taken before any deletion.
+
+    REFUSES to run if the LoreConvo DB cannot be discovered or if its
+    sessions table is empty.
+
+    Args:
+        execute  -- if True, trim over-cap docs (default False)
+
+    Returns dict with:
+        ok             -- bool
+        over_cap_docs  -- count of docs trimmed
+        total_trimmed  -- rows removed (0 if dry run)
+        backup_path    -- str if a backup was taken
+        error          -- str if ok is False
+    """
+    storage = _get_storage(ctx)
+    try:
+        return storage.trim_overcap_auto_links(execute=execute)
+    except DiscoveryError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+# ---------------------------------------------------------------------------
 # Compatibility guard
 # ---------------------------------------------------------------------------
 

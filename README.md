@@ -427,6 +427,17 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
+## Unreleased
+
+### Added
+
+- New maintenance command `scripts/cleanup_dangling_cross_links.py` removes
+  cross-product links to LoreConvo sessions that no longer exist (dry-run by
+  default; pass `--execute` to delete, `--trim` to also trim over-cap docs to
+  the 500-link cap). A timestamped backup is taken before any deletion. The tool
+  refuses to run if LoreConvo is not installed or its sessions table is empty.
+  See INSTALL.md for details.
+
 ## v0.1.32 (2026-10-28)
 
 ### Changed

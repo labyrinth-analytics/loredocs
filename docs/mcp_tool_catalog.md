@@ -505,7 +505,7 @@ Return the current license tier name and the raw license key status (present/abs
 
 ---
 
-## Cross-Product Session Linking (3 tools)
+## Cross-Product Session Linking (5 tools)
 
 ### `vault_link_session`
 
@@ -534,6 +534,26 @@ Return LoreDocs documents linked to a given LoreConvo session. Searches both dir
 **When Claude uses it:** When you ask "what documents are linked to this session?" or "show me docs connected to that conversation."
 
 **Key parameters:** `session_id` (required), `limit` (default 5)
+
+---
+
+### `vault_prune_dangling_links`
+
+Remove cross-product links to LoreConvo sessions that no longer exist. By default runs in dry-run mode (reports counts without deleting). Pass `execute=True` to delete dangling auto links. Manual links are never deleted. A timestamped backup of `loredocs.db` is taken before any deletion. Refuses to run if the LoreConvo database cannot be found or its sessions table is empty.
+
+**When Claude uses it:** When you say "clean up broken session links" or "remove links to deleted conversations."
+
+**Key parameters:** `execute` (default `False`)
+
+---
+
+### `vault_trim_over_cap_links`
+
+Trim each document's auto session links to the top 500 by similarity score. By default runs in dry-run mode. Pass `execute=True` to trim. Manual links are never counted or removed. A timestamped backup is taken before any deletion.
+
+**When Claude uses it:** When you say "trim my document links" or "enforce the session link limit."
+
+**Key parameters:** `execute` (default `False`)
 
 ---
 
@@ -602,3 +622,5 @@ List which groups of LoreDocs tools the server exposes, or choose a different se
 | 47 | `vault_import_notion_setup` | Check Notion import readiness (token, dependencies) |
 | 48 | `vault_import_notion` | Import Notion pages and databases into a vault |
 | 49 | `configure_tools` | List or choose which groups of tools the server exposes |
+| 50 | `vault_prune_dangling_links` | Remove cross-product links to LoreConvo sessions that no longer exist (Pro) |
+| 51 | `vault_trim_over_cap_links` | Trim each doc's auto session links to the top 500 by similarity (Pro) |

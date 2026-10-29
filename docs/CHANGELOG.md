@@ -6,6 +6,16 @@ What changed in each release, written for users (not developers).
 
 ## Unreleased
 
+### Added
+
+- New maintenance command `scripts/cleanup_dangling_cross_links.py` removes
+  cross-product links to LoreConvo sessions that no longer exist. Run it in
+  dry-run mode by default; pass `--execute` to delete. A timestamped backup
+  of `loredocs.db` is taken before any deletion. Pass `--trim` to also trim
+  docs whose auto session links exceed 500 (the new lifetime cap) back to the
+  top 500 by similarity. The tool refuses to run if LoreConvo is not installed
+  or its sessions table is empty.
+
 ### Changed
 
 - `vault_export` now writes to LoreDocs' exports folder (`~/.loredocs/exports/`

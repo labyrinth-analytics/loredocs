@@ -539,10 +539,35 @@ You only need to run this once after upgrading. New documents added after the
 upgrade get correct auto-links automatically. Point `--root` at a custom data
 directory if your `LOREDOCS_ROOT` is not `~/.loredocs/`.
 
+### Dangling cross-product link cleanup
+
+If you run both LoreDocs and LoreConvo, auto-discovered session links can become
+dangling when a LoreConvo session is deleted or expires but its entry remains in
+LoreDocs' `cross_product_links` table. A maintenance command cleans these up:
+
+```bash
+# Dry run (default): report counts without deleting anything
+python scripts/cleanup_dangling_cross_links.py
+
+# Delete dangling auto links (takes a timestamped backup first)
+python scripts/cleanup_dangling_cross_links.py --execute
+
+# Also trim docs whose auto session links exceed 500 (dry-run)
+python scripts/cleanup_dangling_cross_links.py --trim
+
+# Execute both prune and trim
+python scripts/cleanup_dangling_cross_links.py --trim --execute
+```
+
+The tool refuses to run if the LoreConvo database cannot be found or its
+sessions table is empty (a safety guard against wiping all links). Manual links
+are never deleted or counted against the 500-link cap. The prune is idempotent:
+running it again after `--execute` reports zero dangling links.
+
 ---
 
 ## More Documentation
 
 - [Quickstart Guide](docs/quickstart.md) -- get up and running in 5 minutes
-- [MCP Tool Catalog](docs/mcp_tool_catalog.md) -- all 49 tools explained in plain English
+- [MCP Tool Catalog](docs/mcp_tool_catalog.md) -- all 51 tools explained in plain English
 - [Changelog](docs/CHANGELOG.md) -- what changed in each release

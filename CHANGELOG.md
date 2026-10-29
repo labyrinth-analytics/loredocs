@@ -9,6 +9,29 @@ none has been reconstructed.
 
 ## Unreleased
 
+### Added: D-31 dangling-link cleanup, read-path filter, lifetime auto-link cap (SH-105578)
+
+- `storage.get_cross_product_links()`: omits loreconvo endpoints whose session
+  id is absent from the LoreConvo sessions table (one batched lookup, not N
+  queries). Returns links unfiltered when the LoreConvo DB cannot be discovered.
+- `storage.cross_link_doc()`: lifetime cap -- never grows a doc's auto session
+  links past 500 (`_LIFETIME_AUTO_LINK_CAP`). When at cap, replaces the
+  lowest-similarity existing auto link only if the new one scores higher.
+- `storage.prune_dangling_auto_links(execute=False)`: deletes cross_product_links
+  rows with `link_type='auto'` whose LoreConvo session no longer exists. Never
+  deletes manual links. Dry-run by default; takes a timestamped backup before
+  any delete. Refuses to run if LoreConvo DB is undiscoverable or its sessions
+  table is empty. Idempotent.
+- `storage.trim_overcap_auto_links(execute=False)`: trims each doc's auto session
+  links to the top 500 by similarity_score (deterministic tie-break: created_at
+  then target_id). Manual links are never counted or removed.
+- `server.vault_prune_dangling_links` / `vault_trim_overcap_links`: MCP tools
+  wrapping the above storage methods (dry-run by default, `execute` flag for
+  actual deletion).
+- `scripts/cleanup_dangling_cross_links.py`: rewritten as the CLI/fallback
+  maintenance command with dry-run default, `--execute` flag, `--trim` flag,
+  backup, refusal, and idempotency.
+
 ### Changed: vault-name uniqueness is now case-insensitive (SH-105511)
 
 - `storage.create_vault` duplicate check and `unique_vault_name` now match

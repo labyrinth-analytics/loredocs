@@ -180,6 +180,7 @@ _CROSS_LINK_THRESHOLD = 0.80   # cosine similarity floor
 _CROSS_LINK_L2_THRESHOLD = 0.6  # L2-normalized distance ceiling (cosine 0.80 ~ dist 0.632)
 _CROSS_LINK_CAP = 5             # max cross-product links per session/doc
 _CROSS_LINK_CAP_PER_DOC = 500   # max manual links to a single doc (WG-32 finding: unbounded growth up to 11,739)
+_LIFETIME_AUTO_LINK_CAP = 500   # max total auto session links per doc (WG-32 D-31: lifetime cap going forward)
 _CROSS_LINK_DEBOUNCE_SECS = 600 # 10-minute per-entity debounce
 _CROSS_LINK_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 _CROSS_LINK_EMBEDDING_DIM = 384
@@ -4921,6 +4922,36 @@ class VaultStorage:
                 (source_product, source_id, source_product, source_id, current_embedding_model, limit),
             ).fetchall()
 
+        # WG-32 D-31 (AC1): filter dead LoreConvo session links on read.
+        # If the LoreConvo DB can be discovered, omit loreconvo endpoints whose
+        # session id is absent from the sessions table (one batched lookup).
+        # If the LoreConvo DB cannot be discovered, return links unfiltered.
+        lc_session_ids = {row[1] for row in rows if row[0] == "loreconvo"}
+        if lc_session_ids:
+            try:
+                lc_db = discover_product_db("loreconvo")
+            except DiscoveryError:
+                lc_db = None
+            if lc_db is not None:
+                try:
+                    import sqlite3 as _sqlite3
+                    lc_conn = _sqlite3.connect(
+                        _readonly_sqlite_uri(lc_db), uri=True
+                    )
+                    placeholders = ",".join("?" * len(lc_session_ids))
+                    existing = lc_conn.execute(
+                        f"SELECT id FROM sessions WHERE id IN ({placeholders})",
+                        tuple(lc_session_ids),
+                    ).fetchall()
+                    live_ids = {r[0] for r in existing}
+                    lc_conn.close()
+                    rows = [
+                        r for r in rows
+                        if r[0] != "loreconvo" or r[1] in live_ids
+                    ]
+                except Exception:
+                    pass  # return unfiltered on any error
+
         seen: set = set()
         links = []
         for row in rows:
@@ -5145,6 +5176,28 @@ class VaultStorage:
                          AND embedding_model != ?""",
                     (doc_id, _CROSS_LINK_EMBEDDING_MODEL),
                 )
+                # WG-32 D-31 (AC4): lifetime cap -- never grow a doc's auto
+                # session links past _LIFETIME_AUTO_LINK_CAP (500). When at
+                # cap, replace the lowest-similarity existing auto link only
+                # if the new one scores higher. Manual links are never
+                # counted or removed.
+                current_auto_count = conn.execute(
+                    """SELECT COUNT(*) FROM cross_product_links
+                       WHERE source_product = 'loredocs' AND source_id = ?
+                         AND link_type = 'auto'""",
+                    (doc_id,),
+                ).fetchone()[0]
+                existing_auto_rows = []
+                if current_auto_count >= _LIFETIME_AUTO_LINK_CAP:
+                    existing_auto_rows = conn.execute(
+                        """SELECT target_id, similarity_score
+                           FROM cross_product_links
+                           WHERE source_product = 'loredocs' AND source_id = ?
+                             AND link_type = 'auto'
+                           ORDER BY similarity_score ASC,
+                                    created_at ASC, target_id ASC""",
+                        (doc_id,),
+                    ).fetchall()
                 for sid, dist in sorted(best.items(), key=lambda x: x[1])[:_CROSS_LINK_CAP]:
                     if written >= _CROSS_LINK_CAP:
                         break
@@ -5161,20 +5214,46 @@ class VaultStorage:
                     # cross_link_opt_out may not exist on older schemas -- treat as 0
                     if row[0]:
                         continue
-                    cosine = max(0.0, 1.0 - dist)
-                    self._write_cross_product_link(
-                        conn,
-                        source_product="loredocs",
-                        source_id=doc_id,
-                        target_product="loreconvo",
-                        target_id=sid,
-                        similarity_score=round(cosine, 4),
-                        embedding_model=_CROSS_LINK_EMBEDDING_MODEL,
-                        embedding_dim=_CROSS_LINK_EMBEDDING_DIM,
-                        link_type="auto",
-                        tier_required="pro",
-                    )
-                    written += 1
+                    new_score = round(max(0.0, 1.0 - dist), 4)
+                    if current_auto_count < _LIFETIME_AUTO_LINK_CAP:
+                        # Room to add without exceeding the lifetime cap
+                        self._write_cross_product_link(
+                            conn,
+                            source_product="loredocs",
+                            source_id=doc_id,
+                            target_product="loreconvo",
+                            target_id=sid,
+                            similarity_score=new_score,
+                            embedding_model=_CROSS_LINK_EMBEDDING_MODEL,
+                            embedding_dim=_CROSS_LINK_EMBEDDING_DIM,
+                            link_type="auto",
+                            tier_required="pro",
+                        )
+                        written += 1
+                        current_auto_count += 1
+                    elif existing_auto_rows and new_score > existing_auto_rows[0]["similarity_score"]:
+                        # At cap: replace the lowest-similarity existing auto
+                        # link only if the new one scores higher
+                        conn.execute(
+                            """DELETE FROM cross_product_links
+                               WHERE source_product = 'loredocs' AND source_id = ?
+                                 AND target_id = ? AND link_type = 'auto'""",
+                            (doc_id, existing_auto_rows[0]["target_id"]),
+                        )
+                        self._write_cross_product_link(
+                            conn,
+                            source_product="loredocs",
+                            source_id=doc_id,
+                            target_product="loreconvo",
+                            target_id=sid,
+                            similarity_score=new_score,
+                            embedding_model=_CROSS_LINK_EMBEDDING_MODEL,
+                            embedding_dim=_CROSS_LINK_EMBEDDING_DIM,
+                            link_type="auto",
+                            tier_required="pro",
+                        )
+                        written += 1
+                        existing_auto_rows = existing_auto_rows[1:]
                 conn.execute(
                     "UPDATE documents SET last_cross_linked_at = ? WHERE id = ?",
                     (now_str, doc_id),
@@ -5185,6 +5264,203 @@ class VaultStorage:
         except Exception as exc:
             log.warning("cross_link_doc: unavailable (%s)", type(exc).__name__)
             return 0
+
+    def _backup_db(self):
+        """Take a timestamped backup of loredocs.db.
+
+        Returns the backup file path, or None if the copy failed.
+        """
+        import shutil
+        from datetime import datetime as _dt, timezone as _tz
+        ts = _dt.now(_tz.utc).strftime("%Y%m%dT%H%M%S")
+        dest = self.db_path.parent / f"loredocs.db.backup-{ts}"
+        try:
+            shutil.copy2(str(self.db_path), str(dest))
+            return dest
+        except Exception:
+            return None
+
+    def _check_loreconvo_for_maintenance(self):
+        """Discover and validate the LoreConvo DB for maintenance operations.
+
+        Returns (lc_db_path, all_session_ids) on success, or (None, None)
+        with an error message if the DB cannot be discovered or its sessions
+        table is empty.  Raises DiscoveryError if the env-var override is
+        misconfigured (surfaced to the caller).
+        """
+        try:
+            lc_db = discover_product_db("loreconvo")
+        except DiscoveryError:
+            raise
+        if lc_db is None:
+            return None, "LoreConvo database not found -- cannot verify session existence"
+        import sqlite3 as _sqlite3
+        lc_conn = _sqlite3.connect(_readonly_sqlite_uri(lc_db), uri=True)
+        try:
+            count = lc_conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        except Exception as exc:
+            lc_conn.close()
+            return None, f"Cannot read LoreConvo sessions table: {exc}"
+        if count == 0:
+            lc_conn.close()
+            return None, (
+                "LoreConvo sessions table is empty -- refusing to proceed "
+                "(a wrong path would make every link look dangling)"
+            )
+        all_ids = {r[0] for r in lc_conn.execute("SELECT id FROM sessions").fetchall()}
+        lc_conn.close()
+        return lc_db, all_ids
+
+    def prune_dangling_auto_links(self, execute=False):
+        """Find and optionally delete dangling auto cross-product links.
+
+        A dangling link is one where the LoreConvo session (source or target)
+        no longer exists.  Only link_type='auto' rows are deleted; manual
+        links are never touched.
+
+        Returns a dict with keys:
+            ok          -- bool
+            total_auto  -- total auto links in the table
+            dangling_auto    -- dangling auto links found
+            dangling_manual  -- dangling manual links (left alone)
+            over_cap_docs    -- docs with > _LIFETIME_AUTO_LINK_CAP auto links
+            deleted          -- rows deleted (0 if dry run)
+            error            -- str if ok is False
+        """
+        try:
+            lc_db, all_session_ids = self._check_loreconvo_for_maintenance()
+        except DiscoveryError as exc:
+            return {"ok": False, "error": str(exc)}
+        if lc_db is None:
+            return {"ok": False, "error": all_session_ids}
+
+        backup_path = None
+        if execute:
+            backup_path = self._backup_db()
+
+        with self._db() as conn:
+            total_auto = conn.execute(
+                "SELECT COUNT(*) FROM cross_product_links WHERE link_type = 'auto'"
+            ).fetchone()[0]
+
+            rows = conn.execute(
+                """SELECT source_product, source_id, target_product, target_id, link_type
+                   FROM cross_product_links
+                   WHERE source_product = 'loreconvo' OR target_product = 'loreconvo'"""
+            ).fetchall()
+
+            dangling_auto_ids = []
+            dangling_manual = 0
+            for r in rows:
+                session_id = r["source_id"] if r["source_product"] == "loreconvo" else r["target_id"]
+                if session_id not in all_session_ids:
+                    if r["link_type"] == "auto":
+                        dangling_auto_ids.append(session_id)
+                    else:
+                        dangling_manual += 1
+
+            over_cap_docs = conn.execute(
+                """SELECT COUNT(*) FROM (
+                       SELECT source_id
+                       FROM cross_product_links
+                       WHERE source_product = 'loredocs' AND link_type = 'auto'
+                       GROUP BY source_id
+                       HAVING COUNT(*) > ?
+                   )""",
+                (_LIFETIME_AUTO_LINK_CAP,),
+            ).fetchone()[0]
+
+            deleted = 0
+            if execute and dangling_auto_ids:
+                for i in range(0, len(dangling_auto_ids), 500):
+                    batch = dangling_auto_ids[i:i + 500]
+                    placeholders = ",".join("?" * len(batch))
+                    conn.execute(
+                        f"""DELETE FROM cross_product_links
+                           WHERE link_type = 'auto'
+                             AND (
+                               (source_product = 'loreconvo' AND source_id IN ({placeholders}))
+                               OR
+                               (target_product = 'loreconvo' AND target_id IN ({placeholders}))
+                             )""",
+                        batch + batch,
+                    )
+                deleted = conn.execute(
+                    "SELECT COUNT(*) FROM cross_product_links WHERE link_type = 'auto'"
+                ).fetchone()[0]
+                deleted = total_auto - deleted
+
+            return {
+                "ok": True,
+                "total_auto": total_auto,
+                "dangling_auto": len(dangling_auto_ids),
+                "dangling_manual": dangling_manual,
+                "over_cap_docs": over_cap_docs,
+                "deleted": deleted,
+                "backup_path": str(backup_path) if backup_path else None,
+            }
+
+    def trim_overcap_auto_links(self, execute=False):
+        """Trim each doc's auto session links to the top _LIFETIME_AUTO_LINK_CAP
+        by similarity_score (deterministic tie-break: created_at then target_id).
+
+        Manual links are never counted against or removed by the trim.
+
+        Returns a dict with keys:
+            ok            -- bool
+            over_cap_docs -- count of docs trimmed
+            total_trimmed -- rows removed (0 if dry run)
+            error         -- str if ok is False
+        """
+        try:
+            lc_db, _ = self._check_loreconvo_for_maintenance()
+        except DiscoveryError as exc:
+            return {"ok": False, "error": str(exc)}
+        if lc_db is None:
+            return {"ok": False, "error": _}
+
+        backup_path = None
+        if execute:
+            backup_path = self._backup_db()
+
+        with self._db() as conn:
+            over_cap = conn.execute(
+                """SELECT source_id, COUNT(*) AS cnt
+                   FROM cross_product_links
+                   WHERE source_product = 'loredocs' AND link_type = 'auto'
+                   GROUP BY source_id
+                   HAVING cnt > ?""",
+                (_LIFETIME_AUTO_LINK_CAP,),
+            ).fetchall()
+
+            total_trimmed = 0
+            for doc_row in over_cap:
+                doc_id = doc_row["source_id"]
+                excess = doc_row["cnt"] - _LIFETIME_AUTO_LINK_CAP
+                to_remove = conn.execute(
+                    """SELECT target_id FROM cross_product_links
+                       WHERE source_product = 'loredocs' AND source_id = ?
+                         AND link_type = 'auto'
+                       ORDER BY similarity_score ASC, created_at ASC, target_id ASC
+                       LIMIT ?""",
+                    (doc_id, excess),
+                ).fetchall()
+                total_trimmed += len(to_remove)
+                if execute:
+                    for tr in to_remove:
+                        conn.execute(
+                            """DELETE FROM cross_product_links
+                               WHERE source_product = 'loredocs' AND source_id = ?
+                                 AND target_id = ? AND link_type = 'auto'""",
+                            (doc_id, tr["target_id"]),
+                        )
+
+            return {
+                "ok": True,
+                "over_cap_docs": len(over_cap),
+                "total_trimmed": total_trimmed if execute else 0,
+                "backup_path": str(backup_path) if backup_path else None,
+            }
 
     def _repair_bare_string_linked_projects(self) -> int:
         """Repair vaults with bare-string linked_projects (WG-32 D-26).
