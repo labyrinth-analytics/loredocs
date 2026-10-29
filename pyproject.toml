@@ -1,6 +1,6 @@
 [project]
 name = "loredocs"
-version = "0.1.32"
+version = "0.1.33"
 description = "Knowledge management MCP server for AI projects - search, tag, version, and organize your project knowledge"
 readme = "README.md"
 license = "BUSL-1.1"
@@ -70,6 +70,7 @@ notion = [
 [project.scripts]
 loredocs = "loredocs.server:main"
 loredocs-compat-check = "loredocs.compat_check:main"
+loredocs-relink-autolinks = "loredocs.scripts:relink_autolinks_main"
 
 [project.urls]
 Homepage = "https://github.com/labyrinth-analytics/loredocs"
