@@ -70,7 +70,7 @@ notion = [
 [project.scripts]
 loredocs = "loredocs.server:main"
 loredocs-compat-check = "loredocs.compat_check:main"
-loredocs-relink-autolinks = "loredocs.scripts:relink_autolinks_main"
+loredocs-relink-autolinks = "loredocs.commands.relink_autolinks:main"
 
 [project.urls]
 Homepage = "https://github.com/labyrinth-analytics/loredocs"

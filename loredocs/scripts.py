@@ -1,8 +1,4 @@
-import sys
-from pathlib import Path
+"""Compatibility module for LoreDocs scripts."""
+from loredocs.commands.relink_autolinks import main as relink_autolinks_main
 
-def relink_autolinks_main():
-    """Console entry point for loredocs-relink-autolinks command."""
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    from scripts.relink_autolinks import main
-    main()
+__all__ = ["relink_autolinks_main"]
