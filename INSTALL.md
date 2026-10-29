@@ -44,6 +44,16 @@ Replace `<version>` with the version you want to pin to and `your-license-key` w
 
 Restart Hermes Agent after saving the file. LoreDocs MCP tools will be available in the next Hermes session.
 
+**Long tool calls.** By default Hermes reaches MCP tools through its tool-search bridge. With some models, a call carrying long multi-line text, such as a document body for `vault_add_doc`, fails with `tool_call 'calls' is not valid JSON`. The model writes raw line breaks inside the call and Hermes rejects them (Hermes issues #119640 and #122711). The model may then retry with shorter, one-line content, so the document is saved with less detail. To avoid this, turn tool search off in `~/.hermes/config.yaml`:
+
+```yaml
+tools:
+  tool_search:
+    enabled: "off"
+```
+
+With tool search off, Hermes sends every tool definition to the model on each turn, which uses more of the context window.
+
 ---
 
 ## Option B: Install for Cowork or Claude Code
