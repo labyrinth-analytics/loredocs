@@ -1720,8 +1720,10 @@ class VaultStorage:
                     freq[term] = freq.get(term, 0) + 1
                 prepared.append((drow, doc_tags, extracted, candidates))
 
-            # Phase 2: rebuild each new doc's term index against the finished
-            # document-frequency map (no partial-table reads).
+            # Phase 2-3: rebuild each doc's term index then link it (interleaved per-doc
+            # to avoid O(N²) join work in linking phase). The pre-computed vault_freqs
+            # dict prevents the per-file IDF query cost (the original batching benefit).
+            # Interleaving ensures each link operation only sees already-indexed docs.
             for drow, doc_tags, extracted, candidates in prepared:
                 try:
                     _insert_doc_cooccurrences(
@@ -1734,9 +1736,6 @@ class VaultStorage:
                         "_bulk_index_and_link: cooccurrence reindex failed for "
                         "doc %s: %s", drow["id"], exc,
                     )
-
-            # Phase 3: link each new doc against the finished index.
-            for drow, _tags, _extracted, _candidates in prepared:
                 try:
                     _auto_link_doc_cooccurrences(conn, drow["id"])
                 except Exception as exc:
