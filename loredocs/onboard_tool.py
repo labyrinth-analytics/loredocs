@@ -72,11 +72,21 @@ def _generate_reference_doc(
 
 def _find_or_create_vault(storage: VaultStorage, name: str,
                            description: str = "") -> dict:
-    """Return existing vault by name or create a new one."""
+    """Return existing vault by name or create a new one.
+
+    find_vault_by_name skips archived vaults, but create_vault's duplicate
+    check counts them. When an archived vault holds the name we need, fall
+    back to a freshly derived unique name rather than letting the raw
+    ValueError escape (SH-105511 F16).
+    """
     vault = storage.find_vault_by_name(name)
-    if vault is None:
-        vault = storage.create_vault(name, description=description)
-    return vault
+    if vault is not None:
+        return vault
+    try:
+        return storage.create_vault(name, description=description)
+    except ValueError:
+        unique = storage.unique_vault_name(name)
+        return storage.create_vault(unique, description=description)
 
 
 def _find_setup_doc(storage: VaultStorage, vault_id: str) -> Optional[dict]:
