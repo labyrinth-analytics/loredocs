@@ -2182,6 +2182,25 @@ class VaultStorage:
                 ],
             }
 
+    def unique_vault_name(self, base: str) -> str:
+        """Return base, or "base (N)" for the lowest N >= 2 not already taken.
+
+        Uses the same exact-name match as create_vault's duplicate check
+        (archived vaults included), so the result is always accepted
+        (SH-105506).
+        """
+        with self._db() as conn:
+            taken = {r["name"] for r in conn.execute(
+                "SELECT name FROM vaults WHERE name = ? OR name LIKE ?",
+                (base, base + " (%)"),
+            )}
+        if base not in taken:
+            return base
+        n = 2
+        while f"{base} ({n})" in taken:
+            n += 1
+        return f"{base} ({n})"
+
     def find_vault_by_name(self, name: str) -> Optional[Dict[str, Any]]:
         """Find a vault by name (case-insensitive). Returns first match."""
         with self._db() as conn:

@@ -408,11 +408,14 @@ import tools. Ask Claude to run them, or use the `loredocs-cli` command:
 **Export a vault to a directory:**
 
 ```
-Export my "my-notes" vault to ~/loredocs-export/my-notes
+Export my "my-notes" vault to loredocs-export/my-notes
 ```
 
 This calls `vault_export`, which writes each document to a file you can read
-without LoreDocs installed.
+without LoreDocs installed. The directory must be a relative path: it is
+created inside the LoreDocs server's working directory, which your client
+sets (often your project folder or home directory). Absolute paths and paths
+that would land outside that directory are refused.
 
 **Export a manifest (all vaults, machine-readable):**
 

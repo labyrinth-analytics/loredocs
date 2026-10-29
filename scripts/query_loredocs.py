@@ -902,7 +902,7 @@ def cmd_workspace(args):
         print(f"  doc_count: {existing.get('doc_count', 0)}")
         return
 
-    vault_name = Path(resolved).name or "Workspace"
+    vault_name = storage.unique_vault_name(Path(resolved).name or "Workspace")  # SH-105506
     try:
         vault = storage.create_vault(
             name=vault_name,

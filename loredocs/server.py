@@ -842,6 +842,9 @@ async def vault_create(
     except TierLimitError as exc:
         hint = f" {exc.upgrade_hint}" if exc.upgrade_hint else ""
         return f"Error: {exc}{hint}"
+    except ValueError as exc:
+        # Duplicate vault name (SH-105506)
+        return f"Error: {exc}"
     # Add setup_tip on first vault if Config vault doesn't already exist
     vault_count = len(storage.list_vaults(include_archived=False))
     config_exists = storage.find_vault_by_name("Config") is not None
@@ -1166,7 +1169,9 @@ async def vault_open_workspace(
             }
         }, indent=2)
 
-    vault_name = Path(resolved).name or "Workspace"
+    # SH-105506: vault names are unique, so a folder whose name is already a
+    # vault gets "name (2)" rather than failing.
+    vault_name = storage.unique_vault_name(Path(resolved).name or "Workspace")
     try:
         vault = storage.create_vault(
             name=vault_name,
