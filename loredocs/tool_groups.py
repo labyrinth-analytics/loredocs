@@ -86,6 +86,8 @@ TOOL_GROUPS: dict[str, tuple[str, ...]] = {
         "vault_set_priority",
         "vault_set_tier",
         "vault_suggest",
+        "vault_prune_dangling_links",
+        "vault_trim_overcap_links",
         "vault_tier_status",
         "vault_set_injection_cap",
     ),
