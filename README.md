@@ -218,7 +218,7 @@ and usage anytime with `vault_tier_status`. Activate a Pro license with `vault_s
 
 ## MCP Tools
 
-LoreDocs provides 49 MCP tools by default (50 with the `notion` extra installed; 51 with LOREDOCS_ENABLE_CAP_TOOLS=1 and the notion extra) organized by function:
+LoreDocs provides 51 MCP tools by default (52 with the `notion` extra installed; 53 with LOREDOCS_ENABLE_CAP_TOOLS=1 and the notion extra) organized by function:
 
 ### Vault Management (8 tools)
 | Tool | What it does |
