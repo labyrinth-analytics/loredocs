@@ -182,26 +182,6 @@ Remove a link between two documents (both directions).
 
 ---
 
-### `vault_prune_dangling_links`
-
-Remove auto-generated links between documents that reference non-existent documents. Helps maintain link integrity when documents are deleted or moved.
-
-**When Claude uses it:** When you say "clean up broken links" or as part of vault maintenance.
-
-**Key parameters:** `vault_id` (required)
-
----
-
-### `vault_trim_overcap_links`
-
-Remove excess auto-generated document links from a vault when the link count exceeds the configured cap. Helps enforce link limits while preserving the most relevant connections.
-
-**When Claude uses it:** When a vault has too many auto-generated links and needs trimming to stay within limits.
-
-**Key parameters:** `vault_id` (required)
-
----
-
 ### `vault_find_related` *(Pro)*
 
 Find all documents linked to a given document. Shows linked documents from any vault. Requires LoreDocs Pro.
@@ -212,7 +192,7 @@ Find all documents linked to a given document. Shows linked documents from any v
 
 ---
 
-## Search and Context Injection (12 tools)
+## Search and Context Injection (13 tools)
 
 ### `vault_search`
 
@@ -408,7 +388,7 @@ View the version history for a document. Shows when each version was created and
 
 ---
 
-## Versioning and Bulk Operations (5 tools)
+## Versioning and Bulk Operations (7 tools)
 
 ### `vault_doc_restore`
 
@@ -567,7 +547,7 @@ Remove cross-product links to LoreConvo sessions that no longer exist. By defaul
 
 ---
 
-### `vault_trim_over_cap_links`
+### `vault_trim_overcap_links`
 
 Trim each document's auto session links to the top 500 by similarity score. By default runs in dry-run mode. Pass `execute=True` to trim. Manual links are never counted or removed. A timestamped backup is taken before any deletion.
 
@@ -643,4 +623,4 @@ List which groups of LoreDocs tools the server exposes, or choose a different se
 | 48 | `vault_import_notion` | Import Notion pages and databases into a vault |
 | 49 | `configure_tools` | List or choose which groups of tools the server exposes |
 | 50 | `vault_prune_dangling_links` | Remove cross-product links to LoreConvo sessions that no longer exist (Pro) |
-| 51 | `vault_trim_over_cap_links` | Trim each doc's auto session links to the top 500 by similarity (Pro) |
+| 51 | `vault_trim_overcap_links` | Trim each doc's auto session links to the top 500 by similarity (Pro) |

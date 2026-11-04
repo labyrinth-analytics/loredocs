@@ -7,7 +7,7 @@ into any agent session.
 ## What this plugin installs
 
 Hermes runs `uvx loredocs==0.1.33` as a local stdio MCP server. The package
-includes 49 MCP tools for vault management, document CRUD, full-text
+includes 51 MCP tools for vault management, document CRUD, full-text
 and semantic search, context injection, and import/export.
 
 ## Storage
