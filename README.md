@@ -51,7 +51,7 @@ Once loaded, Claude has access to all 51 LoreDocs MCP tools automatically. Ask C
 
 For Hermes Agent users, add LoreDocs as an MCP server under `mcp_servers:` in `~/.hermes/config.yaml` (see [INSTALL.md](INSTALL.md#option-a-install-for-hermes-agent) for the full entry), then restart Hermes.
 
-All 49 LoreDocs MCP tools are then available in your Hermes sessions.
+All 51 LoreDocs MCP tools are then available in your Hermes sessions.
 
 ## Hermes Disclosures
 
@@ -255,7 +255,7 @@ LoreDocs provides 51 MCP tools by default (52 with the `notion` extra installed;
 | `vault_rebuild_index` | Rebuild the LanceDB semantic search index (Pro only; run once after installing Pro deps) |
 | `vault_rebuild_index_status` | Return the current status of a background semantic-index rebuild (Pro only) |
 
-### Organization (5 tools)
+### Organization and Maintenance (7 tools)
 | Tool | What it does |
 |------|-------------|
 | `vault_tag_doc` | Add tags to a document |
@@ -263,6 +263,8 @@ LoreDocs provides 51 MCP tools by default (52 with the `notion` extra installed;
 | `vault_categorize` | Set document category (spec, guide, decision, etc.) |
 | `vault_set_priority` | Set document priority level |
 | `vault_add_note` | Add a note or annotation to a document |
+| `vault_prune_dangling_links` | Remove auto-generated links that reference non-existent documents |
+| `vault_trim_overcap_links` | Remove excess auto-generated links when link count exceeds the configured cap |
 
 ### Context Injection (9 tools)
 | Tool | What it does |

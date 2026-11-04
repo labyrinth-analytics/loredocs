@@ -1,6 +1,6 @@
 # LoreDocs MCP Tool Catalog
 
-LoreDocs provides 49 MCP tools that Claude calls during your sessions (50 with the `notion` extra installed). You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
+LoreDocs provides 51 MCP tools that Claude calls during your sessions (52 with the `notion` extra installed; 52 with LOREDOCS_ENABLE_CAP_TOOLS=1 and the notion extra). You do not need to call these directly -- Claude uses them when you ask it to manage your project knowledge base.
 
 > **Version 0.1.8:** Added file-based document ingest to `vault_add_doc` (read documents from disk with the `path` parameter).
 
@@ -179,6 +179,26 @@ Create a link between two documents across any vault. Use this to connect relate
 Remove a link between two documents (both directions).
 
 **Key parameters:** `from_doc_id` (required), `to_doc_id` (required)
+
+---
+
+### `vault_prune_dangling_links`
+
+Remove auto-generated links between documents that reference non-existent documents. Helps maintain link integrity when documents are deleted or moved.
+
+**When Claude uses it:** When you say "clean up broken links" or as part of vault maintenance.
+
+**Key parameters:** `vault_id` (required)
+
+---
+
+### `vault_trim_overcap_links`
+
+Remove excess auto-generated document links from a vault when the link count exceeds the configured cap. Helps enforce link limits while preserving the most relevant connections.
+
+**When Claude uses it:** When a vault has too many auto-generated links and needs trimming to stay within limits.
+
+**Key parameters:** `vault_id` (required)
 
 ---
 
