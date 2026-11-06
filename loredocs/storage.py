@@ -5397,6 +5397,22 @@ class VaultStorage:
                 (_LIFETIME_AUTO_LINK_CAP,),
             ).fetchone()[0]
 
+            # Guard against high ratio of dangling links (possible misconfigured DB path)
+            dangling_count = len(dangling_auto_ids)
+            if total_auto > 0 and dangling_count > 0:
+                ratio = dangling_count / total_auto
+                if ratio > 0.5:
+                    return {
+                        "ok": False,
+                        "error": f"High ratio of dangling auto links ({ratio:.0%}). This may indicate LORECONVO_DB_PATH points at a different LoreConvo DB. Verify path and retry.",
+                        "total_auto": total_auto,
+                        "dangling_auto": dangling_count,
+                        "dangling_manual": dangling_manual,
+                        "over_cap_docs": over_cap_docs,
+                        "deleted": 0,
+                        "backup_path": None,
+                    }
+
             deleted = 0
             if execute and dangling_auto_ids:
                 for i in range(0, len(dangling_auto_ids), 500):
