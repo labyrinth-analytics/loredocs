@@ -1443,11 +1443,6 @@ def _parse_json_list_tolerant(value) -> list:
     return []
 
 
-def _normalize_vault_name(name: str) -> str:
-    """Normalize vault name for case-insensitive comparison using Unicode casefold."""
-    return name.casefold()
-
-
 class VaultStorage:
     """Manages the local filesystem and SQLite database for LoreDocs."""
 
@@ -2085,11 +2080,13 @@ class VaultStorage:
         # includes archived vaults (an archived vault still reserves its name)
         # -- SH-105511 F20: duplicate checks were case-sensitive while
         # find_vault_by_name is case-insensitive, so "App" and "app" could
-        # coexist and make name lookups ambiguous. Use casefold() for Unicode
-        # case-insensitivity (SH-105860).
+        # coexist and make name lookups ambiguous.
         with self._db() as conn:
-            rows = conn.execute("SELECT name FROM vaults").fetchall()
-            if any(_normalize_vault_name(r["name"]) == _normalize_vault_name(name) for r in rows):
+            existing = conn.execute(
+                "SELECT id FROM vaults WHERE LOWER(name) = LOWER(?)",
+                (name,)
+            ).fetchone()
+            if existing:
                 raise ValueError(f"Vault name '{name}' already exists. Please choose a unique name.")
 
         vault_id = str(uuid.uuid4())[:12]
@@ -2207,29 +2204,3419 @@ class VaultStorage:
         Matching is case-insensitive and includes archived vaults, mirroring
         create_vault's duplicate check, so the result is always accepted
         (SH-105506, SH-105511 F20). Vault names are unique case-insensitively:
-        "App" and "app" are the same name. Uses Unicode casefold for consistency
-        (SH-105860).
+        "App" and "app" are the same name.
         """
         with self._db() as conn:
-            taken = {_normalize_vault_name(r["name"]) for r in conn.execute(
+            taken = {r["name"].lower() for r in conn.execute(
                 "SELECT name FROM vaults WHERE LOWER(name) = LOWER(?) OR name LIKE ?",
                 (base, base + " (%)"),
             )}
-        if _normalize_vault_name(base) not in taken:
+        if base.lower() not in taken:
             return base
         n = 2
-        while _normalize_vault_name(f"{base} ({n})") in taken:
+        while f"{base} ({n})".lower() in taken:
             n += 1
         return f"{base} ({n})"
 
     def find_vault_by_name(self, name: str) -> Optional[Dict[str, Any]]:
-        """Find a vault by name (case-insensitive). Returns first match.
-        Uses Unicode casefold for consistency (SH-105860).
+        """Find a vault by name (case-insensitive). Returns first match."""
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT id FROM vaults WHERE LOWER(name) = LOWER(?) AND archived = 0",
+                (name,)
+            ).fetchone()
+            if row:
+                return self.get_vault(row["id"])
+            return None
+
+    def get_vault_by_workspace_path(self, workspace_path: str) -> Optional[Dict[str, Any]]:
+        """Find a non-archived vault by its exact workspace_path. Returns None if not found."""
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT id FROM vaults WHERE workspace_path = ? AND archived = 0",
+                (workspace_path,)
+            ).fetchone()
+            if row:
+                return self.get_vault(row["id"])
+            return None
+
+    def archive_vault(self, vault_id: str) -> bool:
+        """Archive a vault (soft delete). Returns True if found."""
+        with self._db() as conn:
+            cursor = conn.execute(
+                "UPDATE vaults SET archived = 1, updated_at = ? WHERE id = ?",
+                (self._now(), vault_id)
+            )
+            return cursor.rowcount > 0
+
+    def delete_vault(self, vault_id: str) -> bool:
+        """Permanently delete a vault and all its documents. Returns True if found.
+
+        Also cleans up doc_cooccurrences and Lance rows for all docs in the
+        vault (SH-104431/WG-32).
+        """
+        vault_dir = self.vaults_dir / vault_id
+        with self._db() as conn:
+            # Collect doc IDs for Lance cleanup (before deleting rows)
+            doc_ids = [
+                row[0] for row in conn.execute(
+                    "SELECT id FROM documents WHERE vault_id = ?", (vault_id,)
+                ).fetchall()
+            ]
+            # Remove FTS entries for all docs in this vault
+            conn.execute("DELETE FROM doc_fts WHERE vault_id = ?", (vault_id,))
+            # Remove doc_links
+            conn.execute(
+                "DELETE FROM doc_links WHERE source_vault_id = ? OR target_vault_id = ?",
+                (vault_id, vault_id)
+            )
+            # Remove doc_cooccurrences for all docs in this vault (SH-104431)
+            conn.execute(
+                "DELETE FROM doc_cooccurrences WHERE doc_id IN "
+                "(SELECT id FROM documents WHERE vault_id = ?)",
+                (vault_id,)
+            )
+            # Remove documents
+            conn.execute("DELETE FROM documents WHERE vault_id = ?", (vault_id,))
+            # Remove vault
+            cursor = conn.execute("DELETE FROM vaults WHERE id = ?", (vault_id,))
+            found = cursor.rowcount > 0
+
+        # Remove Lance rows for each doc (best-effort, after DB commit)
+        for doc_id in doc_ids:
+            self._lance_delete_safe(doc_id)
+
+        if vault_dir.exists():
+            shutil.rmtree(vault_dir)
+
+        return found
+
+    def link_project(self, vault_id: str, project_name: str) -> bool:
+        """Associate a Claude Project name with a vault."""
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT linked_projects FROM vaults WHERE id = ?", (vault_id,)
+            ).fetchone()
+            if not row:
+                return False
+            projects = _parse_json_list(row["linked_projects"])
+            if project_name not in projects:
+                projects.append(project_name)
+                conn.execute(
+                    "UPDATE vaults SET linked_projects = ?, updated_at = ? WHERE id = ?",
+                    (json.dumps(projects), self._now(), vault_id)
+                )
+            return True
+
+    # -------------------------------------------------------------------
+    # Document operations
+    # -------------------------------------------------------------------
+
+    def add_document(self, vault_id: str, name: str, content: bytes,
+                     filename: str, tags: Optional[List[str]] = None,
+                     category: str = "general", priority: str = "normal",
+                     notes: str = "", defer_links: bool = False) -> Optional[Dict[str, Any]]:
+        """Add a document to a vault. Content is raw bytes.
+        Returns document metadata dict, or None if vault not found.
+
+        defer_links=True (bulk-import fast path): skips co-occurrence
+        indexing, auto-linking, Lance write, and cross-product linking so
+        import_directory can run them in one batched pass over all new docs
+        instead of O(n^2) per-file passes. Callers MUST run
+        ``_bulk_index_and_link`` on the returned doc IDs afterwards.
+        """
+        # Verify vault exists
+        vault = self.get_vault(vault_id)
+        if not vault:
+            return None
+
+        # OPP-006: Validate filename -- reject path traversal, absolute paths, null bytes
+        if not filename or '..' in filename or '\x00' in filename or os.path.isabs(filename):
+            raise ValueError('Invalid filename: must be a plain name with no path components')
+        if os.path.basename(filename) != filename:
+            raise ValueError('Invalid filename: must not contain directory separators')
+
+        # OPP-009: Enforce per-file size limit before writing anything to disk
+        if len(content) > MAX_FILE_SIZE:
+            raise ValueError(
+                f'Document exceeds maximum file size ({MAX_FILE_SIZE // (1024 * 1024)} MB)'
+            )
+
+        # Tier checks before writing anything
+        self.enforcer.check_doc_count(vault["doc_count"], vault_name=vault["name"])
+        self.enforcer.check_storage(self.get_total_storage_bytes(), len(content))
+
+        doc_id = str(uuid.uuid4())[:12]
+        now = self._now()
+        tags = tags or []
+        ext = Path(filename).suffix.lower()
+
+        # Write file to disk
+        doc_dir = self.vaults_dir / vault_id / "docs" / doc_id
+        doc_dir.mkdir(parents=True, exist_ok=True)
+        (doc_dir / "history").mkdir(exist_ok=True)
+
+        current_file = doc_dir / f"current{ext}"
+        current_file.write_bytes(content)
+
+        # Extract text for search indexing
+        extracted = extract_text(current_file)
+        (doc_dir / "extracted.txt").write_text(extracted, encoding="utf-8")
+
+        # Write metadata
+        meta = {
+            "id": doc_id,
+            "vault_id": vault_id,
+            "name": name,
+            "original_filename": filename,
+            "file_extension": ext,
+            "category": category,
+            "priority": priority,
+            "tags": tags,
+            "notes": notes,
+            "created_at": now,
+            "updated_at": now,
+            "file_size_bytes": len(content),
+            "version_count": 1,
+            "_derived": True,
+            "_comment": "Derived from DB. DB is source of truth.",
+        }
+        (doc_dir / "metadata.json").write_text(
+            json.dumps(meta, indent=2), encoding="utf-8"
+        )
+
+        file_size = len(content)
+
+        # Insert into database
+        with self._db() as conn:
+            conn.execute(
+                """INSERT INTO documents
+                   (id, vault_id, name, original_filename, file_extension,
+                    category, priority, tags, notes, created_at, updated_at,
+                    file_size_bytes, version_count)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (doc_id, vault_id, name, filename, ext, category, priority,
+                 json.dumps(tags), notes, now, now, file_size, 1)
+            )
+
+            # Index in FTS
+            conn.execute(
+                """INSERT INTO doc_fts (doc_id, vault_id, name, content, tags, notes)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (doc_id, vault_id, name, extracted, " ".join(tags), notes)
+            )
+
+            # Update vault timestamp
+            conn.execute(
+                "UPDATE vaults SET updated_at = ? WHERE id = ?", (now, vault_id)
+            )
+
+            # Index co-occurrences and auto-link related docs (best-effort)
+            if not defer_links:
+                try:
+                    _insert_doc_cooccurrences(conn, doc_id, name, tags, extracted)
+                    _auto_link_doc_cooccurrences(conn, doc_id)
+                except Exception:
+                    pass
+
+        if not defer_links:
+            self._lance_write_safe(doc_id, vault_id, name, extracted)
+            # Phase 2a: embedding-based auto-link (Pro only, errors never propagate)
+            is_pro = get_tier(self.root) == TIER_PRO
+            if is_pro and self._lance_index is not None:
+                with self._db() as conn:
+                    try:
+                        _auto_link_doc_embeddings(conn, doc_id, self._lance_index, is_pro=True)
+                    except Exception:
+                        pass
+            # Phase 2b: save-triggered cross-product linking (Pro only, best-effort)
+            try:
+                self.cross_link_doc(doc_id, vault_id)
+            except Exception:
+                pass
+        return meta
+
+    def add_document_from_text(self, vault_id: str, name: str, text_content: str,
+                               filename: Optional[str] = None,
+                               tags: Optional[List[str]] = None,
+                               category: str = "general", priority: str = "normal",
+                               notes: str = "") -> Optional[Dict[str, Any]]:
+        """Convenience method to add a text/markdown document from a string."""
+        if filename is None:
+            safe_name = name.replace(" ", "_").lower()
+            filename = f"{safe_name}.md"
+        content_bytes = text_content.encode("utf-8")
+        return self.add_document(
+            vault_id, name, content_bytes, filename,
+            tags=tags, category=category, priority=priority, notes=notes
+        )
+
+    def update_document(self, doc_id: str, content: Optional[bytes] = None,
+                        filename: Optional[str] = None,
+                        name: Optional[str] = None,
+                        tags: Optional[List[str]] = None,
+                        category: Optional[str] = None,
+                        priority: Optional[str] = None,
+                        notes: Optional[str] = None,
+                        author: Optional[str] = None,
+                        session_id: Optional[str] = None,
+                        note: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Update a document. Auto-versions the previous file if content changes.
+
+        Implements the r6 proposal write ordering (SH-100432):
+        1. Read DB row for doc_id.
+        2. If content is changing:
+           a. Determine new ext from filename.
+           b. Acquire _doc_context (write=True), which validates lock and
+              divergence before retention planning.
+           c. Plan retention rotation without deleting content.
+           d. Check the prospective vault history budget, subtracting the
+              planned rotation bytes, before filesystem mutation.
+           e. Write and hash-validate current.new{ext_new} (temp + fsync).
+           f. Write .intent.json, including the first rotation target.
+           g. Write .highwater (BEFORE content creation in history).
+           h. Step 3a: Archive current -> history/v{from_version}{ext_old}.
+           i. Step 3b: Write v{from_version}.meta.json sidecar.
+           j. Verify current.new hash, os.replace to current{ext_new}.
+           k. Apply journaled rotation after the replacement is accepted.
+           l. Step 3e: If ext changed, unlink current{ext_old}.
+           m. Step 3f: Rewrite extracted.txt.
+           n. Step 4: Rewrite metadata.json with _derived: true.
+           o. Step 5: DB update + FTS + vault timestamp.
+           p. Step 6: Delete .intent.json.
+        3. If only metadata changed, just do the DB update + metadata.json.
+        4. Return result dict.
+
+        Returns updated metadata, or None if not found.
+        """
+        # 1. Read the DB row for doc_id.
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT * FROM documents WHERE id = ? AND deleted = 0", (doc_id,)
+            ).fetchone()
+            if not row:
+                return None
+            vault_id = row["vault_id"]
+            ext_old = row["file_extension"]
+            version_count = row["version_count"]
+            doc_name = row["name"]
+
+        now = self._now()
+        doc_dir = self.vaults_dir / vault_id / "docs" / doc_id
+        history_dir = doc_dir / "history"
+
+        version_rotated = False
+        rotate_version = None
+
+        if content is not None:
+            # 2a. Determine new ext from filename if provided.
+            ext_new = ext_old
+            if filename:
+                ext_new = Path(filename).suffix.lower()
+
+            # 2b. Acquire _doc_context (write=True).
+            # This takes the lock, replays stale journals, computes
+            # next_version, and checks divergence (raises on divergence).
+            tier = get_tier(self.root)
+            ctx = self._ctx_mgr.acquire(
+                doc_id, vault_id, ext_old, version_count, write=True,
+            )
+            try:
+                # 2c. Plan retention without deleting content. The first
+                # selected version is journaled for crash recovery; deletion
+                # happens only at Step 3c under this lock.
+                depth = _compute_retention_depth(tier, self.enforcer)
+                max_history = depth - 1
+                content_files = sorted(
+                    _content_file_glob(history_dir),
+                    key=lambda path: (
+                        _parse_version_number(path.name) or 0,
+                        path.name,
+                    ),
+                )
+                rotate_count = max(0, len(content_files) - max_history + 1)
+                rotation_versions = []
+                for content_file in content_files[:rotate_count]:
+                    planned = _parse_version_number(content_file.name)
+                    if planned is not None and planned not in rotation_versions:
+                        rotation_versions.append(planned)
+                if rotation_versions:
+                    rotate_version = rotation_versions[0]
+
+                # 2d. Validate the prospective history budget without
+                # deleting anything. This update archives current_old, while
+                # the incoming content remains current and does not consume
+                # history budget. Subtract only files selected for rotation.
+                rotation_bytes = 0
+                for content_file in content_files[:rotate_count]:
+                    try:
+                        rotation_bytes += content_file.stat().st_size
+                    except OSError:
+                        pass
+                current_old = doc_dir / f"current{ext_old}"
+                try:
+                    outgoing_current_bytes = current_old.stat().st_size
+                except OSError:
+                    outgoing_current_bytes = 0
+                cap = _compute_history_budget(tier)
+                current_history_bytes = _vault_history_bytes(
+                    self.vaults_dir, vault_id
+                )
+                prospective_history_bytes = (
+                    current_history_bytes
+                    - rotation_bytes
+                    + outgoing_current_bytes
+                )
+                if prospective_history_bytes > cap:
+                    raise HistoryBudgetExceededError(
+                        f"Vault history budget exceeded: current="
+                        f"{current_history_bytes} bytes, archived content="
+                        f"{outgoing_current_bytes} bytes, cap={cap} bytes. "
+                        f"Remove old versions or upgrade tier."
+                    )
+
+                from_version = version_count  # current version to archive
+                to_version = ctx.next_version  # new version number
+
+                # Compute hash of current file (for journal).
+                sha256_old = ""
+                if current_old.is_file():
+                    try:
+                        sha256_old = _hash_file(current_old)
+                    except OSError:
+                        sha256_old = ""
+
+                # Compute hash of new content (for journal + verification).
+                sha256_new = hashlib.sha256(content).hexdigest()
+
+                # 2e. Write new bytes to current.new{ext_new} (temp + fsync)
+                # and validate them before journaling any destructive work.
+                current_new_path = doc_dir / f"current.new{ext_new}"
+                _safe_write_bytes(current_new_path, content, mode=0o600)
+                try:
+                    staged_new_hash = _hash_file(current_new_path)
+                except OSError:
+                    staged_new_hash = ""
+                if staged_new_hash != sha256_new:
+                    ts = _timestamp_suffix()
+                    orphan_path = doc_dir / f"current.new.orphan-{ts}{ext_new}"
+                    try:
+                        os.replace(str(current_new_path), str(orphan_path))
+                    except OSError:
+                        orphan_path = current_new_path
+                    raise RecoveryAbortedError(
+                        f"current.new hash mismatch during update of "
+                        f"doc {doc_id}. Expected {sha256_new[:16]}..., "
+                        f"got {staged_new_hash[:16]}... Orphan at: "
+                        f"{orphan_path}. Run vault_verify(doc_id='{doc_id}', "
+                        f"repair=True)."
+                    )
+
+                # 2f. Write .intent.json with all the fields.
+                journal_payload = {
+                    "op": "update",
+                    "doc_id": doc_id,
+                    "from_version": from_version,
+                    "to_version": to_version,
+                    "ext_old": ext_old,
+                    "ext_new": ext_new,
+                    "sha256_old": sha256_old,
+                    "sha256_new": sha256_new,
+                    "rotate_version": rotate_version,
+                    "started_at": now,
+                }
+                _write_intent_journal(doc_dir, journal_payload)
+
+                # 2g. Write .highwater with the new version number
+                # (BEFORE content creation in history).
+                _write_highwater(history_dir, to_version)
+
+                # Step 3a: Archive current -> history/v{from_version}{ext_old}
+                # If absent or hash mismatch, stage to .partial, verify,
+                # os.replace. If destination has different hash: rename
+                # to v{N}.conflict-{ts}{ext} (r6/C3).
+                dest_path = history_dir / f"v{from_version}{ext_old}"
+                need_archive = True
+                if dest_path.is_file():
+                    try:
+                        if _hash_file(dest_path) == sha256_old:
+                            need_archive = False
+                    except OSError:
+                        pass
+
+                if need_archive and current_old.is_file():
+                    partial_path = history_dir / f".v{from_version}.partial{ext_old}"
+                    try:
+                        content_bytes = current_old.read_bytes()
+                        _safe_write_bytes(partial_path, content_bytes, mode=0o600)
+                        staged_hash = _hash_file(partial_path)
+                        if staged_hash != sha256_old:
+                            # Hash mismatch on staged file -- check
+                            # destination for conflict (r6/C3).
+                            if dest_path.is_file():
+                                ts = _timestamp_suffix()
+                                conflict_path = history_dir / f"v{from_version}.conflict-{ts}{ext_old}"
+                                os.replace(str(dest_path), str(conflict_path))
+                                logger.warning(
+                                    "History conflict at %s: existing file "
+                                    "hash differs. Renamed to %s (r6/C3).",
+                                    dest_path, conflict_path,
+                                )
+                            os.replace(str(partial_path), str(dest_path))
+                            _fsync_dir(history_dir)
+                        else:
+                            os.replace(str(partial_path), str(dest_path))
+                            _fsync_dir(history_dir)
+                    except Exception:
+                        try:
+                            partial_path.unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                        raise
+
+                # Step 3b: Write v{from_version}.meta.json sidecar.
+                sidecar_path = history_dir / f"v{from_version}.meta.json"
+                if not sidecar_path.is_file():
+                    try:
+                        dest_stat = dest_path.stat()
+                        dest_size = dest_stat.st_size
+                    except OSError:
+                        dest_size = 0
+                    _write_sidecar(
+                        history_dir,
+                        version=from_version,
+                        doc_id=doc_id,
+                        ext=ext_old,
+                        size_bytes=dest_size,
+                        op="update",
+                        saved_at=now,
+                        author=author,
+                        session_id=session_id,
+                        note=note,
+                    )
+
+                # Re-verify current.new and replace it before destructive
+                # retention rotation. If validation rejects the update,
+                # retained history and its sidecars remain unchanged.
+                current_dest_path = doc_dir / f"current{ext_new}"
+                try:
+                    new_hash = _hash_file(current_new_path)
+                except OSError:
+                    new_hash = ""
+                if new_hash != sha256_new:
+                    ts = _timestamp_suffix()
+                    orphan_path = doc_dir / f"current.new.orphan-{ts}{ext_new}"
+                    try:
+                        os.replace(str(current_new_path), str(orphan_path))
+                    except OSError:
+                        orphan_path = current_new_path
+                    _delete_intent_journal(doc_dir)
+                    raise RecoveryAbortedError(
+                        f"current.new hash mismatch during update of "
+                        f"doc {doc_id}. Expected {sha256_new[:16]}..., "
+                        f"got {new_hash[:16]}... Orphan at: {orphan_path}. "
+                        f"Run vault_verify(doc_id='{doc_id}', repair=True)."
+                    )
+                os.replace(str(current_new_path), str(current_dest_path))
+                _fsync_dir(doc_dir)
+
+                # Apply the journaled retention rotation while the document
+                # lock is held. Replay uses the same helper. The journal
+                # remains present if a crash occurs before rotation finishes.
+                if rotation_versions:
+                    rotated_versions = []
+                    for version in rotation_versions:
+                        if _rotate_history_version(history_dir, version):
+                            rotated_versions.append(version)
+                    if rotated_versions:
+                        version_rotated = True
+                        for rotated in rotated_versions:
+                            logger.debug(
+                                "Rotated out v%d for doc '%s' "
+                                "(retention depth=%d)",
+                                rotated,
+                                doc_name,
+                                depth,
+                            )
+
+                # Step 3e: If ext changed, unlink current{ext_old}.
+                if ext_old and ext_new and ext_old != ext_new:
+                    old_current = doc_dir / f"current{ext_old}"
+                    if old_current.is_file():
+                        try:
+                            old_current.unlink()
+                        except Exception as exc:
+                            logger.warning(
+                                "Failed to unlink old current%s: %s",
+                                ext_old, exc,
+                            )
+
+                # Step 3f: Rewrite extracted.txt.
+                extracted = extract_text(current_dest_path)
+                _safe_write_bytes(
+                    doc_dir / "extracted.txt",
+                    extracted.encode("utf-8"),
+                    mode=0o600,
+                )
+
+                # Step 4: Rewrite metadata.json with _derived: true.
+                meta = {
+                    "id": doc_id,
+                    "vault_id": vault_id,
+                    "name": name if name is not None else doc_name,
+                    "original_filename": filename if filename else row["original_filename"],
+                    "file_extension": ext_new,
+                    "category": category if category is not None else row["category"],
+                    "priority": priority if priority is not None else row["priority"],
+                    "tags": tags if tags is not None else _parse_json_list(row["tags"]),
+                    "notes": notes if notes is not None else row["notes"],
+                    "created_at": row["created_at"],
+                    "updated_at": now,
+                    "file_size_bytes": len(content),
+                    "version_count": to_version,
+                    "_derived": True,
+                    "_comment": "Derived from DB. DB is source of truth.",
+                }
+                _safe_write_json(
+                    doc_dir / "metadata.json", meta, mode=0o600,
+                )
+
+                # Step 5: DB update + FTS + vault timestamp.
+                new_version_count = to_version
+                file_size = len(content)
+                final_ext = ext_new
+            finally:
+                self._ctx_mgr.release(ctx)
+
+            # DB update (outside the lock to avoid holding it during DB I/O).
+            with self._db() as conn:
+                updates = {
+                    "updated_at": now,
+                    "version_count": new_version_count,
+                    "file_size_bytes": file_size,
+                    "file_extension": final_ext,
+                }
+                if name is not None:
+                    updates["name"] = name
+                if tags is not None:
+                    updates["tags"] = json.dumps(tags)
+                if category is not None:
+                    updates["category"] = category
+                if priority is not None:
+                    updates["priority"] = priority
+                if notes is not None:
+                    updates["notes"] = notes
+                if filename:
+                    updates["original_filename"] = filename
+
+                set_clause = ", ".join(f"{k} = ?" for k in updates)
+                values = list(updates.values()) + [doc_id]
+                conn.execute(
+                    f"UPDATE documents SET {set_clause} WHERE id = ?", values
+                )
+
+                # Update FTS index
+                conn.execute("DELETE FROM doc_fts WHERE doc_id = ?", (doc_id,))
+                final_name = name if name is not None else doc_name
+                final_tags = tags if tags is not None else _parse_json_list(row["tags"])
+                final_notes = notes if notes is not None else row["notes"]
+                conn.execute(
+                    """INSERT INTO doc_fts (doc_id, vault_id, name, content, tags, notes)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (doc_id, vault_id, final_name, extracted,
+                     " ".join(final_tags), final_notes)
+                )
+
+                # Update vault timestamp
+                conn.execute(
+                    "UPDATE vaults SET updated_at = ? WHERE id = ?", (now, vault_id)
+                )
+
+                # Re-index co-occurrences and auto-link (best-effort)
+                try:
+                    _insert_doc_cooccurrences(conn, doc_id, final_name, final_tags, extracted)
+                    _auto_link_doc_cooccurrences(conn, doc_id)
+                except Exception:
+                    pass
+
+            # Step 6: Delete .intent.json.
+            _delete_intent_journal(doc_dir)
+
+        else:
+            # 3. Only metadata changed (no content).
+            # Guard: if no updatable fields were provided, return unchanged doc.
+            has_updates = (name is not None or tags is not None or
+                          category is not None or priority is not None or notes is not None)
+            if not has_updates:
+                # Return current doc metadata unchanged, don't update updated_at
+                meta = {
+                    "id": doc_id,
+                    "vault_id": vault_id,
+                    "name": row["name"],
+                    "original_filename": row["original_filename"],
+                    "file_extension": row["file_extension"],
+                    "category": row["category"],
+                    "priority": row["priority"],
+                    "tags": _parse_json_list(row["tags"]),
+                    "notes": row["notes"],
+                    "file_size_bytes": row["file_size_bytes"],
+                    "version_count": row["version_count"],
+                    "created_at": row["created_at"],
+                    "updated_at": row["updated_at"],
+                }
+
+                # Report divergence on the no-op path, matching get_document().
+                divergence = None
+                try:
+                    ctx = self._ctx_mgr.acquire(
+                        doc_id,
+                        row["vault_id"],
+                        row["file_extension"],
+                        row["version_count"],
+                        write=False,
+                    )
+                    try:
+                        divergence = ctx.divergence
+                    finally:
+                        self._ctx_mgr.release(ctx)
+                except Exception as exc:
+                    # On any lock/divergence error during a read, report None
+                    # rather than blocking the read. The caller can use
+                    # vault_verify to inspect.
+                    logger.debug(
+                        "divergence check failed for doc %s: %s", doc_id, exc
+                    )
+
+                meta["divergence"] = divergence
+                return meta
+
+            file_size = row["file_size_bytes"]
+            extracted = None
+
+            with self._db() as conn:
+                updates = {"updated_at": now}
+                if name is not None:
+                    updates["name"] = name
+                if tags is not None:
+                    updates["tags"] = json.dumps(tags)
+                if category is not None:
+                    updates["category"] = category
+                if priority is not None:
+                    updates["priority"] = priority
+                if notes is not None:
+                    updates["notes"] = notes
+
+                set_clause = ", ".join(f"{k} = ?" for k in updates)
+                values = list(updates.values()) + [doc_id]
+                conn.execute(
+                    f"UPDATE documents SET {set_clause} WHERE id = ?", values
+                )
+
+                # Update FTS index
+                conn.execute("DELETE FROM doc_fts WHERE doc_id = ?", (doc_id,))
+                final_name = name if name is not None else doc_name
+                final_tags = tags if tags is not None else _parse_json_list(row["tags"])
+                final_notes = notes if notes is not None else row["notes"]
+                extracted_path = doc_dir / "extracted.txt"
+                extracted = extracted_path.read_text(encoding="utf-8") if extracted_path.exists() else ""
+                conn.execute(
+                    """INSERT INTO doc_fts (doc_id, vault_id, name, content, tags, notes)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (doc_id, vault_id, final_name, extracted,
+                     " ".join(final_tags), final_notes)
+                )
+
+                # Update vault timestamp
+                conn.execute(
+                    "UPDATE vaults SET updated_at = ? WHERE id = ?", (now, vault_id)
+                )
+
+                # Re-index co-occurrences and auto-link (best-effort)
+                try:
+                    _insert_doc_cooccurrences(conn, doc_id, final_name, final_tags, extracted)
+                    _auto_link_doc_cooccurrences(conn, doc_id)
+                except Exception:
+                    pass
+
+            # Rewrite metadata.json with _derived: true.
+            meta = {
+                "id": doc_id,
+                "vault_id": vault_id,
+                "name": final_name,
+                "original_filename": row["original_filename"],
+                "file_extension": ext_old,
+                "category": category if category is not None else row["category"],
+                "priority": priority if priority is not None else row["priority"],
+                "tags": final_tags,
+                "notes": final_notes,
+                "created_at": row["created_at"],
+                "updated_at": now,
+                "file_size_bytes": file_size,
+                "version_count": version_count,
+                "_derived": True,
+                "_comment": "Derived from DB. DB is source of truth.",
+            }
+            _safe_write_json(
+                doc_dir / "metadata.json", meta, mode=0o600,
+            )
+
+        # Post-DB: Lance indexing + cross-product linking.
+        if content is not None or name is not None:
+            self._lance_write_safe(doc_id, vault_id, final_name, extracted)
+            # Phase 2a: embedding-based auto-link (Pro only, errors never propagate)
+            is_pro = get_tier(self.root) == TIER_PRO
+            if is_pro and self._lance_index is not None:
+                with self._db() as conn:
+                    try:
+                        _auto_link_doc_embeddings(conn, doc_id, self._lance_index, is_pro=True)
+                    except Exception:
+                        pass
+            # Phase 2b: save-triggered cross-product linking (Pro only, best-effort)
+            try:
+                self.cross_link_doc(doc_id, vault_id)
+            except Exception:
+                pass
+
+        # Return fresh metadata
+        result = self.get_document(doc_id)
+        if version_rotated and result:
+            result['version_rotated_warning'] = (
+                'Free-tier version cap reached; oldest version rotated out. '
+                'Upgrade to Pro for unlimited version history.'
+            )
+        return result
+
+    def remove_document(self, doc_id: str) -> bool:
+        """Soft-delete a document. Returns True if found.
+
+        Also cleans up doc_links (both directions), doc_cooccurrences,
+        and Lance rows so stale relationship data never surfaces in
+        find_related or inflates cooccurrence counts (SH-104431/WG-32).
+        """
+        deleted = False
+        with self._db() as conn:
+            cursor = conn.execute(
+                "UPDATE documents SET deleted = 1, updated_at = ? WHERE id = ? AND deleted = 0",
+                (self._now(), doc_id)
+            )
+            if cursor.rowcount > 0:
+                conn.execute("DELETE FROM doc_fts WHERE doc_id = ?", (doc_id,))
+                # Clean up link rows in both directions (SH-104431)
+                conn.execute(
+                    "DELETE FROM doc_links WHERE source_doc_id = ? OR target_doc_id = ?",
+                    (doc_id, doc_id)
+                )
+                # Clean up cooccurrence rows (SH-104431)
+                conn.execute(
+                    "DELETE FROM doc_cooccurrences WHERE doc_id = ?",
+                    (doc_id,)
+                )
+                deleted = True
+        if deleted:
+            self._lance_delete_safe(doc_id)
+        return deleted
+
+    def get_document(self, doc_id: str) -> Optional[Dict[str, Any]]:
+        """Get document metadata by ID.
+
+        Includes a ``divergence`` field (r6/SH-100432): None if the
+        version history is clean, or a dict with ``kind``, ``detail``,
+        and ``remedy`` keys if divergence is detected.  For reads,
+        divergence is reported but does not block (r6/H2).
         """
         with self._db() as conn:
-            rows = conn.execute("SELECT id, name FROM vaults WHERE archived = 0").fetchall()
-            normalized_name = _normalize_vault_name(name)
+            row = conn.execute(
+                "SELECT * FROM documents WHERE id = ? AND deleted = 0", (doc_id,)
+            ).fetchone()
+            if not row:
+                return None
+            result = {
+                "id": row["id"],
+                "vault_id": row["vault_id"],
+                "name": row["name"],
+                "original_filename": row["original_filename"],
+                "file_extension": row["file_extension"],
+                "category": row["category"],
+                "priority": row["priority"],
+                "tags": _parse_json_list(row["tags"]),
+                "notes": row["notes"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "file_size_bytes": row["file_size_bytes"],
+                "version_count": row["version_count"],
+            }
+
+        # r6: report divergence for reads (non-blocking).
+        divergence = None
+        try:
+            ctx = self._ctx_mgr.acquire(
+                doc_id, row["vault_id"], row["file_extension"],
+                row["version_count"], write=False,
+            )
+            try:
+                divergence = ctx.divergence
+            finally:
+                self._ctx_mgr.release(ctx)
+        except Exception as exc:
+            # On any lock/divergence error during a read, report None
+            # rather than blocking the read.  The caller can use
+            # vault_verify to inspect.
+            logger.debug(
+                "divergence check failed for doc %s: %s", doc_id, exc,
+            )
+        result["divergence"] = divergence
+        return result
+
+    def get_document_content(self, doc_id: str) -> Optional[str]:
+        """Read the extracted text content of a document."""
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT vault_id FROM documents WHERE id = ? AND deleted = 0", (doc_id,)
+            ).fetchone()
+            if not row:
+                return None
+            extracted_path = self.vaults_dir / row["vault_id"] / "docs" / doc_id / "extracted.txt"
+            if extracted_path.exists():
+                return extracted_path.read_text(encoding="utf-8")
+            return ""
+
+    def get_document_raw_path(self, doc_id: str) -> Optional[Path]:
+        """Get the path to the raw document file."""
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT vault_id, file_extension FROM documents WHERE id = ? AND deleted = 0",
+                (doc_id,)
+            ).fetchone()
+            if not row:
+                return None
+            return self.vaults_dir / row["vault_id"] / "docs" / doc_id / f"current{row['file_extension']}"
+
+    def list_documents(self, vault_id: str, sort_by: str = "updated_at",
+                       sort_order: str = "desc", category: Optional[str] = None,
+                       tag: Optional[str] = None,
+                       limit: int = 50, offset: int = 0) -> Dict[str, Any]:
+        """List documents in a vault with filtering and sorting."""
+        valid_sorts = {"name", "updated_at", "created_at", "file_size_bytes", "category"}
+        if sort_by not in valid_sorts:
+            sort_by = "updated_at"
+        if sort_order.lower() not in ("asc", "desc"):
+            sort_order = "desc"
+
+        with self._db() as conn:
+            where_parts = ["vault_id = ?", "deleted = 0"]
+            params: list = [vault_id]
+
+            if category:
+                where_parts.append("category = ?")
+                params.append(category)
+
+            if tag:
+                where_parts.append("tags LIKE ?")
+                params.append(f'%"{tag}"%')
+
+            where_clause = " AND ".join(where_parts)
+
+            # Get total count
+            total = conn.execute(
+                f"SELECT COUNT(*) as cnt FROM documents WHERE {where_clause}", params
+            ).fetchone()["cnt"]
+
+            # Get page
+            rows = conn.execute(
+                f"""SELECT * FROM documents WHERE {where_clause}
+                    ORDER BY {sort_by} {sort_order}
+                    LIMIT ? OFFSET ?""",
+                params + [limit, offset]
+            ).fetchall()
+
+            docs = []
             for row in rows:
-                if _normalize_vault_name(row["name"]) == normalized_name:
-                    return self.get_vault(row["id"])
+                docs.append({
+                    "id": row["id"],
+                    "name": row["name"],
+                    "original_filename": row["original_filename"],
+                    "file_extension": row["file_extension"],
+                    "category": row["category"],
+                    "priority": row["priority"],
+                    "tags": _parse_json_list(row["tags"]),
+                    "notes": row["notes"],
+                    "updated_at": row["updated_at"],
+                    "file_size_bytes": row["file_size_bytes"],
+                    "version_count": row["version_count"],
+                })
+
+            return {
+                "total": total,
+                "count": len(docs),
+                "offset": offset,
+                "has_more": total > offset + len(docs),
+                "documents": docs,
+            }
+
+    # -------------------------------------------------------------------
+    # Search
+    # -------------------------------------------------------------------
+
+    # Defined in fts_query.py -- the single definition shared with the
+    # fallback script. Kept as a staticmethod so existing callers work.
+    _sanitize_fts_query = staticmethod(sanitize_fts_query)
+
+    def search(self, query: str, vault_id: Optional[str] = None,
+               limit: int = 20, offset: int = 0) -> Dict[str, Any]:
+        """Full-text search across document contents using FTS5.
+
+        If vault_id is provided, searches only that vault.
+        Otherwise searches all vaults (cross-vault search).
+
+        Returns a dict with an "error" key (and empty results) when the
+        query is malformed FTS5 syntax, so callers can surface a structured
+        error instead of silently-sanitized results (WG-32 D-35).
+        """
+        # WG-32 D-35: reject malformed FTS5 input before sanitization hides it.
+        fts_error = validate_fts_query(query)
+        if fts_error is not None:
+            return {
+                "query": query,
+                "scope": vault_id or "all_vaults",
+                "count": 0,
+                "results": [],
+                "error": fts_error,
+            }
+        # OPP-010: Sanitize FTS5 MATCH input to prevent operator injection
+        safe_query = self._sanitize_fts_query(query)
+        with self._db() as conn:
+            if vault_id:
+                rows = conn.execute(
+                    """SELECT doc_id, vault_id, name,
+                              snippet(doc_fts, 3, '>>>', '<<<', '...', 40) as snippet,
+                              rank
+                       FROM doc_fts
+                       WHERE doc_fts MATCH ? AND vault_id = ?
+                       ORDER BY rank
+                       LIMIT ? OFFSET ?""",
+                    (safe_query, vault_id, limit, offset)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT doc_id, vault_id, name,
+                              snippet(doc_fts, 3, '>>>', '<<<', '...', 40) as snippet,
+                              rank
+                       FROM doc_fts
+                       WHERE doc_fts MATCH ?
+                       ORDER BY rank
+                       LIMIT ? OFFSET ?""",
+                    (safe_query, limit, offset)
+                ).fetchall()
+
+            results = []
+            for row in rows:
+                # Get vault name for context
+                vault_row = conn.execute(
+                    "SELECT name FROM vaults WHERE id = ?", (row["vault_id"],)
+                ).fetchone()
+                vault_name = vault_row["name"] if vault_row else "Unknown"
+
+                results.append({
+                    "doc_id": row["doc_id"],
+                    "vault_id": row["vault_id"],
+                    "vault_name": vault_name,
+                    "doc_name": row["name"],
+                    "snippet": row["snippet"],
+                    "relevance_rank": row["rank"],
+                })
+
+            return {
+                "query": query,
+                "scope": vault_id or "all_vaults",
+                "count": len(results),
+                "results": results,
+            }
+
+    def search_by_tag(self, tag: str, vault_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Find all documents with a specific tag."""
+        with self._db() as conn:
+            if vault_id:
+                rows = conn.execute(
+                    """SELECT d.*, v.name as vault_name FROM documents d
+                       JOIN vaults v ON d.vault_id = v.id
+                       WHERE d.tags LIKE ? AND d.vault_id = ? AND d.deleted = 0
+                       ORDER BY d.updated_at DESC""",
+                    (f'%"{tag}"%', vault_id)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT d.*, v.name as vault_name FROM documents d
+                       JOIN vaults v ON d.vault_id = v.id
+                       WHERE d.tags LIKE ? AND d.deleted = 0
+                       ORDER BY d.updated_at DESC""",
+                    (f'%"{tag}"%',)
+                ).fetchall()
+
+            return [
+                {
+                    "id": r["id"],
+                    "vault_id": r["vault_id"],
+                    "vault_name": r["vault_name"],
+                    "name": r["name"],
+                    "category": r["category"],
+                    "tags": json.loads(r["tags"]),
+                    "updated_at": r["updated_at"],
+                    "file_size_bytes": r["file_size_bytes"],
+                }
+                for r in rows
+            ]
+
+    # -------------------------------------------------------------------
+    # Injection cap (SH-12014)
+    # -------------------------------------------------------------------
+
+    def get_vault_max_updated_at(self, vault_id: str) -> str:
+        """Return MAX(updated_at) for documents in a vault, or '' if empty."""
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT MAX(updated_at) FROM documents WHERE vault_id = ? AND deleted = 0",
+                (vault_id,)
+            ).fetchone()
+            return row[0] or ""
+
+    def get_injection_cap(self, vault_id: str) -> Optional[int]:
+        """Return vault-level injection_cap_tokens, or None if not set."""
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT injection_cap_tokens FROM vaults WHERE id = ?", (vault_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            return row[0]  # int or None
+
+    def set_injection_cap(self, vault_id: str, tokens: int) -> bool:
+        """Set injection_cap_tokens for a vault. Returns False if vault not found."""
+        with self._db() as conn:
+            row = conn.execute("SELECT id FROM vaults WHERE id = ?", (vault_id,)).fetchone()
+            if not row:
+                return False
+            conn.execute(
+                "UPDATE vaults SET injection_cap_tokens = ? WHERE id = ?",
+                (tokens, vault_id)
+            )
+            return True
+
+    def get_docs_for_injection(
+        self,
+        vault_id: str,
+        query: str = "",
+        limit: int = 500,
+    ) -> List[Dict[str, Any]]:
+        """Return ranked docs for injection.
+
+        With query: ranked by FTS5 score DESC, priority_weight DESC, updated_at DESC, doc_id DESC.
+        Without query: ranked by priority_weight DESC, updated_at DESC, doc_id DESC.
+
+        Returns list of dicts with keys: doc_id, name, priority, updated_at, content.
+        Content is the extracted text from disk.
+        """
+        _PWEIGHT = "CASE priority WHEN 'authoritative' THEN 4 WHEN 'normal' THEN 3 " \
+                   "WHEN 'draft' THEN 2 WHEN 'outdated' THEN 1 ELSE 3 END"
+
+        with self._db() as conn:
+            if query.strip():
+                safe_q = self._sanitize_fts_query(query)
+                rows = conn.execute(
+                    f"""SELECT d.id, d.name, d.priority, d.updated_at,
+                               {_PWEIGHT} AS priority_weight,
+                               fts.rank AS fts_rank
+                        FROM doc_fts fts
+                        JOIN documents d ON d.id = fts.doc_id
+                        WHERE fts.doc_fts MATCH ?
+                          AND d.vault_id = ?
+                          AND d.deleted = 0
+                        ORDER BY fts.rank DESC, priority_weight DESC, d.updated_at DESC, d.id DESC
+                        LIMIT ?""",
+                    (safe_q, vault_id, limit)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    f"""SELECT id, name, priority, updated_at,
+                               {_PWEIGHT} AS priority_weight
+                        FROM documents
+                        WHERE vault_id = ? AND deleted = 0
+                        ORDER BY priority_weight DESC, updated_at DESC, id DESC
+                        LIMIT ?""",
+                    (vault_id, limit)
+                ).fetchall()
+
+        # Fetch content from disk (outside DB connection to avoid long-held locks)
+        result = []
+        for row in rows:
+            doc_id = row[0]
+            extracted_path = self.vaults_dir / vault_id / "docs" / doc_id / "extracted.txt"
+            content = ""
+            if extracted_path.exists():
+                try:
+                    content = extracted_path.read_text(encoding="utf-8")
+                except OSError:
+                    content = ""
+            result.append({
+                "doc_id": doc_id,
+                "name": row[1],
+                "priority": row[2],
+                "updated_at": row[3],
+                "content": content,
+            })
+        return result
+
+    def get_docs_for_injection_by_tags(
+        self,
+        vault_id: str,
+        tags: List[str],
+        limit: int = 500,
+    ) -> List[Dict[str, Any]]:
+        """Return docs matching any of the given tags, ordered by priority + recency."""
+        if not tags:
+            return []
+
+        _PWEIGHT = "CASE priority WHEN 'authoritative' THEN 4 WHEN 'normal' THEN 3 " \
+                   "WHEN 'draft' THEN 2 WHEN 'outdated' THEN 1 ELSE 3 END"
+
+        tag_clauses = " OR ".join(f'tags LIKE ?' for _ in tags)
+        tag_params = [f'%"{t}"%' for t in tags]
+
+        with self._db() as conn:
+            rows = conn.execute(
+                f"""SELECT id, name, priority, updated_at,
+                           {_PWEIGHT} AS priority_weight
+                    FROM documents
+                    WHERE vault_id = ? AND deleted = 0
+                      AND ({tag_clauses})
+                    ORDER BY priority_weight DESC, updated_at DESC, id DESC
+                    LIMIT ?""",
+                [vault_id] + tag_params + [limit]
+            ).fetchall()
+
+        result = []
+        for row in rows:
+            doc_id = row[0]
+            extracted_path = self.vaults_dir / vault_id / "docs" / doc_id / "extracted.txt"
+            content = ""
+            if extracted_path.exists():
+                try:
+                    content = extracted_path.read_text(encoding="utf-8")
+                except OSError:
+                    content = ""
+            result.append({
+                "doc_id": doc_id,
+                "name": row[1],
+                "priority": row[2],
+                "updated_at": row[3],
+                "content": content,
+            })
+        return result
+
+    # -------------------------------------------------------------------
+    # Tagging and metadata
+    # -------------------------------------------------------------------
+
+    def tag_document(self, doc_id: str, add_tags: Optional[List[str]] = None,
+                     remove_tags: Optional[List[str]] = None) -> Optional[List[str]]:
+        """Add or remove tags from a document. Returns final tag list, or None if not found."""
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT tags FROM documents WHERE id = ? AND deleted = 0", (doc_id,)
+            ).fetchone()
+            if not row:
+                return None
+
+            current_tags = set(_parse_json_list(row["tags"]))
+            if add_tags:
+                current_tags.update(add_tags)
+            if remove_tags:
+                current_tags -= set(remove_tags)
+
+            final_tags = sorted(current_tags)
+            conn.execute(
+                "UPDATE documents SET tags = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(final_tags), self._now(), doc_id)
+            )
+
+            # Update FTS
+            fts_row = conn.execute(
+                "SELECT rowid, name, content, notes FROM doc_fts WHERE doc_id = ?", (doc_id,)
+            ).fetchone()
+            if fts_row:
+                conn.execute("DELETE FROM doc_fts WHERE doc_id = ?", (doc_id,))
+                conn.execute(
+                    """INSERT INTO doc_fts (doc_id, vault_id, name, content, tags, notes)
+                       VALUES (?, (SELECT vault_id FROM documents WHERE id = ?),
+                               ?, ?, ?, ?)""",
+                    (doc_id, doc_id, fts_row["name"], fts_row["content"],
+                     " ".join(final_tags), fts_row["notes"])
+                )
+
+            return final_tags
+
+    def bulk_tag(self, doc_ids: List[str], add_tags: Optional[List[str]] = None,
+                 remove_tags: Optional[List[str]] = None) -> int:
+        """Apply tag changes to multiple documents in a single transaction. Returns count of modified docs."""
+        if not doc_ids:
+            return 0
+        with self._db() as conn:
+            placeholders = ','.join('?' * len(doc_ids))
+            rows = conn.execute(
+                f"SELECT id, tags FROM documents WHERE id IN ({placeholders}) AND deleted = 0",
+                doc_ids
+            ).fetchall()
+            count = 0
+            now = self._now()
+            for row in rows:
+                current_tags = set(_parse_json_list(row["tags"]))
+                if add_tags:
+                    current_tags.update(add_tags)
+                if remove_tags:
+                    current_tags -= set(remove_tags)
+                final_tags = sorted(current_tags)
+                conn.execute(
+                    "UPDATE documents SET tags = ?, updated_at = ? WHERE id = ?",
+                    (json.dumps(final_tags), now, row["id"])
+                )
+                fts_row = conn.execute(
+                    "SELECT name, content, notes FROM doc_fts WHERE doc_id = ?", (row["id"],)
+                ).fetchone()
+                if fts_row:
+                    conn.execute("DELETE FROM doc_fts WHERE doc_id = ?", (row["id"],))
+                    conn.execute(
+                        """INSERT INTO doc_fts (doc_id, vault_id, name, content, tags, notes)
+                           VALUES (?, (SELECT vault_id FROM documents WHERE id = ?),
+                                   ?, ?, ?, ?)""",
+                        (row["id"], row["id"], fts_row["name"], fts_row["content"],
+                         " ".join(final_tags), fts_row["notes"])
+                    )
+                count += 1
+        return count
+
+    # -------------------------------------------------------------------
+    # Version history
+    # -------------------------------------------------------------------
+
+    def get_doc_history(self, doc_id: str) -> Optional[Dict[str, Any]]:
+        """Get version history for a document. Returns list of versions.
+
+        Implements the r6 proposal (SH-100432):
+        1. Read DB row for vault_id, file_extension, version_count.
+        2. Acquire _doc_context (write=False) -- reads hold lock in
+           shared mode.
+        3. Glob history/v* content files and v{N}.meta.json sidecars.
+        4. For each version number 1..max_evidenced:
+           - content file exists: status="present", read sidecar for
+             annotation.
+           - no content file but sidecar has rotated_at: status="rotated".
+           - no content file and no rotation record: status="missing".
+        5. Mark current version (highest present content file ==
+           current{ext}).
+        6. Include divergence field from DocContext.
+        7. Fix the file_size_bytes=0 bug for current version.
+        """
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT vault_id, file_extension, version_count, "
+                "file_size_bytes FROM documents "
+                "WHERE id = ? AND deleted = 0",
+                (doc_id,)
+            ).fetchone()
+            if not row:
+                return None
+            vault_id = row["vault_id"]
+            ext = row["file_extension"]
+            version_count = row["version_count"]
+            db_file_size = row["file_size_bytes"]
+
+        doc_dir = self.vaults_dir / vault_id / "docs" / doc_id
+        history_dir = doc_dir / "history"
+
+        # 2. Acquire _doc_context (write=False) for divergence check.
+        divergence = None
+        try:
+            ctx = self._ctx_mgr.acquire(
+                doc_id, vault_id, ext, version_count, write=False,
+            )
+            try:
+                divergence = ctx.divergence
+            finally:
+                self._ctx_mgr.release(ctx)
+        except Exception as exc:
+            # On lock/divergence error during a read, report None.
+            logger.debug(
+                "divergence check failed for doc %s history: %s",
+                doc_id, exc,
+            )
+
+        # 3. Glob content files and sidecars.
+        content_files = _content_file_glob(history_dir)
+        sidecar_files = _sidecar_glob(history_dir)
+
+        # Build version-number -> content_file and version_number ->
+        # sidecar maps.
+        content_map: Dict[int, Path] = {}
+        for cf in content_files:
+            v = _parse_version_number(cf.name)
+            if v is not None:
+                content_map[v] = cf
+
+        sidecar_map: Dict[int, Path] = {}
+        for sc in sidecar_files:
+            v = _parse_version_number(sc.name)
+            if v is not None:
+                sidecar_map[v] = sc
+
+        # 4. Determine max_evidenced version number.
+        all_evidenced = _all_evidenced_numbers(history_dir)
+        max_evidenced = max(all_evidenced) if all_evidenced else 0
+        # Include the current version (from DB) in the range.
+        check_max = max(max_evidenced, version_count)
+
+        versions: List[Dict[str, Any]] = []
+        current_version_number = version_count
+
+        for v in range(1, check_max + 1):
+            cf = content_map.get(v)
+            sc_path = sidecar_map.get(v)
+
+            if cf is not None:
+                # Content file exists: status="present".
+                try:
+                    stat_info = cf.stat()
+                    size = stat_info.st_size
+                    mtime = datetime.fromtimestamp(
+                        stat_info.st_mtime, tz=timezone.utc
+                    ).isoformat()
+                except OSError:
+                    size = 0
+                    mtime = self._now()
+
+                entry: Dict[str, Any] = {
+                    "version": v,
+                    "status": "present",
+                    "file_size_bytes": size,
+                    "modified_at": mtime,
+                }
+
+                # Read sidecar for annotation (non-blocking on code paths).
+                if sc_path is not None:
+                    sc = _validate_sidecar(sc_path, v)
+                    if sc is not None:
+                        entry["annotation"] = {
+                            "saved_at": sc.get("saved_at"),
+                            "author": sc.get("author"),
+                            "session_id": sc.get("session_id"),
+                            "note": sc.get("note"),
+                            "op": sc.get("op"),
+                            "provenance": sc.get("provenance"),
+                        }
+
+                # Check if this is the current version.
+                current_path = doc_dir / f"current{ext}"
+                if cf.resolve() == current_path.resolve():
+                    entry["current"] = True
+                    current_version_number = v
+                versions.append(entry)
+
+            elif sc_path is not None:
+                # No content file but sidecar exists.
+                sc = _validate_sidecar(sc_path, v)
+                if sc is not None and sc.get("rotated_at"):
+                    # Rotated version.
+                    entry = {
+                        "version": v,
+                        "status": "rotated",
+                        "file_size_bytes": sc.get("size_bytes", 0),
+                        "modified_at": sc.get("rotated_at"),
+                        "annotation": {
+                            "saved_at": sc.get("saved_at"),
+                            "author": sc.get("author"),
+                            "session_id": sc.get("session_id"),
+                            "note": sc.get("note"),
+                            "op": sc.get("op"),
+                            "provenance": sc.get("provenance"),
+                            "rotated_at": sc.get("rotated_at"),
+                        },
+                    }
+                else:
+                    # Sidecar exists but no rotation record.
+                    entry = {
+                        "version": v,
+                        "status": "missing",
+                        "file_size_bytes": sc.get("size_bytes", 0) if sc else 0,
+                        "modified_at": sc.get("saved_at") if sc else self._now(),
+                    }
+                    if sc is not None:
+                        entry["annotation"] = {
+                            "saved_at": sc.get("saved_at"),
+                            "author": sc.get("author"),
+                            "session_id": sc.get("session_id"),
+                            "note": sc.get("note"),
+                            "op": sc.get("op"),
+                            "provenance": sc.get("provenance"),
+                        }
+                versions.append(entry)
+
+            else:
+                # No content file and no sidecar.
+                versions.append({
+                    "version": v,
+                    "status": "missing",
+                    "file_size_bytes": 0,
+                    "modified_at": self._now(),
+                })
+
+        # 5. Ensure the current version is marked. The current version
+        # is the one whose content file matches current{ext}. If no
+        # history content file matches (e.g., version_count is ahead),
+        # add the current version from DB.
+        has_current = any(e.get("current") for e in versions)
+        if not has_current:
+            # The current version is version_count (from DB).
+            # Fix the file_size_bytes=0 bug: use the DB value.
+            current_entry = {
+                "version": version_count,
+                "status": "present",
+                "file_size_bytes": db_file_size,
+                "modified_at": self._now(),
+                "current": True,
+            }
+            # Check if there's already an entry for this version.
+            found = False
+            for e in versions:
+                if e["version"] == version_count:
+                    e["current"] = True
+                    e["file_size_bytes"] = db_file_size
+                    e["status"] = "present"
+                    found = True
+                    break
+            if not found:
+                versions.append(current_entry)
+
+        # 6. Include divergence field.
+        result = {
+            "versions": versions,
+            "divergence": divergence,
+        }
+        return result
+
+    # -------------------------------------------------------------------
+    # Document version restore (vault_doc_restore core, SH-102198)
+    # -------------------------------------------------------------------
+
+    def restore_document_version(
+        self, doc_id: str, version: int
+    ) -> Dict[str, Any]:
+        """Restore a document to a previous version (vault_doc_restore core).
+
+        Extracted from server.py's inline vault_doc_restore (SH-102198) so
+        the fallback script and loredocs-cli are second callers of this
+        logic, never a second implementation. Resolution follows the r6
+        convention:
+
+        1. The version's content file is resolved through the canonical
+           _content_file_glob / _parse_version_number helpers (never a raw
+           glob or regex).
+        2. A missing content file with a rotated sidecar reports the
+           rotation record instead of a bare not-found.
+        3. The bytes are written back through update_document(), so the
+           current version is archived first (r6 write ordering) and the
+           restored bytes become current.
+
+        Restoring a version twice is idempotent: the second restore
+        archives the (identical) current bytes and update_document() skips
+        the duplicate archive by hash comparison.
+
+        Returns {"ok": bool, "message": str}. Failure messages carry the
+        same "Error: ..." strings the MCP tool returned before the
+        extraction, so server.py's response text is unchanged.
+        """
+        doc = self.get_document(doc_id)
+        if not doc:
+            return {
+                "ok": False,
+                "message": f"Error: Document '{doc_id}' not found.",
+            }
+        previous_count = doc["version_count"]
+
+        doc_dir = self.vaults_dir / doc["vault_id"] / "docs" / doc_id
+        history_dir = doc_dir / "history"
+
+        content_files = sorted(
+            _content_file_glob(history_dir),
+            key=lambda p: (_parse_version_number(p.name) or 0, p.name),
+        )
+        version_file = next(
+            (
+                p for p in content_files
+                if _parse_version_number(p.name) == version
+            ),
+            None,
+        )
+        if version_file is None or not version_file.is_file():
+            sidecar = _validate_sidecar(
+                history_dir / f"v{version}.meta.json", version
+            )
+            if sidecar is not None and sidecar.get("rotated_at"):
+                return {
+                    "ok": False,
+                    "message": (
+                        f"Error: Version {version} of document '{doc_id}' "
+                        f"was rotated (removed by retention). "
+                        f"Rotated at: {sidecar['rotated_at']}."
+                    ),
+                }
+            return {
+                "ok": False,
+                "message": (
+                    f"Error: Version {version} not found for document "
+                    f"'{doc_id}'."
+                ),
+            }
+
+        content = version_file.read_bytes()
+        result = self.update_document(
+            doc_id,
+            content=content,
+            filename=doc["original_filename"],
+        )
+        if result:
+            return {
+                "ok": True,
+                "message": (
+                    f"Document '{doc['name']}' restored to version {version}. "
+                    f"Previous content saved as v{previous_count}."
+                ),
+            }
+        return {"ok": False, "message": "Error: Could not restore version."}
+
+
+    # -------------------------------------------------------------------
+    # Vault verification (r6 / SH-100432)
+    # -------------------------------------------------------------------
+
+    def verify_document(self, doc_id: str, repair: bool = False,
+                        confirm: Optional[str] = None) -> str:
+        """Read-only verification of a single document's version history.
+
+        Reports: stale journals, recovery orphans, missing/invalid/too-new
+        sidecars, missing versions, annotation disagreements,
+        version_count drift, divergence, unrecognized files, conflict
+        files, permissions advisory.
+
+        repair=True: replay stale journals, move invalid/too-new sidecars
+        aside, realign version_count. Never deletes content. Never
+        overwrites.
+
+        confirm gates: 'history-loss', 'history-jump', 'history-rollback',
+        'history-holes', 'lock-unusable'. Each writes a marker file and
+        removes nothing.
+
+        Returns a human-readable report string.
+        """
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT vault_id, file_extension, version_count, name "
+                "FROM documents WHERE id = ? AND deleted = 0",
+                (doc_id,)
+            ).fetchone()
+            if not row:
+                return f"Document {doc_id} not found."
+            vault_id = row["vault_id"]
+            ext = row["file_extension"]
+            version_count = row["version_count"]
+            doc_name = row["name"]
+
+        doc_dir = self.vaults_dir / vault_id / "docs" / doc_id
+        history_dir = doc_dir / "history"
+
+        report_lines: List[str] = []
+        report_lines.append(f"Verify document: {doc_id} ('{doc_name}')")
+        report_lines.append(f"  vault_id: {vault_id}")
+        report_lines.append(f"  ext: {ext}, version_count (DB): {version_count}")
+        report_lines.append("")
+
+        # 1. Check for stale intent journal.
+        journal = _read_intent_journal(doc_dir)
+        if journal is not None:
+            report_lines.append(
+                "  [ISSUE] Stale intent journal found (.intent.json)."
+            )
+            report_lines.append(
+                f"    op={journal.get('op')}, "
+                f"from_version={journal.get('from_version')}, "
+                f"to_version={journal.get('to_version')}"
+            )
+            if repair:
+                # Replay the journal via DocContextManager.
+                try:
+                    ctx = self._ctx_mgr.acquire(
+                        doc_id, vault_id, ext, version_count, write=True,
+                    )
+                    try:
+                        # The acquire() already replays the journal.
+                        report_lines.append(
+                            "  [REPAIR] Journal replayed during acquire."
+                        )
+                    finally:
+                        self._ctx_mgr.release(ctx)
+                except Exception as exc:
+                    report_lines.append(
+                        f"  [REPAIR] Journal replay failed: {exc}"
+                    )
+            report_lines.append("")
+
+        # 2. Check for recovery orphans.
+        orphan_files = []
+        if doc_dir.is_dir():
+            for entry in doc_dir.iterdir():
+                if "current.new.orphan-" in entry.name:
+                    orphan_files.append(entry.name)
+        if orphan_files:
+            report_lines.append(
+                f"  [ISSUE] Recovery orphan(s) found: {orphan_files}"
+            )
+            report_lines.append(
+                "    These are unattributable current.new bytes from a "
+                "failed update. Review and remove manually if not needed."
+            )
+            report_lines.append("")
+
+        # 3. Check lock health.
+        lock_path = doc_dir / ".lock"
+        if lock_path.exists():
+            if not _check_lock_health(lock_path):
+                report_lines.append(
+                    f"  [ISSUE] Lock file at {lock_path} is malformed."
+                )
+                if confirm == "lock-unusable" and repair:
+                    ts = _timestamp_suffix()
+                    unusable_path = doc_dir / f".lock.unusable-{ts}"
+                    try:
+                        os.replace(str(lock_path), str(unusable_path))
+                        report_lines.append(
+                            f"  [REPAIR] Renamed malformed lock to {unusable_path.name}."
+                        )
+                    except OSError as exc:
+                        report_lines.append(
+                            f"  [REPAIR FAILED] Could not rename lock: {exc}"
+                        )
+            report_lines.append("")
+
+        # 4. Acquire context (read-only) for divergence check.
+        divergence = None
+        try:
+            ctx = self._ctx_mgr.acquire(
+                doc_id, vault_id, ext, version_count, write=False,
+            )
+            try:
+                divergence = ctx.divergence
+                fs_max = ctx.fs_max
+                sidecar_max = ctx.sidecar_max
+                highwater = ctx.highwater
+                reset_floor = ctx.reset_floor
+            finally:
+                self._ctx_mgr.release(ctx)
+        except Exception as exc:
+            report_lines.append(f"  [ISSUE] Could not acquire context: {exc}")
+            fs_max = _fs_max_version(history_dir)
+            sidecar_max = _sidecar_max_version(history_dir)
+            highwater = _read_highwater(history_dir)
+            reset_floor = _read_reset_floor(doc_dir)
+
+        report_lines.append(
+            f"  Identity sources: fs_max={fs_max}, sidecar_max={sidecar_max}, "
+            f"highwater={highwater}, reset_floor={reset_floor}, "
+            f"db_count={version_count}"
+        )
+
+        # 5. Report divergence.
+        if divergence is not None:
+            report_lines.append(
+                f"  [DIVERGENCE] kind={divergence['kind']}"
+            )
+            report_lines.append(f"    detail: {divergence['detail']}")
+            report_lines.append(f"    remedy: {divergence['remedy']}")
+
+            # Confirm-gated repairs for divergence.
+            if repair and confirm == divergence["kind"]:
+                if divergence["kind"] in (
+                    "history-loss", "history-jump", "history-rollback",
+                    "history-holes",
+                ):
+                    # Write a .history_reset.json marker file.
+                    reset_data = {
+                        "observed_fs_max": fs_max,
+                        "db_version_count": version_count,
+                        "direction": divergence["kind"],
+                        "reset_at": self._now(),
+                        "confirm": confirm,
+                    }
+                    reset_path = doc_dir / ".history_reset.json"
+                    _safe_write_json(reset_path, reset_data, mode=0o600)
+                    report_lines.append(
+                        f"  [REPAIR] Wrote {reset_path.name} with floor="
+                        f"{max(fs_max, version_count)}."
+                    )
+        else:
+            report_lines.append("  [OK] No divergence detected.")
+        report_lines.append("")
+
+        # 6. Check sidecars.
+        sidecars = _sidecar_glob(history_dir)
+        for sc_path in sidecars:
+            v = _parse_version_number(sc_path.name)
+            if v is None:
+                continue
+            sc = _validate_sidecar(sc_path, v)
+            if sc is None:
+                report_lines.append(
+                    f"  [ISSUE] Invalid sidecar: {sc_path.name}"
+                )
+                if repair:
+                    ts = _timestamp_suffix()
+                    invalid_path = history_dir / f"{sc_path.name}.invalid-{ts}"
+                    try:
+                        os.replace(str(sc_path), str(invalid_path))
+                        report_lines.append(
+                            f"  [REPAIR] Moved invalid sidecar to {invalid_path.name}."
+                        )
+                    except OSError as exc:
+                        report_lines.append(
+                            f"  [REPAIR FAILED] {exc}"
+                        )
+
+            # Check for too-new sidecars (version > max_evidenced + 1).
+            if v > max(fs_max, sidecar_max, version_count) + 1:
+                report_lines.append(
+                    f"  [ISSUE] Too-new sidecar: {sc_path.name} "
+                    f"(version {v} exceeds observed max + 1)"
+                )
+                if repair:
+                    ts = _timestamp_suffix()
+                    superseded_path = history_dir / f"{sc_path.name}.superseded-{ts}"
+                    try:
+                        os.replace(str(sc_path), str(superseded_path))
+                    except OSError as exc:
+                        report_lines.append(
+                            f"  [REPAIR FAILED] {exc}"
+                        )
+        report_lines.append("")
+
+        # 7. Check for missing versions (holes).
+        all_evidenced = _all_evidenced_numbers(history_dir)
+        # The current version lives in current{ext}, NOT in history/, so it is
+        # never evidenced by a numbered history file or sidecar.  The highest
+        # version we can expect to be evidenced in history/ is
+        # version_count - 1 (the most recently archived version); the current
+        # version itself is excluded from the gap-free range.  Including
+        # version_count here made every fresh document report a false
+        # "Missing version numbers" for its own current version (WG-32 VERIF-10
+        # / D-33: 1617/1617 docs flagged identically).
+        check_max = max(fs_max, sidecar_max, version_count - 1)
+        missing = [n for n in range(1, check_max + 1) if n not in all_evidenced]
+        if missing:
+            if len(missing) <= 20:
+                missing_str = ", ".join(str(n) for n in missing)
+            else:
+                missing_str = ", ".join(str(n) for n in missing[:20]) + "..."
+            report_lines.append(
+                f"  [ISSUE] Missing version numbers: [{missing_str}]"
+            )
+        report_lines.append("")
+
+        # 8. Check for conflict files.
+        if history_dir.is_dir():
+            conflicts = [
+                f.name for f in history_dir.iterdir()
+                if ".conflict-" in f.name
+            ]
+            if conflicts:
+                report_lines.append(
+                    f"  [ISSUE] Conflict files in history: {conflicts}"
+                )
+                report_lines.append(
+                    "    These are byte sequences that differed from the "
+                    "journal. Review and remove manually if not needed."
+                )
+        report_lines.append("")
+
+        # 9. Check for unrecognized files in history.
+        if history_dir.is_dir():
+            # Import the regexes from version_storage for pattern matching.
+            from .version_storage import _RE_CONTENT_FILE, _RE_SIDECAR_FILE
+            infra_names = {".highwater"}
+            for entry in history_dir.iterdir():
+                if entry.name.startswith("."):
+                    if entry.name not in infra_names and not entry.name.startswith(".v"):
+                        report_lines.append(
+                            f"  [WARN] Unrecognized dot-file in history: {entry.name}"
+                        )
+                    continue
+                if not _RE_CONTENT_FILE.match(entry.name) and not _RE_SIDECAR_FILE.match(entry.name):
+                    if ".conflict-" not in entry.name and ".invalid-" not in entry.name:
+                        report_lines.append(
+                            f"  [WARN] Unrecognized file in history: {entry.name}"
+                        )
+        report_lines.append("")
+
+        # 10. version_count drift check.
+        if fs_max > version_count + 1:
+            report_lines.append(
+                f"  [ISSUE] version_count drift: DB={version_count}, "
+                f"fs_max={fs_max}. DB is behind the filesystem."
+            )
+            if repair:
+                # Realign version_count to fs_max.
+                with self._db() as conn:
+                    conn.execute(
+                        "UPDATE documents SET version_count = ? WHERE id = ?",
+                        (fs_max, doc_id),
+                    )
+                report_lines.append(
+                    f"  [REPAIR] Realigned version_count to {fs_max}."
+                )
+        report_lines.append("")
+
+        # 11. Permissions advisory (macOS).
+        if platform.system() == "Darwin":
+            report_lines.append(
+                "  [INFO] macOS: ensure vault directory is not under "
+                "a cloud-synced path (iCloud, Dropbox, OneDrive, "
+                "Google Drive). Cloud sync can split writes and roll "
+                "back version history."
+            )
+
+        return "\n".join(report_lines)
+
+    def _verify_link_integrity(self, vault_id: str) -> List[str]:
+        """Report dangling doc_links / doc_cooccurrences rows for a vault.
+
+        A doc_link is dangling when its source_doc_id or target_doc_id does not
+        resolve to a live (deleted=0) document row -- i.e. the referenced
+        document was soft-deleted (deleted=1) or hard-deleted (row removed via
+        SQL).  A doc_cooccurrence is dangling when its doc_id does not resolve
+        to a live document row.
+
+        Scoping:
+        - doc_links are scoped to this vault via source_vault_id /
+          target_vault_id (the columns survive even when the referenced
+          document row is gone).
+        - doc_cooccurrences carry no vault id.  A soft-deleted document still
+          has a documents row, so those are scoped via d.vault_id.  A
+          hard-deleted document has no row at all, so its orphan
+          co-occurrence rows cannot be attributed to a vault and are reported
+          under every vault that is verified.
+
+        Read-only: never mutates the database.
+        """
+        lines: List[str] = []
+        with self._db() as conn:
+            live_ids = {r["id"] for r in conn.execute(
+                "SELECT id FROM documents WHERE deleted = 0"
+            ).fetchall()}
+
+            links = conn.execute(
+                "SELECT id, source_doc_id, target_doc_id FROM doc_links "
+                "WHERE source_vault_id = ? OR target_vault_id = ?",
+                (vault_id, vault_id),
+            ).fetchall()
+            for link in links:
+                if (link["source_doc_id"] not in live_ids
+                        or link["target_doc_id"] not in live_ids):
+                    lines.append(
+                        f"  [ISSUE] Dangling doc_link {link['id']}: "
+                        f"source={link['source_doc_id']} -> "
+                        f"target={link['target_doc_id']}"
+                    )
+
+            cooc = conn.execute(
+                "SELECT dc.doc_id, dc.term FROM doc_cooccurrences dc "
+                "LEFT JOIN documents d ON d.id = dc.doc_id "
+                "WHERE d.id IS NULL OR (d.deleted = 1 AND d.vault_id = ?)",
+                (vault_id,),
+            ).fetchall()
+            for row in cooc:
+                lines.append(
+                    f"  [ISSUE] Dangling doc_cooccurrence: "
+                    f"doc_id={row['doc_id']} (term='{row['term']}')"
+                )
+
+        return lines
+
+    def verify_vault(self, vault_id: str, repair: bool = False,
+                     confirm: Optional[str] = None) -> str:
+        """Verify all documents in a vault. Calls verify_document for each.
+
+        Also reports dangling doc_links / doc_cooccurrences rows (references to
+        missing or soft-deleted documents) -- a vault-level integrity check that
+        verify_document cannot see because links/co-occurrences are stored at
+        the vault/DB level, not under a single document.
+
+        Returns a human-readable report string.
+        """
+        with self._db() as conn:
+            rows = conn.execute(
+                "SELECT id, name FROM documents WHERE vault_id = ? AND deleted = 0",
+                (vault_id,)
+            ).fetchall()
+
+        report_lines: List[str] = []
+        report_lines.append(f"Vault verification: {vault_id}")
+        report_lines.append(f"  Documents: {len(rows)}")
+        report_lines.append("")
+
+        if not rows:
+            report_lines.append("  No live documents in this vault.")
+            report_lines.append("")
+
+        for row in rows:
+            doc_report = self.verify_document(
+                row["id"], repair=repair, confirm=confirm
+            )
+            report_lines.append(doc_report)
+            report_lines.append("-" * 40)
+
+        # Dangling link / co-occurrence integrity (vault-scoped).
+        report_lines.append("Link/co-occurrence integrity:")
+        dangling = self._verify_link_integrity(vault_id)
+        if dangling:
+            report_lines.extend(dangling)
+        else:
+            report_lines.append("  [OK] No dangling links or co-occurrences.")
+        report_lines.append("")
+
+        return "\n".join(report_lines)
+
+    def pre_upgrade_scan(self, vault_id: str) -> str:
+        """Read-only pre-upgrade scan. Records .upgrade_scan.json.
+
+        No code branches on the scan result. The scan is recorded for
+        manual review before a LoreDocs version upgrade.
+        """
+        with self._db() as conn:
+            rows = conn.execute(
+                "SELECT id, name, file_extension, version_count "
+                "FROM documents WHERE vault_id = ? AND deleted = 0",
+                (vault_id,)
+            ).fetchall()
+
+        scan_entries: List[Dict[str, Any]] = []
+        for row in rows:
+            doc_id = row["id"]
+            ext = row["file_extension"]
+            version_count = row["version_count"]
+            doc_dir = self.vaults_dir / vault_id / "docs" / doc_id
+            history_dir = doc_dir / "history"
+
+            divergence = None
+            try:
+                ctx = self._ctx_mgr.acquire(
+                    doc_id, vault_id, ext, version_count, write=False,
+                )
+                try:
+                    divergence = ctx.divergence
+                    fs_max = ctx.fs_max
+                    sidecar_max = ctx.sidecar_max
+                    highwater = ctx.highwater
+                finally:
+                    self._ctx_mgr.release(ctx)
+            except Exception:
+                divergence = None
+                fs_max = _fs_max_version(history_dir)
+                sidecar_max = _sidecar_max_version(history_dir)
+                highwater = _read_highwater(history_dir)
+
+            # Check for stale journal.
+            has_journal = (doc_dir / ".intent.json").is_file()
+
+            # Check for orphans.
+            orphans = []
+            if doc_dir.is_dir():
+                orphans = [
+                    f.name for f in doc_dir.iterdir()
+                    if "orphan-" in f.name
+                ]
+
+            scan_entries.append({
+                "doc_id": doc_id,
+                "name": row["name"],
+                "version_count": version_count,
+                "fs_max": fs_max,
+                "sidecar_max": sidecar_max,
+                "highwater": highwater,
+                "divergence": divergence,
+                "has_stale_journal": has_journal,
+                "orphans": orphans,
+            })
+
+        scan_data = {
+            "vault_id": vault_id,
+            "scanned_at": self._now(),
+            "documents": scan_entries,
+        }
+
+        # Write .upgrade_scan.json in the vault root.
+        vault_root = self.vaults_dir / vault_id
+        scan_path = vault_root / ".upgrade_scan.json"
+        _safe_write_json(scan_path, scan_data, mode=0o600)
+
+        report_lines: List[str] = []
+        report_lines.append(f"Pre-upgrade scan for vault {vault_id}")
+        report_lines.append(f"  Documents scanned: {len(scan_entries)}")
+        report_lines.append(f"  Scan recorded at: {scan_path}")
+        issues = 0
+        for entry in scan_entries:
+            if entry["divergence"] or entry["has_stale_journal"] or entry["orphans"]:
+                issues += 1
+                report_lines.append(
+                    f"  [ATTENTION] doc {entry['doc_id']} ('{entry['name']}')"
+                )
+                if entry["divergence"]:
+                    report_lines.append(
+                        f"    divergence: {entry['divergence']['kind']}"
+                    )
+                if entry["has_stale_journal"]:
+                    report_lines.append("    stale journal: yes")
+                if entry["orphans"]:
+                    report_lines.append(f"    orphans: {entry['orphans']}")
+        if issues == 0:
+            report_lines.append("  No issues found.")
+        else:
+            report_lines.append(f"  Total documents needing attention: {issues}")
+        report_lines.append("")
+        report_lines.append(
+            "This scan is read-only. No code branches on its results."
+        )
+
+        return "\n".join(report_lines)
+
+    # -------------------------------------------------------------------
+    # Cross-vault operations
+    # -------------------------------------------------------------------
+
+    def copy_document(self, doc_id: str, target_vault_id: str) -> Optional[Dict[str, Any]]:
+        """Copy a document to another vault. Returns new document metadata."""
+        source_doc = self.get_document(doc_id)
+        if not source_doc:
             return None
+
+        target_vault = self.get_vault(target_vault_id)
+        if not target_vault:
+            return None
+
+        # Read the raw file
+        raw_path = self.get_document_raw_path(doc_id)
+        if not raw_path or not raw_path.exists():
+            return None
+
+        content = raw_path.read_bytes()
+        return self.add_document(
+            target_vault_id,
+            name=source_doc["name"],
+            content=content,
+            filename=source_doc["original_filename"],
+            tags=source_doc["tags"],
+            category=source_doc["category"],
+            priority=source_doc["priority"],
+            notes=source_doc["notes"],
+        )
+
+    def move_document(self, doc_id: str, target_vault_id: str) -> Optional[Dict[str, Any]]:
+        """Move a document to another vault. Returns new document metadata.
+
+        Preserves explicit and auto links by re-pointing them to the new document id.
+        """
+        new_doc = self.copy_document(doc_id, target_vault_id)
+        if new_doc:
+            new_doc_id = new_doc["id"]
+            with self._db() as conn:
+                conn.execute(
+                    "UPDATE doc_links SET source_doc_id = ? WHERE source_doc_id = ?",
+                    (new_doc_id, doc_id)
+                )
+                conn.execute(
+                    "UPDATE doc_links SET target_doc_id = ? WHERE target_doc_id = ?",
+                    (new_doc_id, doc_id)
+                )
+                # UPDATE OR IGNORE -- copy_document -> add_document may already
+                # have created fresh auto:embedding / auto:cooccurrence links
+                # between the new document and existing docs in the target vault.
+                # Repointing the old doc's auto-links onto the same
+                # (source_vault_id, source_doc_id, target_vault_id, target_doc_id,
+                # label) key as one of those fresh rows would violate
+                # idx_doc_links_unique_key (SH-104973 / SH-104974). OR IGNORE keeps
+                # the freshly-generated link and leaves the stale repointed row at
+                # its pre-move vault_id; that stale row is cross-vault and is
+                # removed when either vault is deleted (delete_vault matches on
+                # vault_id), so no dangling same-vault duplicate survives.
+                conn.execute(
+                    "UPDATE OR IGNORE doc_links SET source_vault_id = ? WHERE source_doc_id = ?",
+                    (target_vault_id, new_doc_id)
+                )
+                conn.execute(
+                    "UPDATE OR IGNORE doc_links SET target_vault_id = ? WHERE target_doc_id = ?",
+                    (target_vault_id, new_doc_id)
+                )
+                conn.execute(
+                    "INSERT OR IGNORE INTO doc_cooccurrences (term, doc_id, frequency) "
+                    "SELECT term, ?, frequency FROM doc_cooccurrences WHERE doc_id = ?",
+                    (new_doc_id, doc_id)
+                )
+            self.remove_document(doc_id)
+        return new_doc
+
+    # -------------------------------------------------------------------
+    # Import / Export
+    # -------------------------------------------------------------------
+
+    def import_directory(self, vault_id: str, dir_path: Path,
+                         tags: Optional[List[str]] = None,
+                         category: str = "imported",
+                         recursive: bool = True,
+                         skip_config_files: bool = True) -> List[Dict[str, Any]]:
+        """Bulk import all supported files from a directory into a vault.
+
+        Preserves relative folder paths so same-named files from different
+        folders are distinguishable (path stored in document notes).
+        By default skips config files (.css, .js, .json).
+
+        Args:
+            vault_id: Target vault ID
+            dir_path: Directory to import from
+            tags: Tags to apply to all imports
+            category: Category for imported documents
+            recursive: If True, recurse into subdirectories
+            skip_config_files: If True, skip .css, .js, .json files
+        """
+        import time
+
+        imported = []
+        if not dir_path.is_dir():
+            return imported
+
+        start_time = time.perf_counter()
+        # WG-32 D-27: idempotent re-import. A file is identified by its
+        # original filename plus the stored relative path (notes), so the
+        # same directory imported twice does not double the document count.
+        existing_keys = set()
+        with self._db() as conn:
+            rows = conn.execute(
+                "SELECT original_filename, notes FROM documents "
+                "WHERE vault_id = ? AND deleted = 0",
+                (vault_id,),
+            ).fetchall()
+            existing_keys = {(r["original_filename"], r["notes"]) for r in rows}
+
+        iterator = sorted(dir_path.rglob("*")) if recursive else sorted(dir_path.iterdir())
+        for file_path in iterator:
+            if file_path.is_symlink():
+                continue
+            if file_path.is_file() and not file_path.name.startswith("."):
+                if skip_config_files and file_path.suffix.lower() in ('.css', '.js', '.json'):
+                    continue
+                if file_path.stat().st_size > MAX_FILE_SIZE:
+                    continue
+                try:
+                    content = file_path.read_bytes()
+                    doc_name = file_path.stem.replace("_", " ").replace("-", " ").title()
+                    relative_path = str(file_path.relative_to(dir_path))
+                    path_note = f"Path: {relative_path}"
+                    dedup_key = (file_path.name, path_note)
+                    if dedup_key in existing_keys:
+                        # Already imported in a prior run -- skip.
+                        continue
+                    doc_tags = list(tags) if tags else []
+                    if file_path.suffix.lower() == ".md":
+                        fm_tags = _extract_frontmatter_tags(content)
+                        for t in fm_tags:
+                            if t and t not in doc_tags:
+                                doc_tags.append(t)
+                    result = self.add_document(
+                        vault_id, name=doc_name, content=content,
+                        filename=file_path.name,
+                        tags=doc_tags if doc_tags else None,
+                        category=category,
+                        notes=path_note,
+                        defer_links=True
+                    )
+                    if result:
+                        imported.append(result)
+                except Exception:
+                    continue
+
+        # Batch the deferred index + auto-link work (SH-104967): one pass for
+        # co-occurrence indexing and one for linking, instead of per-file
+        # O(n^2) passes inside add_document.
+        new_doc_ids = [r["id"] for r in imported if r and r.get("id")]
+        self._bulk_index_and_link(new_doc_ids)
+
+        end_time = time.perf_counter()
+        elapsed = end_time - start_time
+        avg_per_file = elapsed / len(imported) if imported else 0
+        logger.debug(f"import_directory: {len(imported)} files in {elapsed:.2f}s ({avg_per_file:.3f}s/file)")
+
+        return imported
+
+    def export_vault(self, vault_id: str, output_dir: Path,
+                     include_history: bool = False) -> int:
+        """Export all current documents from a vault to a directory.
+        Returns number of files exported.
+
+        When include_history=True (r6/SH-100432):
+        - Export each document's history/ directory alongside current.
+        - Include v{N}.meta.json sidecars.
+        - Write an export_manifest.json with divergence info per document.
+        """
+        output_dir.mkdir(parents=True, exist_ok=True)
+        count = 0
+
+        # Collect divergence info for the export manifest.
+        manifest_entries: List[Dict[str, Any]] = []
+
+        with self._db() as conn:
+            rows = conn.execute(
+                "SELECT id, original_filename, file_extension, version_count "
+                "FROM documents WHERE vault_id = ? AND deleted = 0",
+                (vault_id,)
+            ).fetchall()
+
+            real_output_dir = os.path.realpath(str(output_dir))
+            for row in rows:
+                doc_id = row["id"]
+                ext = row["file_extension"]
+                raw_path = self.vaults_dir / vault_id / "docs" / doc_id / f"current{ext}"
+                if raw_path.exists():
+                    # OPP-006: Sanitize original_filename to a plain basename before
+                    # constructing the destination path, then confirm it stays inside
+                    # output_dir (guards against stored traversal sequences).
+                    safe_export_name = os.path.basename(row["original_filename"])
+                    if not safe_export_name:
+                        safe_export_name = f"{doc_id}{ext}"
+                    dest = output_dir / safe_export_name
+                    real_dest = os.path.realpath(str(dest))
+                    if not real_dest.startswith(real_output_dir + os.sep):
+                        continue  # skip malicious path -- log ID only, not content
+                    # Avoid filename collisions. lexists() (not exists()) so a
+                    # dangling symlink still counts as "taken" -- exists() is
+                    # False for a dangling symlink, which would otherwise let
+                    # the loop settle on it and copy2 write through it to
+                    # wherever the symlink points (SH-105845).
+                    counter = 1
+                    while os.path.lexists(dest):
+                        stem = Path(safe_export_name).stem
+                        dest = output_dir / f"{stem}_{counter}{ext}"
+                        counter += 1
+                    shutil.copy2(raw_path, dest)
+                    count += 1
+
+                    if include_history:
+                        # Export the history/ directory alongside current.
+                        history_dir = self.vaults_dir / vault_id / "docs" / doc_id / "history"
+                        if history_dir.is_dir():
+                            # Create a per-doc history subdirectory.
+                            stem = Path(safe_export_name).stem
+                            doc_history_dest = output_dir / f"{stem}_history"
+                            hist_counter = 1
+                            while os.path.lexists(doc_history_dest):
+                                doc_history_dest = output_dir / f"{stem}_history_{hist_counter}"
+                                hist_counter += 1
+                            doc_history_dest.mkdir(parents=True, exist_ok=True)
+
+                            # Copy content files and sidecars.
+                            for cf in _content_file_glob(history_dir):
+                                shutil.copy2(cf, doc_history_dest / cf.name)
+                            for sc in _sidecar_glob(history_dir):
+                                shutil.copy2(sc, doc_history_dest / sc.name)
+
+                            # Copy infrastructure files (.highwater).
+                            hw_path = history_dir / ".highwater"
+                            if hw_path.is_file():
+                                shutil.copy2(hw_path, doc_history_dest / ".highwater")
+
+                        # Collect divergence info for the manifest.
+                        divergence = None
+                        try:
+                            ctx = self._ctx_mgr.acquire(
+                                doc_id, vault_id, ext,
+                                row["version_count"], write=False,
+                            )
+                            try:
+                                divergence = ctx.divergence
+                            finally:
+                                self._ctx_mgr.release(ctx)
+                        except Exception:
+                            divergence = None
+
+                        manifest_entries.append({
+                            "doc_id": doc_id,
+                            "original_filename": safe_export_name,
+                            "version_count": row["version_count"],
+                            "divergence": divergence,
+                        })
+
+        if include_history and manifest_entries:
+            manifest_path = output_dir / "export_manifest.json"
+            manifest = {
+                "vault_id": vault_id,
+                "exported_at": self._now(),
+                "documents": manifest_entries,
+            }
+            _safe_write_json(manifest_path, manifest, mode=0o600)
+
+        return count
+
+    # -------------------------------------------------------------------
+    # Document linking (Phase 2)
+    # -------------------------------------------------------------------
+
+    def link_doc(self, source_doc_id: str, target_doc_id: str,
+                 label: str = "related") -> Optional[Dict[str, Any]]:
+        """Create a link between two documents.
+
+        Links are stored bidirectionally: one row per direction so queries
+        work without UNION.  If the link already exists it is returned as-is.
+        Returns the link record, or None if either document is not found.
+        """
+        with self._db() as conn:
+            # Verify both documents exist and are not deleted
+            src = conn.execute(
+                "SELECT id, vault_id, name FROM documents WHERE id = ? AND deleted = 0",
+                (source_doc_id,)
+            ).fetchone()
+            tgt = conn.execute(
+                "SELECT id, vault_id, name FROM documents WHERE id = ? AND deleted = 0",
+                (target_doc_id,)
+            ).fetchone()
+            if not src or not tgt:
+                return None
+
+            now = self._now()
+            link_id = str(uuid.uuid4())
+            reverse_id = str(uuid.uuid4())
+
+            # Check if a link with THIS label already exists for the pair. A
+            # row under a different label (e.g. auto:cooccurrence) must not
+            # short-circuit an explicit link request -- the unique index
+            # (idx_doc_links_unique_key) keys on label too, so an explicit
+            # and an auto row coexist on the same pair.
+            existing = conn.execute(
+                "SELECT id FROM doc_links WHERE source_doc_id = ? AND target_doc_id = ? AND label = ?",
+                (source_doc_id, target_doc_id, label)
+            ).fetchone()
+            if existing:
+                return {
+                    "id": existing["id"],
+                    "source_doc_id": source_doc_id,
+                    "source_doc_name": src["name"],
+                    "target_doc_id": target_doc_id,
+                    "target_doc_name": tgt["name"],
+                    "label": label,
+                    "already_existed": True,
+                }
+
+            conn.execute(
+                """INSERT INTO doc_links (id, source_vault_id, source_doc_id,
+                                          target_vault_id, target_doc_id, created_at, label)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (link_id, src["vault_id"], source_doc_id,
+                 tgt["vault_id"], target_doc_id, now, label)
+            )
+            # Store reverse direction for symmetric lookup
+            conn.execute(
+                """INSERT INTO doc_links (id, source_vault_id, source_doc_id,
+                                          target_vault_id, target_doc_id, created_at, label)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (reverse_id, tgt["vault_id"], target_doc_id,
+                 src["vault_id"], source_doc_id, now, label)
+            )
+
+            return {
+                "id": link_id,
+                "source_doc_id": source_doc_id,
+                "source_doc_name": src["name"],
+                "target_doc_id": target_doc_id,
+                "target_doc_name": tgt["name"],
+                "label": label,
+                "created_at": now,
+                "already_existed": False,
+            }
+
+    def unlink_doc(self, source_doc_id: str, target_doc_id: str,
+                   label: Optional[str] = None) -> int:
+        """Remove links between two documents (both directions).
+
+        label=None (default) removes every manually-created link on the pair
+        but never an auto-generated one (label LIKE 'auto:%') -- a caller
+        that didn't ask to remove the system-maintained relationship
+        shouldn't lose it as a side effect. Pass an explicit label (e.g.
+        'auto:cooccurrence') to target an auto link specifically.
+
+        Returns the number of link rows deleted (0 if no matching link existed).
+        """
+        with self._db() as conn:
+            if label is None:
+                cursor = conn.execute(
+                    """DELETE FROM doc_links
+                       WHERE ((source_doc_id = ? AND target_doc_id = ?)
+                           OR (source_doc_id = ? AND target_doc_id = ?))
+                         AND label NOT LIKE 'auto:%'""",
+                    (source_doc_id, target_doc_id, target_doc_id, source_doc_id)
+                )
+            else:
+                cursor = conn.execute(
+                    """DELETE FROM doc_links
+                       WHERE ((source_doc_id = ? AND target_doc_id = ?)
+                           OR (source_doc_id = ? AND target_doc_id = ?))
+                         AND label = ?""",
+                    (source_doc_id, target_doc_id, target_doc_id, source_doc_id, label)
+                )
+            return cursor.rowcount
+
+    def archive_embedding_links(self) -> int:
+        """Set archived_at on all auto:embedding links (Pro->Free downgrade).
+
+        Defense-in-depth: find_related_docs already filters by archived_at IS NULL,
+        but setting this flag at downgrade time makes the exclusion data-layer enforced
+        and independent of per-call filter logic.
+        """
+        now = self._now()
+        with self._db() as conn:
+            cursor = conn.execute(
+                "UPDATE doc_links SET archived_at = ? "
+                "WHERE label = 'auto:embedding' AND archived_at IS NULL",
+                (now,)
+            )
+            return cursor.rowcount
+
+    def unarchive_embedding_links(self) -> int:
+        """Clear archived_at on all auto:embedding links (Free->Pro re-upgrade)."""
+        with self._db() as conn:
+            cursor = conn.execute(
+                "UPDATE doc_links SET archived_at = NULL "
+                "WHERE label = 'auto:embedding' AND archived_at IS NOT NULL"
+            )
+            return cursor.rowcount
+
+    def find_related_docs(self, doc_id: str) -> List[Dict[str, Any]]:
+        """Return the strongest documents linked to or from the given document.
+
+        Each result includes the related document's metadata and the link label.
+        Embedding links (label='auto:embedding') are excluded for free-tier callers
+        and deduplicated: if the same pair has both co-occurrence and embedding links,
+        the co-occurrence entry wins.
+
+        Ordered explicit links first, then co-occurrence, then embedding, and
+        capped at FIND_RELATED_MAX_RESULTS. Explicit links carry no stored
+        strength, so within that bucket they are ordered by recency. Within the
+        co-occurrence bucket, links are ordered by the shared-term count between
+        the source doc and each candidate (computed from doc_cooccurrences at
+        read time, since the term overlap used to create the link is not itself
+        stored on doc_links), falling back to recency as a tiebreak. Embedding
+        carries no comparable per-pair score and stays recency-ordered. This
+        matters because the result list is capped well above the relevance
+        floor's top-5 window (WG-32 D-10): when a doc has more co-occurrence
+        candidates than fit in the top 5, which 5 land there determines the
+        measured relevance, and shared-term strength is a better proxy for "is
+        this one of the 5 best matches" than insertion recency.
+        Without the cap a doc that is a semantic "hub" for many others can
+        accumulate dozens of links since both the cooccurrence and embedding
+        auto-linkers write bidirectionally (WG-32 D-10: pre-cap median result
+        count was 23.5 against a target of <=15).
+        """
+        is_pro = get_tier(self.root) == TIER_PRO
+        with self._db() as conn:
+            rows = conn.execute(
+                """SELECT d.id, d.vault_id, d.name, d.category, d.tags, d.notes,
+                          d.updated_at, dl.label, v.name as vault_name,
+                          COALESCE(cooc.shared_count, 0) AS cooc_strength
+                   FROM doc_links dl
+                   JOIN documents d ON dl.target_doc_id = d.id
+                   JOIN vaults v ON d.vault_id = v.id
+                   LEFT JOIN (
+                       SELECT dc2.doc_id AS target_id, COUNT(*) AS shared_count
+                       FROM doc_cooccurrences dc1
+                       JOIN doc_cooccurrences dc2 ON dc1.term = dc2.term
+                       WHERE dc1.doc_id = ? AND dc2.doc_id != ?
+                       GROUP BY dc2.doc_id
+                   ) cooc ON cooc.target_id = dl.target_doc_id
+                   WHERE dl.source_doc_id = ?
+                     AND d.deleted = 0
+                     AND (dl.archived_at IS NULL)
+                   ORDER BY
+                     CASE WHEN dl.label NOT LIKE 'auto:%' THEN 0
+                          WHEN dl.label = 'auto:cooccurrence' THEN 1
+                          ELSE 2 END,
+                     cooc_strength DESC,
+                     dl.created_at DESC""",
+                (doc_id, doc_id, doc_id)
+            ).fetchall()
+
+            seen: Dict[str, dict] = {}
+            for row in rows:
+                item = dict(row)
+                item["tags"] = json.loads(item.get("tags") or "[]")
+                label = item.get("label", "related")
+                target_id = item["id"]
+
+                # Filter embedding links for free tier
+                if label == "auto:embedding" and not is_pro:
+                    continue
+
+                # Dedup: cooccurrence wins over embedding for same pair
+                if target_id in seen:
+                    existing_label = seen[target_id].get("label", "")
+                    if existing_label == "auto:cooccurrence" and label == "auto:embedding":
+                        continue
+                    if label == "auto:cooccurrence":
+                        seen[target_id] = item
+                else:
+                    seen[target_id] = item
+
+            return list(seen.values())[:FIND_RELATED_MAX_RESULTS]
+
+    # -------------------------------------------------------------------
+    # Vault manifest export (Phase 2)
+    # -------------------------------------------------------------------
+
+    def get_vault_manifest(self, vault_id: str) -> Optional[Dict[str, Any]]:
+        """Return a JSON-serializable manifest of the vault.
+
+        Includes vault metadata, all document metadata (not file contents),
+        tag index, and document count by category.  Useful for quick overviews
+        and for generating marketplace showcase exports.
+        """
+        with self._db() as conn:
+            vault = conn.execute(
+                "SELECT * FROM vaults WHERE id = ? AND archived = 0",
+                (vault_id,)
+            ).fetchone()
+            if not vault:
+                return None
+
+            vault_dict = dict(vault)
+            vault_dict["tags"] = json.loads(vault_dict.get("tags") or "[]")
+            vault_dict["linked_projects"] = _parse_json_list_tolerant(vault_dict.get("linked_projects"))
+
+            docs = conn.execute(
+                """SELECT id, name, original_filename, category, priority, tags,
+                          notes, created_at, updated_at, file_size_bytes, version_count
+                   FROM documents
+                   WHERE vault_id = ? AND deleted = 0
+                   ORDER BY updated_at DESC""",
+                (vault_id,)
+            ).fetchall()
+
+            doc_list = []
+            tag_counts: Dict[str, int] = {}
+            category_counts: Dict[str, int] = {}
+
+            for doc in docs:
+                d = dict(doc)
+                d["tags"] = json.loads(d.get("tags") or "[]")
+                for t in d["tags"]:
+                    tag_counts[t] = tag_counts.get(t, 0) + 1
+                category_counts[d["category"]] = category_counts.get(d["category"], 0) + 1
+                doc_list.append(d)
+
+            # Link count (stored bidirectionally so divide by 2)
+            link_row = conn.execute(
+                "SELECT COUNT(*) as cnt FROM doc_links WHERE source_vault_id = ?",
+                (vault_id,)
+            ).fetchone()
+            link_count = (link_row["cnt"] // 2) if link_row else 0
+
+            return {
+                "vault": vault_dict,
+                "document_count": len(doc_list),
+                "link_count": link_count,
+                "category_counts": category_counts,
+                "tag_counts": tag_counts,
+                "documents": doc_list,
+                "generated_at": self._now(),
+            }
+
+    # -------------------------------------------------------------------
+    # Cross-product linking (Phase 2b, SH-10727)
+    # -------------------------------------------------------------------
+
+    def _write_cross_product_link(
+        self,
+        conn: sqlite3.Connection,
+        source_product: str,
+        source_id: str,
+        target_product: str,
+        target_id: str,
+        similarity_score: Optional[float],
+        embedding_model: str,
+        embedding_dim: int,
+        link_type: str = "auto",
+        tier_required: str = "pro",
+    ) -> None:
+        """Write a single cross-product link. All cross-product writes go through here.
+
+        Design note: link direction varies by link_type:
+        - Manual links (link_session_to_doc): session as source, doc as target
+        - Auto links (cross_link_doc): doc as source, session as target
+
+        This asymmetry is intentional. The read side (get_cross_product_links) is
+        deliberately bidirectional (UNION ALL) to compensate, so both products can
+        query links regardless of write direction.
+        """
+        conn.execute(
+            """INSERT OR IGNORE INTO cross_product_links
+               (source_product, source_id, target_product, target_id,
+                similarity_score, embedding_model, embedding_dim,
+                link_type, tier_required)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (source_product, source_id, target_product, target_id,
+             similarity_score, embedding_model, embedding_dim,
+             link_type, tier_required),
+        )
+
+    def get_cross_product_links(
+        self,
+        source_product: str,
+        source_id: str,
+        current_embedding_model: str,
+        limit: int = 5,
+        is_pro: bool = False,
+    ) -> Dict[str, Any]:
+        """Return cross-product links for a source entity (bidirectional).
+
+        Searches for links where the entity is the source OR target, supporting
+        round-trip queries for vault_get_session_links and vault_get_linked_sessions.
+
+        Filters stale-model links (marks them is_stale=True, still returned so
+        callers can surface an upgrade message). Manual links bypass model check.
+
+        Returns a dict with:
+          schema_version, cross_product_available, tier_gate, links
+        """
+        if not is_pro:
+            return {
+                "schema_version": CROSS_LINK_SCHEMA_VERSION,
+                "cross_product_available": True,
+                "tier_gate": "pro_required",
+                "message": "Cross-product linking requires Pro tier.",
+                "links": [],
+            }
+        with self._db() as conn:
+            rows = conn.execute(
+                """SELECT
+                     target_product, target_id, similarity_score,
+                     embedding_model, embedding_dim, link_type, created_at
+                   FROM (
+                     SELECT target_product, target_id, similarity_score,
+                            embedding_model, embedding_dim, link_type, created_at
+                     FROM cross_product_links
+                     WHERE source_product = ? AND source_id = ?
+                     UNION ALL
+                     SELECT source_product AS target_product, source_id AS target_id,
+                            similarity_score, embedding_model, embedding_dim, link_type, created_at
+                     FROM cross_product_links
+                     WHERE target_product = ? AND target_id = ?
+                   ) AS combined
+                   ORDER BY
+                     CASE link_type WHEN 'manual' THEN 0 ELSE 1 END,
+                     CASE WHEN embedding_model = ? THEN 0 ELSE 1 END,
+                     similarity_score DESC
+                   LIMIT ?""",
+                (source_product, source_id, source_product, source_id, current_embedding_model, limit),
+            ).fetchall()
+
+        # WG-32 D-31 (AC1): filter dead LoreConvo session links on read.
+        # If the LoreConvo DB can be discovered, omit loreconvo endpoints whose
+        # session id is absent from the sessions table (one batched lookup).
+        # If the LoreConvo DB cannot be discovered, return links unfiltered.
+        lc_session_ids = {row[1] for row in rows if row[0] == "loreconvo"}
+        if lc_session_ids:
+            try:
+                lc_db = discover_product_db("loreconvo")
+            except DiscoveryError:
+                lc_db = None
+            if lc_db is not None:
+                try:
+                    import sqlite3 as _sqlite3
+                    lc_conn = _sqlite3.connect(
+                        _readonly_sqlite_uri(lc_db), uri=True
+                    )
+                    placeholders = ",".join("?" * len(lc_session_ids))
+                    existing = lc_conn.execute(
+                        f"SELECT id FROM sessions WHERE id IN ({placeholders})",
+                        tuple(lc_session_ids),
+                    ).fetchall()
+                    live_ids = {r[0] for r in existing}
+                    lc_conn.close()
+                    rows = [
+                        r for r in rows
+                        if r[0] != "loreconvo" or r[1] in live_ids
+                    ]
+                except Exception:
+                    pass  # return unfiltered on any error
+
+        seen: set = set()
+        links = []
+        for row in rows:
+            target_product = row[0]
+            target_id = row[1]
+
+            link_key = (target_product, target_id)
+            if link_key in seen:
+                continue
+            seen.add(link_key)
+
+            is_stale = (row[5] != "manual" and
+                        row[3] != current_embedding_model)
+            entry: Dict[str, Any] = {
+                "target_product": target_product,
+                "target_id": target_id,
+                "similarity_score": row[2],
+                "link_type": row[5],
+                "created_at": row[6],
+                "is_stale": is_stale,
+            }
+            if is_stale:
+                entry["upgrade_message"] = (
+                    "This link was created with a different embedding model. "
+                    "Re-index both products to refresh cross-product links."
+                )
+            links.append(entry)
+
+        return {
+            "schema_version": CROSS_LINK_SCHEMA_VERSION,
+            "cross_product_available": True,
+            "tier_gate": "satisfied",
+            "links": links,
+        }
+
+    def link_session_to_doc(
+        self,
+        session_id: str,
+        doc_id: str,
+        vault_id: str,
+        link_type: str = "manual",
+        similarity_score: Optional[float] = None,
+        is_pro: bool = False,
+    ) -> Dict[str, Any]:
+        """Write a manual cross-product link from a LoreConvo session to a LoreDocs doc.
+
+        Checks vault opt-out, session existence, and doc fan-out cap. Manual links use
+        embedding_model='manual', dim=0, tier_required='free' (free-tier accessible).
+        """
+        if not is_pro and link_type == "manual":
+            # Manual links allowed for all tiers per architecture decision
+            pass
+
+        with self._db() as conn:
+            vault_row = conn.execute(
+                "SELECT cross_link_opt_out FROM vaults WHERE id = ?", (vault_id,)
+            ).fetchone()
+            if not vault_row:
+                return {"ok": False, "reason": "vault not found"}
+            if vault_row["cross_link_opt_out"]:
+                return {"ok": False, "reason": "vault has cross-linking disabled"}
+
+            doc_row = conn.execute(
+                "SELECT 1 FROM documents WHERE id = ? AND deleted = 0", (doc_id,)
+            ).fetchone()
+            if not doc_row:
+                return {"ok": False, "reason": "document not found"}
+
+            # Check session exists in loreconvo (SH-104537: prevent dangling links from manual vault_link_session)
+            try:
+                lc_db = discover_product_db("loreconvo")
+            except DiscoveryError:
+                lc_db = None
+
+            if lc_db:
+                import sqlite3 as _sqlite3
+                try:
+                    lc_conn = _sqlite3.connect(_readonly_sqlite_uri(lc_db), uri=True, timeout=2.0)
+                    lc_conn.row_factory = _sqlite3.Row
+                    session_exists = lc_conn.execute(
+                        "SELECT 1 FROM sessions WHERE id = ?", (session_id,)
+                    ).fetchone()
+                    lc_conn.close()
+                    if not session_exists:
+                        return {"ok": False, "reason": "session not found"}
+                except Exception:
+                    # If we can't check loreconvo, let the link through (graceful degrade)
+                    pass
+
+            # Check fan-out cap per doc (SH-104537: prevent unbounded growth, max 11,739 in WG-32)
+            link_count = conn.execute(
+                "SELECT COUNT(*) FROM cross_product_links WHERE target_product = 'loredocs' AND target_id = ?",
+                (doc_id,)
+            ).fetchone()[0]
+            if link_count >= _CROSS_LINK_CAP_PER_DOC:
+                return {
+                    "ok": False,
+                    "reason": f"document has reached maximum allowed cross-product links ({_CROSS_LINK_CAP_PER_DOC})"
+                }
+
+            self._write_cross_product_link(
+                conn,
+                source_product="loreconvo",
+                source_id=session_id,
+                target_product="loredocs",
+                target_id=doc_id,
+                similarity_score=similarity_score,
+                embedding_model="manual",
+                embedding_dim=0,
+                link_type="manual",
+                tier_required="free",
+            )
+
+        return {"ok": True, "session_id": session_id, "doc_id": doc_id}
+
+    def cross_link_doc(self, doc_id: str, vault_id: str) -> int:
+        """Trigger save-time cross-product linking for a LoreDocs document.
+
+        Queries the LoreConvo sessions.lance index for semantically similar sessions,
+        writes up to _CROSS_LINK_CAP links. Pro-only, best-effort (never fails a save).
+
+        Returns count of links written (0 if product unavailable, not Pro, etc).
+        Updates documents.last_cross_linked_at.
+        """
+        import logging as _logging
+        log = _logging.getLogger(__name__)
+
+        if get_tier(self.root) != TIER_PRO:
+            return 0
+
+        # Check debounce
+        now_str = self._now()
+        with self._db() as conn:
+            row = conn.execute(
+                "SELECT last_cross_linked_at FROM documents WHERE id = ?", (doc_id,)
+            ).fetchone()
+        if row and row["last_cross_linked_at"]:
+            try:
+                from datetime import datetime as _dt, timezone as _tz
+                last = _dt.fromisoformat(row["last_cross_linked_at"].replace("Z", "+00:00"))
+                now_dt = _dt.now(_tz.utc)
+                if (now_dt - last).total_seconds() < _CROSS_LINK_DEBOUNCE_SECS:
+                    return 0
+            except Exception:
+                pass
+
+        # Discover LoreConvo sessions.lance
+        try:
+            lc_db = discover_product_db("loreconvo")
+        except DiscoveryError:
+            return 0
+        if lc_db is None:
+            return 0
+
+        # Find LoreConvo sessions.lance directory
+        lc_lance_dir = lc_db.parent / "sessions.lance"
+        if not lc_lance_dir.exists():
+            return 0
+
+        # Get the document's text for embedding
+        with self._db() as conn:
+            vault_row = conn.execute(
+                "SELECT cross_link_opt_out FROM vaults WHERE id = ?", (vault_id,)
+            ).fetchone()
+            if not vault_row or vault_row["cross_link_opt_out"]:
+                return 0
+            doc_row = conn.execute(
+                "SELECT name FROM documents WHERE id = ? AND deleted = 0", (doc_id,)
+            ).fetchone()
+        if not doc_row:
+            return 0
+
+        extracted_path = self.vaults_dir / vault_id / "docs" / doc_id / "extracted.txt"
+        doc_text = doc_row["name"]
+        if extracted_path.exists():
+            try:
+                doc_text = extracted_path.read_text(encoding="utf-8", errors="replace")[:2000]
+            except Exception:
+                pass
+
+        try:
+            import lancedb as _lancedb
+
+            # Same BGE-small model as before, ONNX-quantized. Vectors differ
+            # slightly from the old torch fp32 output, which is why the 0.1.16
+            # CHANGELOG recommends a one-time vault_rebuild_index. Cached
+            # singleton (SH-104967) so a bulk import loads it once, not per file.
+            model = _get_cross_link_embedder()
+            q_vec = next(iter(model.embed([doc_text]))).tolist()
+
+            lc_lance_db = _lancedb.connect(str(lc_lance_dir))
+            table = lc_lance_db.open_table("sessions")
+            raw = table.search(
+                q_vec, vector_column_name="vector", query_type="vector"
+            ).limit(50).to_list()
+
+            # Deduplicate to best distance per session_id
+            best: Dict[str, float] = {}
+            for r in raw:
+                sid = r.get("session_id")
+                dist = r.get("_distance", 999.0)
+                if not sid:
+                    continue
+                if dist > _CROSS_LINK_L2_THRESHOLD:
+                    continue
+                if sid not in best or dist < best[sid]:
+                    best[sid] = dist
+
+            # Check LoreConvo DB for session opt-out
+            import sqlite3 as _sqlite3
+            lc_conn = _sqlite3.connect(_readonly_sqlite_uri(lc_db), uri=True)
+            lc_conn.row_factory = _sqlite3.Row
+            written = 0
+            with self._db() as conn:
+                # Prune stale auto-links for this doc (model changed since last run).
+                # Manual links are unaffected. INSERT OR IGNORE below then writes
+                # fresh links, so model-upgraded content self-heals on next save.
+                conn.execute(
+                    """DELETE FROM cross_product_links
+                       WHERE source_product = 'loredocs' AND source_id = ?
+                         AND link_type = 'auto'
+                         AND embedding_model != ?""",
+                    (doc_id, _CROSS_LINK_EMBEDDING_MODEL),
+                )
+                # WG-32 D-31 (AC4): lifetime cap -- never grow a doc's auto
+                # session links past _LIFETIME_AUTO_LINK_CAP (500). When at
+                # cap, replace the lowest-similarity existing auto link only
+                # if the new one scores higher. Manual links are never
+                # counted or removed.
+                current_auto_count = conn.execute(
+                    """SELECT COUNT(*) FROM cross_product_links
+                       WHERE source_product = 'loredocs' AND source_id = ?
+                         AND link_type = 'auto'""",
+                    (doc_id,),
+                ).fetchone()[0]
+                existing_auto_rows = []
+                if current_auto_count >= _LIFETIME_AUTO_LINK_CAP:
+                    existing_auto_rows = conn.execute(
+                        """SELECT target_id, similarity_score
+                           FROM cross_product_links
+                           WHERE source_product = 'loredocs' AND source_id = ?
+                             AND link_type = 'auto'
+                           ORDER BY similarity_score ASC,
+                                    created_at ASC, target_id ASC""",
+                        (doc_id,),
+                    ).fetchall()
+                for sid, dist in sorted(best.items(), key=lambda x: x[1])[:_CROSS_LINK_CAP]:
+                    if written >= _CROSS_LINK_CAP:
+                        break
+                    row = lc_conn.execute(
+                        "SELECT cross_link_opt_out FROM sessions WHERE id = ?", (sid,)
+                    ).fetchone()
+                    if row is None:
+                        # WG-32 D-31: the LoreConvo sessions.lance vector index
+                        # is not pruned when a session row is deleted/expired,
+                        # so a stale embedding can still surface here. Writing
+                        # a link anyway produces a permanently dangling
+                        # cross_product_links endpoint -- skip instead.
+                        continue
+                    # cross_link_opt_out may not exist on older schemas -- treat as 0
+                    if row[0]:
+                        continue
+                    new_score = round(max(0.0, 1.0 - dist), 4)
+                    if current_auto_count < _LIFETIME_AUTO_LINK_CAP:
+                        # Room to add without exceeding the lifetime cap
+                        self._write_cross_product_link(
+                            conn,
+                            source_product="loredocs",
+                            source_id=doc_id,
+                            target_product="loreconvo",
+                            target_id=sid,
+                            similarity_score=new_score,
+                            embedding_model=_CROSS_LINK_EMBEDDING_MODEL,
+                            embedding_dim=_CROSS_LINK_EMBEDDING_DIM,
+                            link_type="auto",
+                            tier_required="pro",
+                        )
+                        written += 1
+                        current_auto_count += 1
+                    elif existing_auto_rows and new_score > existing_auto_rows[0]["similarity_score"]:
+                        # At cap: replace the lowest-similarity existing auto
+                        # link only if the new one scores higher
+                        conn.execute(
+                            """DELETE FROM cross_product_links
+                               WHERE source_product = 'loredocs' AND source_id = ?
+                                 AND target_id = ? AND link_type = 'auto'""",
+                            (doc_id, existing_auto_rows[0]["target_id"]),
+                        )
+                        self._write_cross_product_link(
+                            conn,
+                            source_product="loredocs",
+                            source_id=doc_id,
+                            target_product="loreconvo",
+                            target_id=sid,
+                            similarity_score=new_score,
+                            embedding_model=_CROSS_LINK_EMBEDDING_MODEL,
+                            embedding_dim=_CROSS_LINK_EMBEDDING_DIM,
+                            link_type="auto",
+                            tier_required="pro",
+                        )
+                        written += 1
+                        existing_auto_rows = existing_auto_rows[1:]
+                conn.execute(
+                    "UPDATE documents SET last_cross_linked_at = ? WHERE id = ?",
+                    (now_str, doc_id),
+                )
+            lc_conn.close()
+            log.debug("cross_link_doc: wrote %d cross-product links for doc %s", written, doc_id)
+            return written
+        except Exception as exc:
+            log.warning("cross_link_doc: unavailable (%s)", type(exc).__name__)
+            return 0
+
+    def _backup_db(self):
+        """Take a timestamped, WAL-consistent backup of loredocs.db.
+
+        Uses the SQLite online backup API so the copy includes all
+        WAL-journaled pages -- a plain shutil.copy2 of the main file
+        skips the -wal sidecar and loses recent writes (SH-105859).
+
+        Returns the backup file path on success.
+        Raises RuntimeError on failure so callers can abort the delete
+        instead of proceeding without a valid backup (SH-105859).
+        """
+        from datetime import datetime as _dt, timezone as _tz
+        ts = _dt.now(_tz.utc).strftime("%Y%m%dT%H%M%S")
+        dest = self.db_path.parent / f"loredocs.db.backup-{ts}"
+        src = sqlite3.connect(str(self.db_path))
+        try:
+            dst = sqlite3.connect(str(dest))
+            try:
+                src.backup(dst)
+            finally:
+                dst.close()
+        except Exception as exc:
+            # Clean up a partial backup file so the next attempt does
+            # not collide or look like a valid backup.
+            try:
+                dest.unlink(missing_ok=True)
+            except Exception:
+                pass
+            raise RuntimeError(f"backup failed: {exc}") from exc
+        finally:
+            src.close()
+        return dest
+
+    def _check_loreconvo_for_maintenance(self):
+        """Discover and validate the LoreConvo DB for maintenance operations.
+
+        Returns (lc_db_path, all_session_ids) on success, or (None, None)
+        with an error message if the DB cannot be discovered or its sessions
+        table is empty.  Raises DiscoveryError if the env-var override is
+        misconfigured (surfaced to the caller).
+        """
+        try:
+            lc_db = discover_product_db("loreconvo")
+        except DiscoveryError:
+            raise
+        if lc_db is None:
+            return None, "LoreConvo database not found -- cannot verify session existence"
+        import sqlite3 as _sqlite3
+        lc_conn = _sqlite3.connect(_readonly_sqlite_uri(lc_db), uri=True)
+        try:
+            count = lc_conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        except Exception as exc:
+            lc_conn.close()
+            return None, f"Cannot read LoreConvo sessions table: {exc}"
+        if count == 0:
+            lc_conn.close()
+            return None, (
+                "LoreConvo sessions table is empty -- refusing to proceed "
+                "(a wrong path would make every link look dangling)"
+            )
+        all_ids = {r[0] for r in lc_conn.execute("SELECT id FROM sessions").fetchall()}
+        lc_conn.close()
+        return lc_db, all_ids
+
+    def prune_dangling_auto_links(self, execute=False):
+        """Find and optionally delete dangling auto cross-product links.
+
+        A dangling link is one where the LoreConvo session (source or target)
+        no longer exists.  Only link_type='auto' rows are deleted; manual
+        links are never touched.
+
+        Returns a dict with keys:
+            ok          -- bool
+            total_auto  -- total auto links in the table
+            dangling_auto    -- dangling auto links found
+            dangling_manual  -- dangling manual links (left alone)
+            over_cap_docs    -- docs with > _LIFETIME_AUTO_LINK_CAP auto links
+            deleted          -- rows deleted (0 if dry run)
+            error            -- str if ok is False
+        """
+        try:
+            lc_db, all_session_ids = self._check_loreconvo_for_maintenance()
+        except DiscoveryError as exc:
+            return {"ok": False, "error": str(exc)}
+        if lc_db is None:
+            return {"ok": False, "error": all_session_ids}
+
+        backup_path = None
+        if execute:
+            try:
+                backup_path = self._backup_db()
+            except RuntimeError as exc:
+                return {"ok": False, "error": str(exc)}
+
+        with self._db() as conn:
+            total_auto = conn.execute(
+                "SELECT COUNT(*) FROM cross_product_links WHERE link_type = 'auto'"
+            ).fetchone()[0]
+
+            rows = conn.execute(
+                """SELECT source_product, source_id, target_product, target_id, link_type
+                   FROM cross_product_links
+                   WHERE source_product = 'loreconvo' OR target_product = 'loreconvo'"""
+            ).fetchall()
+
+            dangling_auto_ids = []
+            dangling_manual = 0
+            for r in rows:
+                session_id = r["source_id"] if r["source_product"] == "loreconvo" else r["target_id"]
+                if session_id not in all_session_ids:
+                    if r["link_type"] == "auto":
+                        dangling_auto_ids.append(session_id)
+                    else:
+                        dangling_manual += 1
+
+            over_cap_docs = conn.execute(
+                """SELECT COUNT(*) FROM (
+                       SELECT source_id
+                       FROM cross_product_links
+                       WHERE source_product = 'loredocs' AND link_type = 'auto'
+                       GROUP BY source_id
+                       HAVING COUNT(*) > ?
+                   )""",
+                (_LIFETIME_AUTO_LINK_CAP,),
+            ).fetchone()[0]
+
+            deleted = 0
+            if execute and dangling_auto_ids:
+                for i in range(0, len(dangling_auto_ids), 500):
+                    batch = dangling_auto_ids[i:i + 500]
+                    placeholders = ",".join("?" * len(batch))
+                    conn.execute(
+                        f"""DELETE FROM cross_product_links
+                           WHERE link_type = 'auto'
+                             AND (
+                               (source_product = 'loreconvo' AND source_id IN ({placeholders}))
+                               OR
+                               (target_product = 'loreconvo' AND target_id IN ({placeholders}))
+                             )""",
+                        batch + batch,
+                    )
+                deleted = conn.execute(
+                    "SELECT COUNT(*) FROM cross_product_links WHERE link_type = 'auto'"
+                ).fetchone()[0]
+                deleted = total_auto - deleted
+
+            return {
+                "ok": True,
+                "total_auto": total_auto,
+                "dangling_auto": len(dangling_auto_ids),
+                "dangling_manual": dangling_manual,
+                "over_cap_docs": over_cap_docs,
+                "deleted": deleted,
+                "backup_path": str(backup_path) if backup_path else None,
+            }
+
+    def trim_overcap_auto_links(self, execute=False):
+        """Trim each doc's auto session links to the top _LIFETIME_AUTO_LINK_CAP
+        by similarity_score (deterministic tie-break: created_at then target_id).
+
+        Manual links are never counted against or removed by the trim.
+
+        Returns a dict with keys:
+            ok            -- bool
+            over_cap_docs -- count of docs trimmed
+            total_trimmed -- rows removed (0 if dry run)
+            error         -- str if ok is False
+        """
+        try:
+            lc_db, _ = self._check_loreconvo_for_maintenance()
+        except DiscoveryError as exc:
+            return {"ok": False, "error": str(exc)}
+        if lc_db is None:
+            return {"ok": False, "error": _}
+
+        backup_path = None
+        if execute:
+            try:
+                backup_path = self._backup_db()
+            except RuntimeError as exc:
+                return {"ok": False, "error": str(exc)}
+
+        with self._db() as conn:
+            over_cap = conn.execute(
+                """SELECT source_id, COUNT(*) AS cnt
+                   FROM cross_product_links
+                   WHERE source_product = 'loredocs' AND link_type = 'auto'
+                   GROUP BY source_id
+                   HAVING cnt > ?""",
+                (_LIFETIME_AUTO_LINK_CAP,),
+            ).fetchall()
+
+            total_trimmed = 0
+            for doc_row in over_cap:
+                doc_id = doc_row["source_id"]
+                excess = doc_row["cnt"] - _LIFETIME_AUTO_LINK_CAP
+                to_remove = conn.execute(
+                    """SELECT target_id FROM cross_product_links
+                       WHERE source_product = 'loredocs' AND source_id = ?
+                         AND link_type = 'auto'
+                       ORDER BY similarity_score ASC, created_at ASC, target_id ASC
+                       LIMIT ?""",
+                    (doc_id, excess),
+                ).fetchall()
+                total_trimmed += len(to_remove)
+                if execute:
+                    for tr in to_remove:
+                        conn.execute(
+                            """DELETE FROM cross_product_links
+                               WHERE source_product = 'loredocs' AND source_id = ?
+                                 AND target_id = ? AND link_type = 'auto'""",
+                            (doc_id, tr["target_id"]),
+                        )
+
+            return {
+                "ok": True,
+                "over_cap_docs": len(over_cap),
+                "total_trimmed": total_trimmed if execute else 0,
+                "backup_path": str(backup_path) if backup_path else None,
+            }
+
+    def _repair_bare_string_linked_projects(self) -> int:
+        """Repair vaults with bare-string linked_projects (WG-32 D-26).
+
+        Converts bare strings to JSON lists, idempotent and non-destructive.
+        Returns count of vaults repaired.
+        """
+        repaired_count = 0
+        with self._db() as conn:
+            rows = conn.execute(
+                "SELECT id, linked_projects FROM vaults WHERE linked_projects IS NOT NULL"
+            ).fetchall()
+
+            for vault_id, linked_projects in rows:
+                try:
+                    json.loads(linked_projects)
+                except json.JSONDecodeError:
+                    parsed = _parse_json_list_tolerant(linked_projects)
+                    new_value = json.dumps(parsed)
+                    conn.execute(
+                        "UPDATE vaults SET linked_projects = ? WHERE id = ?",
+                        (new_value, vault_id)
+                    )
+                    repaired_count += 1
+
+        return repaired_count
+
+    # -------------------------------------------------------------------
+    # Suggestions (Phase 2)
+    # -------------------------------------------------------------------
+
+    def get_suggestions(self, vault_id: Optional[str] = None,
+                        limit: int = 5) -> List[Dict[str, Any]]:
+        """Return suggested documents to review or improve.
+
+        Surfaces documents that may need attention:
+        - Recently added with no notes (undocumented)
+        - No tags (unorganized)
+        - Never linked to any other document (isolated)
+
+        Optionally scoped to a single vault.
+        """
+        suggestions: List[Dict[str, Any]] = []
+
+        with self._db() as conn:
+            vault_filter = "AND d.vault_id = ?" if vault_id else ""
+            params_base: List[Any] = [vault_id] if vault_id else []
+
+            # 1. Recently added but no notes
+            rows = conn.execute(
+                f"""SELECT d.id, d.name, d.vault_id, v.name as vault_name,
+                           d.category, d.created_at, d.updated_at
+                    FROM documents d
+                    JOIN vaults v ON d.vault_id = v.id
+                    WHERE d.deleted = 0 AND (d.notes IS NULL OR d.notes = '')
+                    {vault_filter}
+                    ORDER BY d.created_at DESC
+                    LIMIT ?""",
+                params_base + [limit]
+            ).fetchall()
+            for row in rows:
+                suggestions.append({
+                    "reason": "no_notes",
+                    "label": "Add notes to describe this document",
+                    "doc_id": row["id"],
+                    "doc_name": row["name"],
+                    "vault_id": row["vault_id"],
+                    "vault_name": row["vault_name"],
+                    "category": row["category"],
+                    "updated_at": row["updated_at"],
+                })
+
+            if len(suggestions) >= limit:
+                return suggestions[:limit]
+
+            # 2. Documents with no tags
+            rows = conn.execute(
+                f"""SELECT d.id, d.name, d.vault_id, v.name as vault_name,
+                           d.category, d.updated_at
+                    FROM documents d
+                    JOIN vaults v ON d.vault_id = v.id
+                    WHERE d.deleted = 0
+                      AND (d.tags IS NULL OR d.tags = '[]')
+                    {vault_filter}
+                    ORDER BY d.updated_at DESC
+                    LIMIT ?""",
+                params_base + [limit - len(suggestions)]
+            ).fetchall()
+            for row in rows:
+                if not any(s["doc_id"] == row["id"] for s in suggestions):
+                    suggestions.append({
+                        "reason": "no_tags",
+                        "label": "Tag this document for better discoverability",
+                        "doc_id": row["id"],
+                        "doc_name": row["name"],
+                        "vault_id": row["vault_id"],
+                        "vault_name": row["vault_name"],
+                        "category": row["category"],
+                        "updated_at": row["updated_at"],
+                    })
+
+            if len(suggestions) >= limit:
+                return suggestions[:limit]
+
+            # 3. Documents never linked to anything
+            rows = conn.execute(
+                f"""SELECT d.id, d.name, d.vault_id, v.name as vault_name,
+                           d.category, d.updated_at
+                    FROM documents d
+                    JOIN vaults v ON d.vault_id = v.id
+                    WHERE d.deleted = 0
+                      AND d.id NOT IN (SELECT DISTINCT source_doc_id FROM doc_links)
+                    {vault_filter}
+                    ORDER BY d.created_at DESC
+                    LIMIT ?""",
+                params_base + [limit - len(suggestions)]
+            ).fetchall()
+            for row in rows:
+                if not any(s["doc_id"] == row["id"] for s in suggestions):
+                    suggestions.append({
+                        "reason": "no_links",
+                        "label": "Link this document to related documents",
+                        "doc_id": row["id"],
+                        "doc_name": row["name"],
+                        "vault_id": row["vault_id"],
+                        "vault_name": row["vault_name"],
+                        "category": row["category"],
+                        "updated_at": row["updated_at"],
+                    })
+
+        return suggestions[:limit]
