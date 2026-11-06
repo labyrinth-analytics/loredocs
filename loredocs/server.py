@@ -2889,24 +2889,25 @@ def _validate_export_directory(directory: str, export_root: Optional[Path] = Non
     Returns the canonical Path on success; raises ValueError otherwise.
     """
     raw = Path(directory)
+    root = (export_root or Path.cwd()).resolve()
+    root_hint = str(root)
     if raw.is_absolute():
         raise ValueError(
             "Error: absolute export paths are not allowed; provide a relative "
-            "path inside the LoreDocs exports directory (~/.loredocs/exports)."
+            f"path inside the LoreDocs exports directory ({root_hint})."
         )
     if str(directory).startswith("~"):
         raise ValueError(
             "Error: '~' is not supported in export paths; provide a relative "
             "directory name."
         )
-    root = (export_root or Path.cwd()).resolve()
     resolved = (root / raw).resolve()
     try:
         resolved.relative_to(root)
     except ValueError:
         raise ValueError(
             "Error: export path escapes the LoreDocs exports directory "
-            "(~/.loredocs/exports)."
+            f"({root})."
         )
     return resolved
 
