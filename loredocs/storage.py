@@ -4498,9 +4498,13 @@ class VaultStorage:
                     real_dest = os.path.realpath(str(dest))
                     if not real_dest.startswith(real_output_dir + os.sep):
                         continue  # skip malicious path -- log ID only, not content
-                    # Avoid filename collisions
+                    # Avoid filename collisions. lexists() (not exists()) so a
+                    # dangling symlink still counts as "taken" -- exists() is
+                    # False for a dangling symlink, which would otherwise let
+                    # the loop settle on it and copy2 write through it to
+                    # wherever the symlink points (SH-105845).
                     counter = 1
-                    while dest.exists():
+                    while os.path.lexists(dest):
                         stem = Path(safe_export_name).stem
                         dest = output_dir / f"{stem}_{counter}{ext}"
                         counter += 1
@@ -4515,7 +4519,7 @@ class VaultStorage:
                             stem = Path(safe_export_name).stem
                             doc_history_dest = output_dir / f"{stem}_history"
                             hist_counter = 1
-                            while doc_history_dest.exists():
+                            while os.path.lexists(doc_history_dest):
                                 doc_history_dest = output_dir / f"{stem}_history_{hist_counter}"
                                 hist_counter += 1
                             doc_history_dest.mkdir(parents=True, exist_ok=True)
