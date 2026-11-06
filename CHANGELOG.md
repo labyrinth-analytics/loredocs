@@ -7,7 +7,7 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
-## Unreleased
+## v0.1.33 (2026-11-06)
 
 ### Added: D-31 dangling-link cleanup, read-path filter, lifetime auto-link cap (SH-105578)
 

@@ -4,7 +4,7 @@ What changed in each release, written for users (not developers).
 
 ---
 
-## Unreleased
+## v0.1.33 (2026-11-06)
 
 ### Added
 

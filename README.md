@@ -1,4 +1,4 @@
-# LoreDocs v0.1.32
+# LoreDocs v0.1.33
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -429,97 +429,36 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
-## Unreleased
+## v0.1.33 (2026-11-06)
 
 ### Added
 
 - New maintenance command `scripts/cleanup_dangling_cross_links.py` removes
-  cross-product links to LoreConvo sessions that no longer exist (dry-run by
-  default; pass `--execute` to delete, `--trim` to also trim over-cap docs to
-  the 500-link cap). A timestamped backup is taken before any deletion. The tool
-  refuses to run if LoreConvo is not installed or its sessions table is empty.
-  See INSTALL.md for details.
-
-## v0.1.32 (2026-10-28)
+  cross-product links to LoreConvo sessions that no longer exist. Run it in
+  dry-run mode by default; pass `--execute` to delete. A timestamped backup
+  of `loredocs.db` is taken before any deletion. Pass `--trim` to also trim
+  docs whose auto session links exceed 500 (the new lifetime cap) back to the
+  top 500 by similarity. The tool refuses to run if LoreConvo is not installed
+  or its sessions table is empty.
 
 ### Changed
 
-- LoreDocs now requires Python 3.11 or newer. Python 3.10 is no longer
-  supported: the image library LoreDocs depends on dropped it in the release
-  that fixes 37 published security advisories.
-- Creating a vault with the same name as an existing vault is now refused
-  with a clear message, instead of silently creating a second vault with
-  that name. Archived vaults keep their names reserved. Opening a workspace
-  whose folder name is already a vault creates "name (2)" instead.
-- `vault_export` now refuses absolute paths and any path that would land
-  outside the server's working directory. Give it a relative directory; see
-  INSTALL.md.
-- Opening a workspace is refused for system locations: `/etc`, `/usr`
-  (including `/usr/local`), `/opt`, `/srv`, `/mnt`, `/media`, `/Volumes`,
-  `/root`, `/System`, `/Library`, `/Applications` and everything under
-  them. On WSL this includes Windows drives under `/mnt`. Keep workspaces
-  under your home directory.
-- The fallback script's `--add-doc` now needs the LoreDocs package
-  importable by the Python that runs it (`pip install loredocs`). If you
-  only use LoreDocs as a Claude plugin, the plugin's own Python is not on
-  your PATH, so install the package or use the MCP tools to add documents.
-
-### Added
-
-- Choose which groups of LoreDocs tools your assistant sees. Turn optional
-  groups off with the new `configure_tools` tool, the `LOREDOCS_TOOL_GROUPS`
-  environment variable, or `tool_groups` in `config.json`. Core tools always
-  stay on. Changes take effect after the server restarts.
-- `vault_rebuild_index_status` reports how far a semantic index rebuild has
-  got, with an accurate document total and time remaining.
-- Folder imports keep each file's folder path, and skip configuration files
-  by default (set `skip_config_files` to false in `vault_import_dir` to
-  import them).
-- A one-time maintenance script rebuilds auto-discovered document
-  relationships for vaults created before v0.1.30, which may still hold
-  stale links, including links between documents in different vaults:
-
-      python scripts/relink_autolinks.py --dry-run             # preview
-      python scripts/relink_autolinks.py                       # rebuild
-      python scripts/relink_autolinks.py --include-embeddings  # Pro, semantic links too
-
-  Links you created yourself are never touched, and running it twice gives
-  the same result. See INSTALL.md for the full upgrade note.
+- `vault_export` now writes to LoreDocs' exports folder (`~/.loredocs/exports/`
+  by default, or `$LOREDOCS_ROOT/exports/` when set) instead of the program's
+  working directory, and its success message reports the full path. A `~` path
+  is refused with a clear error.
+- Vault names are now unique regardless of letter case: creating a vault named
+  "app" when "App" already exists is refused, and opening a workspace whose
+  folder name matches an existing vault (archived or not) creates a
+  "name (2)"-style vault instead of failing.
+- The fallback script's `--create-vault` now refuses duplicate vault names,
+  matching the MCP tools.
 
 ### Fixed
 
-- Search: quoted phrases such as `"rental income"` match the phrase again,
-  instead of matching the words anywhere in the document. A malformed query
-  (an unbalanced quote or parenthesis) now returns a message naming the
-  problem.
-- Related documents: "find related" puts links you made first, then the
-  strongest shared-term matches, then semantic matches, and returns at most
-  15. Documents saved through the fallback script are now linked like any
-  other document.
-- Links you make by hand and auto-discovered links to the same document now
-  coexist; adding or removing one no longer affects the other.
-- Deleting a document or vault now removes its links and search-index
-  entries, so `vault_verify` no longer reports them as dangling.
-  `vault_verify` also detects existing dangling links, and no longer reports
-  "Missing version numbers" by mistake.
-- Moving a document to another vault no longer fails when the target vault
-  already links the same documents.
-- Semantic index rebuilds repair a document whose extracted text is missing,
-  instead of leaving it out of semantic search.
-- Session links: a document's linked sessions and a session's linked
-  documents now show the same links from both sides. Linking to a LoreConvo
-  session that no longer exists is refused, and a single document is capped
-  at 500 session links.
-- Notion import: toggle (collapsible) content appears inside its section;
-  tables no longer leave blank lines; an inline database is shown as a
-  placeholder with its name and the command to import it, instead of being
-  dropped; uploaded and linked images are labeled differently.
-- Running onboarding on a LoreDocs install that already has vaults no longer
-  adds a setup vault.
-- Importing the same folder twice no longer creates duplicate documents.
-- Trailing newlines in added documents are preserved.
-- The `loredocs import` command works again with Click 8.3.
-- The Hermes plugin manifests now live in `integrations/hermes/`.
+- Onboarding no longer fails when an archived vault already holds a name it
+  wants to use (for example a "Config" vault); it creates a fresh, uniquely
+  named vault instead.
 
 <!-- WHATS_NEW:END -->
 
