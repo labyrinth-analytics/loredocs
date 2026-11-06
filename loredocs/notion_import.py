@@ -193,25 +193,26 @@ def _resolve_vault(storage, vault_spec):
     import sqlite3
 
     with storage._db() as conn:
-        # 1. Try UUID match (case-insensitive)
+        # 1. Try UUID match
         row = conn.execute(
-            "SELECT id, name FROM vaults WHERE LOWER(id) = LOWER(?) AND archived = 0",
+            "SELECT id, name FROM vaults WHERE id = ? AND archived = 0",
             (vault_spec,),
         ).fetchone()
         if row:
             return _ResolvedVault(row["id"], row["name"])
 
-        # 2. Try name match (case-insensitive)
+        # 2. Try name match (case-insensitive using casefold)
         rows = conn.execute(
-            "SELECT id, name FROM vaults WHERE LOWER(name) = LOWER(?) AND archived = 0",
-            (vault_spec,),
+            "SELECT id, name FROM vaults WHERE archived = 0",
         ).fetchall()
-        if len(rows) == 1:
-            return _ResolvedVault(rows[0]["id"], rows[0]["name"])
-        if len(rows) > 1:
-            ids = ", ".join(r["id"] for r in rows)
+        spec_folded = vault_spec.casefold()
+        matching = [r for r in rows if r["name"].casefold() == spec_folded]
+        if len(matching) == 1:
+            return _ResolvedVault(matching[0]["id"], matching[0]["name"])
+        if len(matching) > 1:
+            ids = ", ".join(r["id"] for r in matching)
             raise VaultAmbiguousError(
-                f"Vault name '{vault_spec}' matches {len(rows)} vaults: {ids}. "
+                f"Vault name '{vault_spec}' matches {len(matching)} vaults: {ids}. "
                 f"Use the vault ID."
             )
 

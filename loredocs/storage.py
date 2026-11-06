@@ -2083,11 +2083,12 @@ class VaultStorage:
         # coexist and make name lookups ambiguous.
         with self._db() as conn:
             existing = conn.execute(
-                "SELECT id FROM vaults WHERE LOWER(name) = LOWER(?)",
-                (name,)
-            ).fetchone()
-            if existing:
-                raise ValueError(f"Vault name '{name}' already exists. Please choose a unique name.")
+                "SELECT id, name FROM vaults"
+            ).fetchall()
+            name_folded = name.casefold()
+            for row in existing:
+                if row["name"].casefold() == name_folded:
+                    raise ValueError(f"Vault name '{name}' already exists. Please choose a unique name.")
 
         vault_id = str(uuid.uuid4())[:12]
         now = self._now()
@@ -2207,26 +2208,27 @@ class VaultStorage:
         "App" and "app" are the same name.
         """
         with self._db() as conn:
-            taken = {r["name"].lower() for r in conn.execute(
-                "SELECT name FROM vaults WHERE LOWER(name) = LOWER(?) OR name LIKE ?",
-                (base, base + " (%)"),
-            )}
-        if base.lower() not in taken:
+            all_vaults = conn.execute("SELECT name FROM vaults").fetchall()
+            base_folded = base.casefold()
+            taken = {r["name"].casefold() for r in all_vaults
+                     if r["name"].casefold().startswith(base_folded)}
+        if base.casefold() not in taken:
             return base
         n = 2
-        while f"{base} ({n})".lower() in taken:
+        while f"{base} ({n})".casefold() in taken:
             n += 1
         return f"{base} ({n})"
 
     def find_vault_by_name(self, name: str) -> Optional[Dict[str, Any]]:
         """Find a vault by name (case-insensitive). Returns first match."""
         with self._db() as conn:
-            row = conn.execute(
-                "SELECT id FROM vaults WHERE LOWER(name) = LOWER(?) AND archived = 0",
-                (name,)
-            ).fetchone()
-            if row:
-                return self.get_vault(row["id"])
+            rows = conn.execute(
+                "SELECT id, name FROM vaults WHERE archived = 0"
+            ).fetchall()
+            name_folded = name.casefold()
+            for row in rows:
+                if row["name"].casefold() == name_folded:
+                    return self.get_vault(row["id"])
             return None
 
     def get_vault_by_workspace_path(self, workspace_path: str) -> Optional[Dict[str, Any]]:

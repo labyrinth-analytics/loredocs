@@ -208,12 +208,12 @@ def _resolve_vault(conn, vault_ref):
     if row:
         return dict(row)
 
-    # Try case-insensitive name match
-    row = conn.execute(
-        "SELECT * FROM vaults WHERE LOWER(name) = LOWER(?)", (vault_ref,)
-    ).fetchone()
-    if row:
-        return dict(row)
+    # Try case-insensitive name match using casefold
+    ref_folded = vault_ref.casefold()
+    rows = conn.execute("SELECT * FROM vaults").fetchall()
+    for row in rows:
+        if row["name"].casefold() == ref_folded:
+            return dict(row)
 
     return None
 
@@ -840,10 +840,13 @@ def cmd_create_vault(args):
     # SH-105511 F17: --create-vault must refuse duplicate names with the same
     # case-insensitive rule as VaultStorage.create_vault (archived vaults keep
     # their names reserved), so the fallback matches the MCP surface.
-    existing = conn.execute(
-        "SELECT id FROM vaults WHERE LOWER(name) = LOWER(?)",
-        (args.name,)
-    ).fetchone()
+    name_folded = args.name.casefold()
+    all_vaults = conn.execute("SELECT id, name FROM vaults").fetchall()
+    existing = None
+    for v in all_vaults:
+        if v["name"].casefold() == name_folded:
+            existing = v
+            break
     if existing:
         print(
             f"Error: Vault name '{args.name}' already exists. "
@@ -1119,9 +1122,12 @@ def cmd_restore(args):
     # Try ID first, then case-insensitive name (including archived)
     row = conn.execute("SELECT * FROM vaults WHERE id = ?", (args.vault,)).fetchone()
     if not row:
-        row = conn.execute(
-            "SELECT * FROM vaults WHERE LOWER(name) = LOWER(?)", (args.vault,)
-        ).fetchone()
+        vault_folded = args.vault.casefold()
+        rows = conn.execute("SELECT * FROM vaults").fetchall()
+        for r in rows:
+            if r["name"].casefold() == vault_folded:
+                row = r
+                break
     if not row:
         print(f"Error: Vault '{args.vault}' not found.")
         conn.close()

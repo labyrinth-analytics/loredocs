@@ -126,10 +126,17 @@ def vault_restore(name_or_id):
     # archived vaults not returned by find_vault_by_name; query by id or name directly
     import sqlite3
     with storage._db() as conn:
-        row = conn.execute(
-            "SELECT * FROM vaults WHERE LOWER(name)=LOWER(?) OR id=?",
-            (name_or_id, name_or_id)
-        ).fetchone()
+        rows = conn.execute(
+            "SELECT * FROM vaults WHERE id=?",
+            (name_or_id,)
+        ).fetchall()
+        if not rows:
+            name_folded = name_or_id.casefold()
+            rows = conn.execute(
+                "SELECT * FROM vaults WHERE 1=1"
+            ).fetchall()
+            rows = [r for r in rows if r["name"].casefold() == name_folded]
+        row = rows[0] if rows else None
     if not row:
         click.echo(f"Error: vault '{name_or_id}' not found.", err=True)
         sys.exit(1)
