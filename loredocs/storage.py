@@ -5270,19 +5270,37 @@ class VaultStorage:
             return 0
 
     def _backup_db(self):
-        """Take a timestamped backup of loredocs.db.
+        """Take a timestamped, WAL-consistent backup of loredocs.db.
 
-        Returns the backup file path, or None if the copy failed.
+        Uses the SQLite online backup API so the copy includes all
+        WAL-journaled pages -- a plain shutil.copy2 of the main file
+        skips the -wal sidecar and loses recent writes (SH-105859).
+
+        Returns the backup file path on success.
+        Raises RuntimeError on failure so callers can abort the delete
+        instead of proceeding without a valid backup (SH-105859).
         """
-        import shutil
         from datetime import datetime as _dt, timezone as _tz
         ts = _dt.now(_tz.utc).strftime("%Y%m%dT%H%M%S")
         dest = self.db_path.parent / f"loredocs.db.backup-{ts}"
+        src = sqlite3.connect(str(self.db_path))
         try:
-            shutil.copy2(str(self.db_path), str(dest))
-            return dest
-        except Exception:
-            return None
+            dst = sqlite3.connect(str(dest))
+            try:
+                src.backup(dst)
+            finally:
+                dst.close()
+        except Exception as exc:
+            # Clean up a partial backup file so the next attempt does
+            # not collide or look like a valid backup.
+            try:
+                dest.unlink(missing_ok=True)
+            except Exception:
+                pass
+            raise RuntimeError(f"backup failed: {exc}") from exc
+        finally:
+            src.close()
+        return dest
 
     def _check_loreconvo_for_maintenance(self):
         """Discover and validate the LoreConvo DB for maintenance operations.
@@ -5340,7 +5358,10 @@ class VaultStorage:
 
         backup_path = None
         if execute:
-            backup_path = self._backup_db()
+            try:
+                backup_path = self._backup_db()
+            except RuntimeError as exc:
+                return {"ok": False, "error": str(exc)}
 
         with self._db() as conn:
             total_auto = conn.execute(
@@ -5425,7 +5446,10 @@ class VaultStorage:
 
         backup_path = None
         if execute:
-            backup_path = self._backup_db()
+            try:
+                backup_path = self._backup_db()
+            except RuntimeError as exc:
+                return {"ok": False, "error": str(exc)}
 
         with self._db() as conn:
             over_cap = conn.execute(
