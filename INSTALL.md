@@ -505,7 +505,7 @@ bash install.sh
 
 The installer detects the existing venv and updates it in place.
 
-### Rebuilding document relationships after upgrade (v0.1.31 -> unreleased)
+### Rebuilding document relationships after upgrade (v0.1.31 -> v0.1.32+)
 
 If you upgraded from a release before the autolink quality fix (SH-103637,
 shipped in v0.1.30), your vaults may still contain stale auto-discovered
@@ -514,15 +514,21 @@ vaults that should never have been connected. These drag down the relevance
 of "find related documents." A one-time backfill purges them and regenerates
 them with the current logic.
 
+The backfill ships inside the `loredocs` package as the console command
+`loredocs-relink-autolinks`. Run it with the Python that has LoreDocs
+installed (the plugin's `.venv/bin/` for a plugin install; wherever you ran
+`pip install loredocs` otherwise). If the command is not on your PATH, the
+equivalent module form is `python -m loredocs.commands.relink_autolinks`.
+
 ```bash
 # Preview how many auto-links will be purged and how many docs will be processed.
-python scripts/relink_autolinks.py --dry-run
+loredocs-relink-autolinks --dry-run
 
 # Rebuild cooccurrence links (Free or Pro tier).
-python scripts/relink_autolinks.py
+loredocs-relink-autolinks
 
 # Also rebuild embedding-based links (Pro tier with a Lance index only).
-python scripts/relink_autolinks.py --include-embeddings
+loredocs-relink-autolinks --include-embeddings
 ```
 
 What it does:

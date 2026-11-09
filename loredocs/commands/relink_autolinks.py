@@ -12,18 +12,22 @@ Explicit (manual) links are never touched. The operation is idempotent
 (SH-105175): running it twice yields the same term index and the same
 auto-link set (ids, endpoints, labels); only ``created_at`` is refreshed.
 
+Installed as the ``loredocs-relink-autolinks`` console script (pyproject
+``[project.scripts]``); ``python -m loredocs.commands.relink_autolinks`` is
+the equivalent module form when the script is not on PATH (SH-105514).
+
 Usage:
     # Dry run -- count auto-links that would be purged and docs to process
-    python scripts/relink_autolinks.py --dry-run
+    loredocs-relink-autolinks --dry-run
 
     # Relink cooccurrence links only (Free tier, or Pro without Lance index)
-    python scripts/relink_autolinks.py
+    loredocs-relink-autolinks
 
     # Relink cooccurrence + embedding links (Pro tier with Lance index)
-    python scripts/relink_autolinks.py --include-embeddings
+    loredocs-relink-autolinks --include-embeddings
 
     # Custom root (e.g. for testing)
-    python scripts/relink_autolinks.py --root /tmp/test-loredocs
+    loredocs-relink-autolinks --root /tmp/test-loredocs
 
 Exit codes: 0 = success, 1 = error (DB missing, import failure, etc.).
 """

@@ -70,16 +70,19 @@ What changed in each release, written for users (not developers).
 - Folder imports keep each file's folder path, and skip configuration files
   by default (set `skip_config_files` to false in `vault_import_dir` to
   import them).
-- A one-time maintenance script rebuilds auto-discovered document
-  relationships for vaults created before v0.1.30, which may still hold
-  stale links, including links between documents in different vaults:
+- A one-time maintenance command, `loredocs-relink-autolinks`, rebuilds
+  auto-discovered document relationships for vaults created before v0.1.30,
+  which may still hold stale links, including links between documents in
+  different vaults:
 
-      python scripts/relink_autolinks.py --dry-run             # preview
-      python scripts/relink_autolinks.py                       # rebuild
-      python scripts/relink_autolinks.py --include-embeddings  # Pro, semantic links too
+      loredocs-relink-autolinks --dry-run             # preview
+      loredocs-relink-autolinks                       # rebuild
+      loredocs-relink-autolinks --include-embeddings  # Pro, semantic links too
 
-  Links you created yourself are never touched, and running it twice gives
-  the same result. See INSTALL.md for the full upgrade note.
+  It is installed with the `loredocs` package (or run
+  `python -m loredocs.commands.relink_autolinks`). Links you created yourself
+  are never touched, and running it twice gives the same result. See
+  INSTALL.md for the full upgrade note.
 
 ### Fixed
 
