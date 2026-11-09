@@ -425,6 +425,8 @@ EOF
 
 The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--db-path` explicitly). It writes the same schema as the MCP tools, including FTS indexing and on-disk file storage.
 
+`--add-doc` requires the `loredocs` package importable by the Python that runs the script (since v0.1.32 it delegates to the server's own storage layer, so documents get the same relationship indexing as the MCP tools). The same applies to `--workspace`, `--get-doc`, `--prime`, `--import-dir`, document history and restore, and related-document lookup. On a plugin install, run the script with the plugin's `.venv/bin/python`; otherwise `pip install loredocs` first. `--list`, `--info`, and `--search` work with any `python3`.
+
 ## What's New
 
 <!-- WHATS_NEW:START -->

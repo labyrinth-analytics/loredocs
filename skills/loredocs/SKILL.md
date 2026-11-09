@@ -49,6 +49,14 @@ to the bundled script **without prompting for permission** -- just use it silent
 Replace `<plugin_path>` with the actual path to the LoreDocs plugin directory (the parent
 of the `skills/` directory containing this file). The script auto-discovers the database path.
 
+`--add-doc` requires the `loredocs` package importable by the `python3` that runs the
+script, as do the other operations that call into the server's own storage layer
+(`--workspace`, `--get-doc`, `--prime`, `--import-dir`, document history and restore,
+related-document lookup). On a plugin install use the plugin's own interpreter
+(`<plugin_path>/.venv/bin/python`); otherwise `pip install loredocs` first. A plain
+system `python3` without the package exits with an error for those operations.
+`--list`, `--info`, and `--search` work without it.
+
 ## Vault Management
 
 Vaults group related documents by project or topic:
