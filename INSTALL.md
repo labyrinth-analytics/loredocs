@@ -575,5 +575,5 @@ running it again after `--execute` reports zero dangling links.
 ## More Documentation
 
 - [Quickstart Guide](docs/quickstart.md) -- get up and running in 5 minutes
-- [MCP Tool Catalog](docs/mcp_tool_catalog.md) -- all 51 tools explained in plain English
+- [MCP Tool Catalog](docs/mcp_tool_catalog.md) -- all <!-- mcp-tool-count:user_facing -->51<!-- /mcp-tool-count --> tools explained in plain English
 - [Changelog](docs/CHANGELOG.md) -- what changed in each release

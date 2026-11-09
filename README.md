@@ -35,7 +35,7 @@ Or inside an existing session:
 /plugin add /path/to/loredocs
 ```
 
-Once loaded, Claude has access to all 51 LoreDocs MCP tools automatically. Ask Claude to "create a vault for this project" or "find the architecture doc" and it uses the tools on its own.
+Once loaded, Claude has access to all <!-- mcp-tool-count:user_facing -->51<!-- /mcp-tool-count --> LoreDocs MCP tools automatically. Ask Claude to "create a vault for this project" or "find the architecture doc" and it uses the tools on its own.
 
 ### Cowork (Desktop App)
 
@@ -51,7 +51,7 @@ Once loaded, Claude has access to all 51 LoreDocs MCP tools automatically. Ask C
 
 For Hermes Agent users, add LoreDocs as an MCP server under `mcp_servers:` in `~/.hermes/config.yaml` (see [INSTALL.md](INSTALL.md#option-a-install-for-hermes-agent) for the full entry), then restart Hermes.
 
-All 51 LoreDocs MCP tools are then available in your Hermes sessions.
+All <!-- mcp-tool-count:user_facing -->51<!-- /mcp-tool-count --> LoreDocs MCP tools are then available in your Hermes sessions.
 
 ## Hermes Disclosures
 
@@ -218,7 +218,7 @@ and usage anytime with `vault_tier_status`. Activate a Pro license with `vault_s
 
 ## MCP Tools
 
-LoreDocs provides 51 MCP tools by default (52 with the `notion` extra installed; 52 with LOREDOCS_ENABLE_CAP_TOOLS=1 and the notion extra) organized by function:
+LoreDocs provides <!-- mcp-tool-count:user_facing -->51<!-- /mcp-tool-count --> MCP tools by default (<!-- mcp-tool-count:notion -->52<!-- /mcp-tool-count --> with the `notion` extra installed; <!-- mcp-tool-count:cap -->52<!-- /mcp-tool-count --> with LOREDOCS_ENABLE_CAP_TOOLS=1 and the notion extra) organized by function:
 
 ### Vault Management (8 tools)
 | Tool | What it does |
