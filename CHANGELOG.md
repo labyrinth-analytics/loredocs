@@ -7,6 +7,19 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
+## v0.1.34 (2026-11-10)
+
+### Added: session_id alias for remote-devices bridge (SH-106024)
+
+- `loredocs/session_id_resolver.py`: new module with `resolve_session_id`
+  and `resolve_session_ids` helpers. Accepts both `session_id` (primary)
+  and `lore_session_id` (alias); raises `ValueError` if both differ.
+- `server.vault_update_doc`, `server.vault_link_session`,
+  `server.vault_get_linked_sessions`: added `lore_session_id` parameter.
+  Resolver is called at function entry before any storage interaction.
+  `vault_link_session` became keyword-only (`*,` after `ctx`) to
+  accommodate the optional alias before required `doc_id`/`vault_id`.
+
 ## v0.1.33 (2026-11-06)
 
 ### Added: D-31 dangling-link cleanup, read-path filter, lifetime auto-link cap (SH-105578)

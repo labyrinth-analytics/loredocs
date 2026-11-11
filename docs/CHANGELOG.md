@@ -4,6 +4,17 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## v0.1.34 (2026-11-10)
+
+### Added
+
+- Tools that accept a `session_id` parameter (`vault_update_doc`,
+  `vault_link_session`, `vault_get_linked_sessions`) now also accept
+  `lore_session_id` as an alias. This works around the remote-devices
+  bridge (used by Claude Cowork) which strips arguments named
+  `session_id` in transit. If you pass both, they must match. No
+  existing call needs to change.
+
 ## v0.1.33 (2026-11-06)
 
 ### Added

@@ -54,6 +54,7 @@ from .tool_groups import (
     resolve_enabled_groups,
 )
 from .license import get_license_status
+from .session_id_resolver import resolve_session_id
 from .onboard_tool import run_onboard as _run_onboard
 from .compat_check import check as _compat_check, emit_startup_warnings as _compat_emit
 from . import trust_framing
@@ -1340,6 +1341,7 @@ async def vault_update_doc(
     author: Optional[str] = None,
     session_id: Optional[str] = None,
     note: Optional[str] = None,
+    lore_session_id: Optional[str] = None,
 ) -> str:
     """Update a document's content or metadata.
 
@@ -1348,11 +1350,15 @@ async def vault_update_doc(
     The author, session_id, and note params are stored in the version's
     metadata sidecar for provenance tracking.
 
+    lore_session_id is an alias for session_id (for remote-devices bridge
+    compatibility). If both are provided, they must match.
+
     Unknown parameters are rejected at the MCP dispatch layer (see
     _forbid_unknown_tool_params below): FastMCP's generated arg model for
     this tool has extra="forbid", so a client-supplied unknown param never
     reaches this function body.
     """
+    session_id = resolve_session_id(session_id, lore_session_id, required=False)
     params = DocUpdateInput(doc_id=doc_id, content=content, name=name, tags=tags,
                             category=category, priority=priority, notes=notes,
                             author=author, session_id=session_id, note=note)
@@ -3438,9 +3444,11 @@ def get_license_tier() -> dict:
 @mcp.tool(title="Link Session to Doc", name="vault_link_session")
 def vault_link_session(
     ctx: Context,
-    session_id: str,
+    *,
+    session_id: str | None = None,
     doc_id: str,
     vault_id: str,
+    lore_session_id: Optional[str] = None,
 ) -> dict:
     """Create a manual cross-product link from a LoreConvo session to a LoreDocs doc.
 
@@ -3451,12 +3459,15 @@ def vault_link_session(
         session_id  -- LoreConvo session UUID
         doc_id      -- LoreDocs document ID
         vault_id    -- LoreDocs vault containing the document
+        lore_session_id: Alias for session_id (for remote-devices bridge compatibility).
+            If both are provided, they must match.
 
     Returns dict with:
         ok          -- bool
         session_id, doc_id on success
         reason      -- failure description (generic; details in debug log)
     """
+    session_id = resolve_session_id(session_id, lore_session_id, required=True)
     storage = _get_storage(ctx)
     try:
         lc_db = discover_product_db("loreconvo")
@@ -3522,7 +3533,7 @@ def vault_get_session_links(ctx: Context, doc_id: str, limit: int = 5) -> dict:
 
 
 @mcp.tool(title="Get Linked Sessions", name="vault_get_linked_sessions")
-def vault_get_linked_sessions(ctx: Context, session_id: str, limit: int = 5) -> dict:
+def vault_get_linked_sessions(ctx: Context, session_id: str | None = None, limit: int = 5, lore_session_id: Optional[str] = None) -> dict:
     """Return LoreDocs documents linked to a given LoreConvo session.
 
     Queries the LoreDocs cross_product_links table for links where the session
@@ -3532,9 +3543,12 @@ def vault_get_linked_sessions(ctx: Context, session_id: str, limit: int = 5) -> 
     Args:
         session_id  -- LoreConvo session UUID
         limit       -- max results (default 5)
+        lore_session_id: Alias for session_id (for remote-devices bridge compatibility).
+            If both are provided, they must match.
 
     Returns same structure as vault_get_session_links.
     """
+    session_id = resolve_session_id(session_id, lore_session_id, required=True)
     storage = _get_storage(ctx)
     try:
         lc_db = discover_product_db("loreconvo")
