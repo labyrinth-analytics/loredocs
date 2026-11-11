@@ -27,7 +27,40 @@ If that prints a version, you are good to go.
 
 ## Option A: Install for Hermes Agent
 
-Add LoreDocs as an MCP server in Hermes. Add an entry under `mcp_servers:` in `~/.hermes/config.yaml`:
+### Method 1: Install via Hermes Catalog Plugin (Recommended)
+
+Install LoreDocs directly from the Hermes catalog:
+
+```bash
+hermes plugins install loredocs
+```
+
+Verify the installation:
+
+```bash
+hermes mcp list | grep loredocs
+```
+
+If LoreDocs appears in the list, restart Hermes Agent and the tools will be available in your next session.
+
+#### Pro License Key Setup
+
+The Pro license key can be provided in one of two ways:
+
+1. As an environment variable (set before launching Hermes):
+   ```bash
+   export LOREDOCS_PRO="LAB-..."
+   hermes
+   ```
+
+2. In a local license file:
+   ```bash
+   ~/.loredocs/license.json
+   ```
+
+### Method 2: Manual YAML Configuration
+
+Alternatively, add LoreDocs as an MCP server in Hermes by editing `~/.hermes/config.yaml`:
 
 ```yaml
 mcp_servers:
@@ -43,6 +76,10 @@ mcp_servers:
 Replace `<version>` with the version you want to pin to and `your-license-key` with your Pro license key. Omit the `LOREDOCS_PRO` line if you are using the free tier. There is no install path to substitute -- uvx resolves the package itself.
 
 Restart Hermes Agent after saving the file. LoreDocs MCP tools will be available in the next Hermes session.
+
+#### Important: Do Not Enable Both Methods
+
+Do **not** enable both the catalog plugin (Method 1) and the manual YAML configuration (Method 2) at the same time. This creates a duplicate MCP server and may cause connection issues. Use one method or the other.
 
 **Long tool calls.** By default Hermes reaches MCP tools through its tool-search bridge. With some models, a call carrying long multi-line text, such as a document body for `vault_add_doc`, fails with `tool_call 'calls' is not valid JSON`. The model writes raw line breaks inside the call and Hermes rejects them (Hermes issues #119640 and #122711). The model may then retry with shorter, one-line content, so the document is saved with less detail. To avoid this, turn tool search off in `~/.hermes/config.yaml`:
 
