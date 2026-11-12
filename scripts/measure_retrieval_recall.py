@@ -58,7 +58,8 @@ def create_test_vault(storage, corpus: dict) -> str:
     takes vault_id, name, text_content, filename.
     """
     try:
-        vault_id = storage.create_vault("test_corpus")
+        vault_meta = storage.create_vault("test_corpus")
+        vault_id = vault_meta["id"]  # create_vault returns a dict, not a string
         for doc in corpus.get('docs', []):
             doc_id = doc.get('id', 'unknown')
             title = doc.get('title', doc_id)
@@ -180,7 +181,8 @@ def main():
             logger.error(f"Failed to run recall test: {e}")
             sys.exit(1)
 
-    now = datetime.utcnow().isoformat() + 'Z'
+    from datetime import timezone as dt_tz
+    now = datetime.now(dt_tz.utc).isoformat()  # SH-106092: timezone-aware UTC
     commit = os.environ.get('GITHUB_SHA', os.environ.get('GIT_COMMIT', 'unknown'))
     version = os.environ.get('LOREDOCS_VERSION', 'unknown')
 
