@@ -45,18 +45,13 @@ If LoreDocs appears in the list, restart Hermes Agent and the tools will be avai
 
 #### Pro License Key Setup
 
-The Pro license key can be provided in one of two ways:
+If you have a Pro license, place it in a local license file:
 
-1. As an environment variable (set before launching Hermes):
-   ```bash
-   export LOREDOCS_PRO="LAB-..."
-   hermes
-   ```
+```bash
+~/.loredocs/license.json
+```
 
-2. In a local license file:
-   ```bash
-   ~/.loredocs/license.json
-   ```
+Then restart Hermes Agent to apply it.
 
 ### Method 2: Manual YAML Configuration
 
