@@ -38,13 +38,13 @@ none has been reconstructed.
 ### Fixed: Unicode vault-name uniqueness (SH-105860)
 
 - `storage.create_vault`, `unique_vault_name`, `find_vault_by_name`,
-  `notion_import.resolve_vault_by_spec`, `cli.get_vault_if_exists`: compare
+  `notion_import._resolve_vault`, `cli.vault_restore`: compare
   names with Python `str.casefold()` instead of SQLite `LOWER()` (ASCII-only).
 
 ### Fixed: prune guard (SH-105861)
 
-- `vault_prune_dangling_links` refuses when more than 50% of a vault's auto
-  links are dangling (likely misconfigured `LORECONVO_DB_PATH`) and returns
+- `vault_prune_dangling_links` refuses when more than 50% of all auto links
+  in the store (`total_auto`) are dangling (likely misconfigured `LORECONVO_DB_PATH`) and returns
   an actionable error instead of deleting.
 
 ## v0.1.33 (2026-11-06)

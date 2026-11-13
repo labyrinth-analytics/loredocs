@@ -455,7 +455,7 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
   just English letters. For example, "Ärzte" and "ärzte" count as the same
   vault name.
 - `vault_prune_dangling_links` now stops and explains why if more than half
-  of a vault's automatic session links look dangling. That usually means
+  of your automatic session links look dangling. That usually means
   LoreDocs is pointed at the wrong LoreConvo database, and pruning would
   delete good links.
 
