@@ -15,6 +15,23 @@ What changed in each release, written for users (not developers).
   `session_id` in transit. If you pass both, they must match. No
   existing call needs to change.
 
+### Fixed
+
+- The LoreDocs plugin for Hermes Agent now starts its MCP server. In
+  0.1.33 the catalog plugin installed and showed as enabled, but no
+  LoreDocs tools appeared. After updating, `hermes plugins update
+  loredocs` gives you all LoreDocs tools in Hermes.
+- Pro features in Hermes read your licence from `~/.loredocs/license.json`.
+  Hermes does not pass plugin environment variables to MCP servers, so the
+  `LOREDOCS_PRO` variable has no effect there. INSTALL.md now says so.
+- Vault names are now compared case-insensitively for all languages, not
+  just English letters. For example, "Ärzte" and "ärzte" count as the same
+  vault name.
+- `vault_prune_dangling_links` now stops and explains why if more than half
+  of a vault's automatic session links look dangling. That usually means
+  LoreDocs is pointed at the wrong LoreConvo database, and pruning would
+  delete good links.
+
 ## v0.1.33 (2026-11-06)
 
 ### Added

@@ -1,4 +1,4 @@
-# LoreDocs v0.1.33
+# LoreDocs v0.1.34
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -431,36 +431,33 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
-## v0.1.33 (2026-11-06)
+## v0.1.34 (2026-11-10)
 
 ### Added
 
-- New maintenance command `scripts/cleanup_dangling_cross_links.py` removes
-  cross-product links to LoreConvo sessions that no longer exist. Run it in
-  dry-run mode by default; pass `--execute` to delete. A timestamped backup
-  of `loredocs.db` is taken before any deletion. Pass `--trim` to also trim
-  docs whose auto session links exceed 500 (the new lifetime cap) back to the
-  top 500 by similarity. The tool refuses to run if LoreConvo is not installed
-  or its sessions table is empty.
-
-### Changed
-
-- `vault_export` now writes to LoreDocs' exports folder (`~/.loredocs/exports/`
-  by default, or `$LOREDOCS_ROOT/exports/` when set) instead of the program's
-  working directory, and its success message reports the full path. A `~` path
-  is refused with a clear error.
-- Vault names are now unique regardless of letter case: creating a vault named
-  "app" when "App" already exists is refused, and opening a workspace whose
-  folder name matches an existing vault (archived or not) creates a
-  "name (2)"-style vault instead of failing.
-- The fallback script's `--create-vault` now refuses duplicate vault names,
-  matching the MCP tools.
+- Tools that accept a `session_id` parameter (`vault_update_doc`,
+  `vault_link_session`, `vault_get_linked_sessions`) now also accept
+  `lore_session_id` as an alias. This works around the remote-devices
+  bridge (used by Claude Cowork) which strips arguments named
+  `session_id` in transit. If you pass both, they must match. No
+  existing call needs to change.
 
 ### Fixed
 
-- Onboarding no longer fails when an archived vault already holds a name it
-  wants to use (for example a "Config" vault); it creates a fresh, uniquely
-  named vault instead.
+- The LoreDocs plugin for Hermes Agent now starts its MCP server. In
+  0.1.33 the catalog plugin installed and showed as enabled, but no
+  LoreDocs tools appeared. After updating, `hermes plugins update
+  loredocs` gives you all LoreDocs tools in Hermes.
+- Pro features in Hermes read your licence from `~/.loredocs/license.json`.
+  Hermes does not pass plugin environment variables to MCP servers, so the
+  `LOREDOCS_PRO` variable has no effect there. INSTALL.md now says so.
+- Vault names are now compared case-insensitively for all languages, not
+  just English letters. For example, "Ärzte" and "ärzte" count as the same
+  vault name.
+- `vault_prune_dangling_links` now stops and explains why if more than half
+  of a vault's automatic session links look dangling. That usually means
+  LoreDocs is pointed at the wrong LoreConvo database, and pruning would
+  delete good links.
 
 <!-- WHATS_NEW:END -->
 

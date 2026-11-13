@@ -20,6 +20,33 @@ none has been reconstructed.
   `vault_link_session` became keyword-only (`*,` after `ctx`) to
   accommodate the optional alias before required `doc_id`/`vault_id`.
 
+
+### Fixed: Hermes catalog plugin MCP server never started (SH-106043)
+
+- `integrations/hermes/`: removed `plugin.yaml`. Hermes discovery
+  (`hermes_cli/plugins_discovery.py`) loads `plugin.yaml` in preference to
+  `plugin.json`, treated the directory as a Python plugin, and never read
+  `mcp.json` (bfd1d95df9). The directory is now a portable Agent Plugin
+  (`plugin.json` + `mcp.json`); verified on hermes v0.23.1, 53 tools.
+- `mcp.json` no longer passes `LOREDOCS_PRO`: Hermes `_build_safe_env` does not
+  forward plugin env (SH-106068). Pro resolves from `~/.loredocs/license.json`.
+  `scripts/generate_runtime_config.py` no longer re-adds the env block on
+  regen (1d27f8b7ca). INSTALL.md Hermes section updated (6eac5d371f).
+- Hermes plugin version and runtime-pin surfaces synced to 0.1.34
+  (c4d0a617e5, dc06fac9c9).
+
+### Fixed: Unicode vault-name uniqueness (SH-105860)
+
+- `storage.create_vault`, `unique_vault_name`, `find_vault_by_name`,
+  `notion_import.resolve_vault_by_spec`, `cli.get_vault_if_exists`: compare
+  names with Python `str.casefold()` instead of SQLite `LOWER()` (ASCII-only).
+
+### Fixed: prune guard (SH-105861)
+
+- `vault_prune_dangling_links` refuses when more than 50% of a vault's auto
+  links are dangling (likely misconfigured `LORECONVO_DB_PATH`) and returns
+  an actionable error instead of deleting.
+
 ## v0.1.33 (2026-11-06)
 
 ### Added: D-31 dangling-link cleanup, read-path filter, lifetime auto-link cap (SH-105578)
