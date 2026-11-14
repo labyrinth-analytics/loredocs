@@ -179,10 +179,10 @@ class _ResolvedVault:
 
 def _resolve_vault(storage, vault_spec):
     """
-    Resolve a vault from name or opaque UUID string (both case-insensitive).
+    Resolve a vault from name or opaque UUID string (UUID is case-sensitive, name is case-insensitive).
 
     Resolution order:
-    1. Try exact UUID match against vault.id (case-insensitive).
+    1. Try exact case-sensitive UUID match against vault.id.
     2. Try case-insensitive name match against vault.name.
     3. Zero matches: raise VaultNotFoundError.
     4. Multiple name matches: raise VaultAmbiguousError.
