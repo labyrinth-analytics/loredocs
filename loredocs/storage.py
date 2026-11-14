@@ -4855,7 +4855,7 @@ class VaultStorage:
         embedding_dim: int,
         link_type: str = "auto",
         tier_required: str = "pro",
-    ) -> None:
+    ) -> str:
         """Write a single cross-product link. All cross-product writes go through here.
 
         Design note: link direction varies by link_type:
@@ -4865,17 +4865,55 @@ class VaultStorage:
         This asymmetry is intentional. The read side (get_cross_product_links) is
         deliberately bidirectional (UNION ALL) to compensate, so both products can
         query links regardless of write direction.
+
+        Manual links are always free-tier accessible (tier_required='free').
+        If a manual link is requested and an auto link already exists for this pair,
+        the auto link is upgraded to manual.
+
+        Returns:
+            str: "created" (new row inserted), "upgraded_from_auto" (auto upgraded to manual),
+                 "already_manual" (already exists as manual), "noop_auto" (auto link, no change)
         """
-        conn.execute(
-            """INSERT OR IGNORE INTO cross_product_links
-               (source_product, source_id, target_product, target_id,
-                similarity_score, embedding_model, embedding_dim,
-                link_type, tier_required)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (source_product, source_id, target_product, target_id,
-             similarity_score, embedding_model, embedding_dim,
-             link_type, tier_required),
-        )
+        if link_type == "manual":
+            tier_required = "free"
+
+        row = conn.execute(
+            """SELECT link_type, tier_required FROM cross_product_links
+               WHERE source_product = ? AND source_id = ?
+               AND target_product = ? AND target_id = ?""",
+            (source_product, source_id, target_product, target_id),
+        ).fetchone()
+
+        if row:
+            existing_link_type, existing_tier = row
+            if link_type == "manual" and existing_link_type == "auto":
+                conn.execute(
+                    """UPDATE cross_product_links
+                       SET link_type = ?, tier_required = ?,
+                           similarity_score = ?, embedding_model = ?,
+                           embedding_dim = ?
+                       WHERE source_product = ? AND source_id = ?
+                       AND target_product = ? AND target_id = ?""",
+                    (link_type, tier_required, similarity_score, embedding_model, embedding_dim,
+                     source_product, source_id, target_product, target_id),
+                )
+                return "upgraded_from_auto"
+            elif link_type == "manual" and existing_link_type == "manual":
+                return "already_manual"
+            else:
+                return "noop_auto"
+        else:
+            conn.execute(
+                """INSERT INTO cross_product_links
+                   (source_product, source_id, target_product, target_id,
+                    similarity_score, embedding_model, embedding_dim,
+                    link_type, tier_required)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (source_product, source_id, target_product, target_id,
+                 similarity_score, embedding_model, embedding_dim,
+                 link_type, tier_required),
+            )
+            return "created"
 
     def get_cross_product_links(
         self,
@@ -5058,7 +5096,7 @@ class VaultStorage:
                     "reason": f"document has reached maximum allowed cross-product links ({_CROSS_LINK_CAP_PER_DOC})"
                 }
 
-            self._write_cross_product_link(
+            link_status = self._write_cross_product_link(
                 conn,
                 source_product="loreconvo",
                 source_id=session_id,
@@ -5071,7 +5109,12 @@ class VaultStorage:
                 tier_required="free",
             )
 
-        return {"ok": True, "session_id": session_id, "doc_id": doc_id}
+        return {
+            "ok": True,
+            "session_id": session_id,
+            "doc_id": doc_id,
+            "link_status": link_status
+        }
 
     def cross_link_doc(self, doc_id: str, vault_id: str) -> int:
         """Trigger save-time cross-product linking for a LoreDocs document.
