@@ -3464,7 +3464,8 @@ def vault_link_session(
 
     Returns dict with:
         ok          -- bool
-        session_id, doc_id on success
+        session_id, doc_id, link_status on success
+        link_status -- "created" | "upgraded_from_auto" | "already_manual" | "noop_auto"
         reason      -- failure description (generic; details in debug log)
     """
     session_id = resolve_session_id(session_id, lore_session_id, required=True)
