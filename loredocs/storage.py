@@ -799,6 +799,38 @@ def _migrate_db(db_path: Path) -> None:
             db_path, actual_mode,
         )
 
+    # Acquire file-level cross-process lock BEFORE any migrations.
+    # All migrations (v0.2+) must run inside this lock to prevent concurrent
+    # processes from racing on schema changes (SH-106171).
+    file_path = _get_connection_file_path(conn)
+    if file_path:
+        lock_path = file_path + ".migrationlock"
+        with open(lock_path, "w") as lock_fd:
+            _acquire_migration_lock(lock_fd)
+            try:
+                _run_all_migrations(conn, db_path)
+            finally:
+                _release_migration_lock(lock_fd)
+        # SH-101414: a leftover .migrationlock file is litter, not a blocker.
+        # flock is released by the OS when the fd closes -- even on a crash --
+        # so a stale lock FILE never blocks the next startup. Remove it after
+        # a clean run to keep the data dir tidy. (Unlink-after-release has a
+        # narrow race where a third process could open a fresh lock file while
+        # a second is still blocked on the old inode; migrations are versioned
+        # and idempotent, and SQLite serializes the writes, so the worst case
+        # is redundant work, not corruption.)
+        try:
+            Path(lock_path).unlink()
+        except OSError:
+            pass
+    else:
+        # In-memory DB: no cross-process lock needed
+        _run_all_migrations(conn, db_path)
+    conn.close()
+
+
+def _run_all_migrations(conn, db_path: Path) -> None:
+    """Execute all incremental schema migrations inside the file-level lock."""
     # v0.2: add label column to doc_links if missing
     existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(doc_links)")}
     if "label" not in existing_cols:
@@ -986,40 +1018,9 @@ def _migrate_db(db_path: Path) -> None:
 
     # v0.9: Notion import bridge provenance (SH-13220, proposal r5)
     # Schema-migrations-tracked migration: origin_system, origin_id,
-    # UNIQUE partial index, conformance pass.  Runs via the versioned
-    # migration system (_run_migrations_locked), guarded by a cross-process
-    # exclusive lock so two processes upgrading the same v0.1.7 DB at once
-    # cannot both attempt the v4 migration (SH-13223, PART:migration).
-    # Lock path is derived from the connection's actual file path, not
-    # db_path directly, so the lock always targets what the connection
-    # is really writing to.
-    file_path = _get_connection_file_path(conn)
-    if file_path:
-        lock_path = file_path + ".migrationlock"
-        with open(lock_path, "w") as lock_fd:
-            _acquire_migration_lock(lock_fd)
-            try:
-                _run_migrations_locked(conn)
-            finally:
-                _release_migration_lock(lock_fd)
-        # SH-101414: a leftover .migrationlock file is litter, not a blocker.
-        # flock is released by the OS when the fd closes -- even on a crash --
-        # so a stale lock FILE never blocks the next startup. Remove it after
-        # a clean run to keep the data dir tidy. (Unlink-after-release has a
-        # narrow race where a third process could open a fresh lock file while
-        # a second is still blocked on the old inode; migrations are versioned
-        # and idempotent, and SQLite serializes the writes, so the worst case
-        # is redundant work, not corruption.)
-        try:
-            Path(lock_path).unlink()
-        except OSError:
-            pass
-    else:
-        # In-memory database: no file for a second process to contend on.
-        _run_migrations_locked(conn)
-
-    conn.commit()
-    conn.close()
+    # UNIQUE partial index, conformance pass. Runs via the versioned
+    # migration system (_run_migrations_locked).
+    _run_migrations_locked(conn)
 
 
 _COOCCURRENCE_CANDIDATE_POOL = 60
