@@ -3459,8 +3459,9 @@ def vault_link_session(
         session_id  -- LoreConvo session UUID
         doc_id      -- LoreDocs document ID
         vault_id    -- LoreDocs vault containing the document
-        lore_session_id: Alias for session_id (for remote-devices bridge compatibility).
-            If both are provided, they must match.
+        lore_session_id: Use this parameter for remote-devices bridge clients (e.g.,
+            Cowork). The bridge drops session_id, so use lore_session_id instead. If both
+            are provided, they must match.
 
     Returns dict with:
         ok          -- bool
@@ -3544,8 +3545,9 @@ def vault_get_linked_sessions(ctx: Context, session_id: str | None = None, limit
     Args:
         session_id  -- LoreConvo session UUID
         limit       -- max results (default 5)
-        lore_session_id: Alias for session_id (for remote-devices bridge compatibility).
-            If both are provided, they must match.
+        lore_session_id: Use this parameter for remote-devices bridge clients (e.g.,
+            Cowork). The bridge drops session_id, so use lore_session_id instead. If both
+            are provided, they must match.
 
     Returns same structure as vault_get_session_links.
     """
