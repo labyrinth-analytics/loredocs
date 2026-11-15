@@ -5086,16 +5086,24 @@ class VaultStorage:
                     # If we can't check loreconvo, let the link through (graceful degrade)
                     pass
 
-            # Check fan-out cap per doc (SH-104537: prevent unbounded growth, max 11,739 in WG-32)
-            link_count = conn.execute(
-                "SELECT COUNT(*) FROM cross_product_links WHERE target_product = 'loredocs' AND target_id = ?",
-                (doc_id,)
-            ).fetchone()[0]
-            if link_count >= _CROSS_LINK_CAP_PER_DOC:
-                return {
-                    "ok": False,
-                    "reason": f"document has reached maximum allowed cross-product links ({_CROSS_LINK_CAP_PER_DOC})"
-                }
+            # Check if a row already exists for this (source_id, target_id) pair
+            # SH-106221: UPDATEs should skip the cap check; only INSERTs are subject to the cap
+            existing_row = conn.execute(
+                "SELECT 1 FROM cross_product_links WHERE source_product = 'loreconvo' AND source_id = ? AND target_product = 'loredocs' AND target_id = ?",
+                (session_id, doc_id)
+            ).fetchone()
+
+            # Check fan-out cap per doc only for new rows (SH-104537: prevent unbounded growth, max 11,739 in WG-32)
+            if existing_row is None:
+                link_count = conn.execute(
+                    "SELECT COUNT(*) FROM cross_product_links WHERE target_product = 'loredocs' AND target_id = ?",
+                    (doc_id,)
+                ).fetchone()[0]
+                if link_count >= _CROSS_LINK_CAP_PER_DOC:
+                    return {
+                        "ok": False,
+                        "reason": f"document has reached maximum allowed cross-product links ({_CROSS_LINK_CAP_PER_DOC})"
+                    }
 
             link_status = self._write_cross_product_link(
                 conn,
