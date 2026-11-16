@@ -607,10 +607,15 @@ async def app_lifespan(app):
     # Release the cached Lance index (and stay alive) when the client parks
     # this process idle -- Claude Code/Desktop do not re-spawn a stdio server
     # that exits, so exiting on idle permanently lost the server (SH-13610).
+    # Backstop (24h hard-exit) disabled by default: the 30-min release_func
+    # already handles resource cleanup. Enable via LOREDOCS_ENABLE_IDLE_BACKSTOP=1.
+    backstop_env = None
+    if os.environ.get("LOREDOCS_ENABLE_IDLE_BACKSTOP"):
+        backstop_env = "LOREDOCS_IDLE_BACKSTOP_TIMEOUT"
     _idle_watchdog = idle_watchdog.install(
         mcp, env_var="LOREDOCS_IDLE_TIMEOUT",
         release_func=storage.release_idle_resources,
-        backstop_env_var="LOREDOCS_IDLE_BACKSTOP_TIMEOUT",
+        backstop_env_var=backstop_env,
     )
     _mcp_server_accepting_connections = True
     yield {"storage": storage}
