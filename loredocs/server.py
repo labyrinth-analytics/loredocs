@@ -608,9 +608,9 @@ async def app_lifespan(app):
     # this process idle -- Claude Code/Desktop do not re-spawn a stdio server
     # that exits, so exiting on idle permanently lost the server (SH-13610).
     # Backstop (24h hard-exit) disabled by default: the 30-min release_func
-    # already handles resource cleanup. Enable via LOREDOCS_ENABLE_IDLE_BACKSTOP=1.
+    # already handles resource cleanup. Enable via LOREDOCS_ENABLE_IDLE_BACKSTOP=1 or true.
     backstop_env = None
-    if os.environ.get("LOREDOCS_ENABLE_IDLE_BACKSTOP"):
+    if os.environ.get("LOREDOCS_ENABLE_IDLE_BACKSTOP") in ("1", "true"):
         backstop_env = "LOREDOCS_IDLE_BACKSTOP_TIMEOUT"
     _idle_watchdog = idle_watchdog.install(
         mcp, env_var="LOREDOCS_IDLE_TIMEOUT",
