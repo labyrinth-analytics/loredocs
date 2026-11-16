@@ -7,6 +7,29 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
+## Unreleased
+
+### Changed: semantic=true fuses FTS5 and Lance rankings (SH-106387)
+
+- `storage.VaultStorage.search_semantic`: when the Lance arm returns rows it
+  now also runs the SQLite FTS5 `search` (same `vault_id`, same `limit`) and
+  fuses the two document rankings with Reciprocal Rank Fusion. Before, a
+  non-empty Lance list was returned alone and FTS5 was consulted only when
+  Lance returned nothing, so `semantic=true` replaced the keyword engine
+  instead of adding to it (WG-32 D-14/D-16). A malformed-FTS5 `error` result
+  is absorbed (keyword arm empty, Lance order returned, no `error` key).
+  Snippet is the FTS5 snippet for keyword hits, first 200 characters
+  otherwise. Signature, response keys, the empty-Lance fallback and the
+  per-document lookup loop (deleted / vault filter) are unchanged.
+- `semantic_search._rrf_fuse_doc_ids(arm_a, arm_b, limit)`: new pure helper.
+  Ties break by presence in the keyword arm, then keyword rank, then doc_id.
+- `semantic_search._rrf_term`: the RRF term `1 / (k + rank + 1)` now lives in
+  one function used by both `_rrf_merge` and `_rrf_fuse_doc_ids`.
+- `server.vault_search`: docstring only.
+- Not changed: paraphrase recall, embedding model, chunking,
+  `DocLanceIndex.search`. No schema change, no reindex.
+- Tests: `tests/test_semantic_fusion.py` (F1-F7).
+
 ## v0.1.34 (2026-11-10)
 
 ### Added: session_id alias for remote-devices bridge (SH-106024)

@@ -89,20 +89,60 @@ def _chunk_text(text: str) -> List[str]:
     return [c for c in chunks if c.strip()]
 
 
+_RRF_K = 60
+
+
+def _rrf_term(rank: int, k: int = _RRF_K) -> float:
+    """One arm's Reciprocal Rank Fusion contribution for a zero-based rank.
+
+    The only place the RRF term is written; _rrf_merge (chunk rows) and
+    _rrf_fuse_doc_ids (documents) both call it (SH-106387).
+    """
+    return 1.0 / (k + rank + 1)
+
+
 def _rrf_merge(vec_results: list, fts_results: list, k: int = 60, limit: int = 40) -> list:
     """Reciprocal Rank Fusion of chunk-level vector and FTS result lists."""
     scores: dict = {}
     id_to_row: dict = {}
     for rank, r in enumerate(vec_results):
         key = (r.get('doc_id', ''), r.get('chunk_index', 0))
-        scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1)
+        scores[key] = scores.get(key, 0.0) + _rrf_term(rank, k)
         id_to_row[key] = r
     for rank, r in enumerate(fts_results):
         key = (r.get('doc_id', ''), r.get('chunk_index', 0))
-        scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank + 1)
+        scores[key] = scores.get(key, 0.0) + _rrf_term(rank, k)
         id_to_row[key] = r
     ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
     return [id_to_row[key] for key, _ in ranked[:limit]]
+
+
+def _rrf_fuse_doc_ids(arm_a: List[str], arm_b: List[str], limit: int) -> List[str]:
+    """Fuse two best-first doc_id lists into one ranking (pure; no I/O).
+
+    arm_a is the keyword (SQLite FTS5) ranking, arm_b the Lance ranking. A
+    document's rank in an arm is the zero-based position of its first
+    occurrence. Score is the sum of _rrf_term over the arms containing it.
+    Order: score descending, then present-in-arm_a first, then arm_a rank
+    ascending, then doc_id ascending (which makes the order total).
+    """
+    ranks_a: dict = {}
+    for rank, doc_id in enumerate(arm_a):
+        ranks_a.setdefault(doc_id, rank)
+    ranks_b: dict = {}
+    for rank, doc_id in enumerate(arm_b):
+        ranks_b.setdefault(doc_id, rank)
+
+    scores: dict = {}
+    for ranks in (ranks_a, ranks_b):
+        for doc_id, rank in ranks.items():
+            scores[doc_id] = scores.get(doc_id, 0.0) + _rrf_term(rank)
+
+    def sort_key(doc_id):
+        in_a = doc_id in ranks_a
+        return (-scores[doc_id], 0 if in_a else 1, ranks_a.get(doc_id, 0), doc_id)
+
+    return sorted(scores, key=sort_key)[:limit]
 
 
 def _dedup_to_docs(chunks: list, limit: int) -> List[str]:

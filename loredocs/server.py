@@ -1595,8 +1595,9 @@ async def vault_search(
     - Negation: rental NOT commercial
     - Prefix: deprec*
 
-    Semantic (semantic=True, Pro only): hybrid vector + BM25 search via LanceDB.
-    Finds documents by meaning even when exact keywords differ. Requires
+    Semantic (semantic=True, Pro only): results combine keyword (FTS5) and
+    semantic (LanceDB vector) matches in one ranking, so keyword hits are kept
+    and documents are also found by meaning when exact keywords differ. Requires
     LoreDocs Pro and `pip install loredocs[pro]`. Falls back to FTS5 if the
     semantic index has not been built yet (run vault_rebuild_index first).
     """

@@ -1818,7 +1818,8 @@ class VaultStorage:
         vault_id: Optional[str] = None,
         limit: int = 20,
     ) -> Dict[str, Any]:
-        """Hybrid semantic search via LanceDB (Pro only).
+        """Hybrid semantic search (Pro only): FTS5 keyword ranking fused with
+        the LanceDB ranking by Reciprocal Rank Fusion (SH-106387).
 
         Returns the same dict structure as search(). Falls back to FTS5 if
         the Lance index is unavailable (index not built or search error).
@@ -1847,6 +1848,18 @@ class VaultStorage:
                 fallback["coverage_warning"] = coverage_warning
             return fallback
 
+        # SH-106387: semantic=true is a hybrid mode. Fuse the SQLite FTS5
+        # ranking (Arm A) with the Lance ranking (Arm B) so switching the flag
+        # on never drops the keyword search's hits from consideration. A
+        # malformed-FTS5 "error" result is absorbed: Arm A is then empty and
+        # the Lance order is returned as before.
+        from .semantic_search import _rrf_fuse_doc_ids
+        keyword = self.search(query, vault_id=vault_id, limit=limit)
+        keyword_rows = [] if "error" in keyword else keyword["results"]
+        keyword_snippets = {r["doc_id"]: r["snippet"] for r in keyword_rows}
+        doc_ids = _rrf_fuse_doc_ids(
+            [r["doc_id"] for r in keyword_rows], doc_ids, limit)
+
         results = []
         with self._db() as conn:
             for doc_id in doc_ids:
@@ -1863,15 +1876,18 @@ class VaultStorage:
                 if vault_id and row["vault_id"] != vault_id:
                     continue
 
-                # Read a snippet from extracted text
-                doc_dir = self.vaults_dir / row["vault_id"] / "docs" / doc_id
-                extracted_path = doc_dir / "extracted.txt"
-                snippet = ""
-                if extracted_path.exists():
-                    try:
-                        snippet = extracted_path.read_text(encoding="utf-8")[:200].strip()
-                    except Exception:
-                        pass
+                if doc_id in keyword_snippets:
+                    snippet = keyword_snippets[doc_id]
+                else:
+                    # Read a snippet from extracted text
+                    doc_dir = self.vaults_dir / row["vault_id"] / "docs" / doc_id
+                    extracted_path = doc_dir / "extracted.txt"
+                    snippet = ""
+                    if extracted_path.exists():
+                        try:
+                            snippet = extracted_path.read_text(encoding="utf-8")[:200].strip()
+                        except Exception:
+                            pass
 
                 results.append({
                     "doc_id": doc_id,

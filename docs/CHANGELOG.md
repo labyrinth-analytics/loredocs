@@ -4,6 +4,16 @@ What changed in each release, written for users (not developers).
 
 ---
 
+## Unreleased
+
+### Changed
+
+- **Semantic search now keeps keyword matches (Pro).** `vault_search` with
+  `semantic=true` combines keyword matches and meaning-based matches in one
+  ranking. Before, turning the option on could drop a document that the
+  default keyword search found. Result order for semantic searches will
+  change. No rebuild of the semantic index is needed.
+
 ## v0.1.34 (2026-11-10)
 
 ### Added
