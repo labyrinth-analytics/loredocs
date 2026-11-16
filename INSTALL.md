@@ -452,6 +452,26 @@ tools return a message with the upgrade link. After checkout your Pro license ke
 emailed automatically to your checkout address, usually within a few minutes; then re-run
 `claude mcp add --scope user` with `--env=LOREDOCS_PRO=<your-key>` included.
 
+**"loredocs stopped running" banner in Claude Desktop (or "Server disconnected" in Claude Code)**
+
+This banner appears when the LoreDocs MCP server exits unexpectedly. The server
+stays alive indefinitely while your client keeps the connection open (even if idle for 24+ hours).
+Idle connections release cached resources every 30 minutes but do not exit, so Claude Desktop
+and Claude Code can park a connection without seeing false-failure banners.
+
+If you see this banner, upgrade to the latest version:
+
+```bash
+# Update your Claude Code config to pin the latest version
+claude mcp add --scope user \
+  loredocs -- \
+  uvx --from loredocs==0.1.34 loredocs
+```
+
+(Replace `0.1.34` with the actual latest version -- check `https://pypi.org/project/loredocs/`.)
+
+Then restart Claude Code or Desktop. The server will no longer hard-exit on idle.
+
 ---
 
 ## Data Storage
