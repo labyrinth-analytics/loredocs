@@ -208,6 +208,85 @@ Restart Codex after saving the file. LoreDocs MCP tools will be available in the
 
 ---
 
+## Connecting to Claude Desktop (Chat)
+
+Claude Desktop is the standalone desktop app (Cmd+Space, search "Claude"). You can add
+LoreDocs to it so your conversations there can read and write your vaults -- the same
+vaults that Claude Code uses.
+
+### Find your config file
+
+Open the config file in a text editor. The path contains a space, so use this command
+to open it safely:
+
+```bash
+open -e ~/"Library/Application Support/Claude/claude_desktop_config.json"
+```
+
+If the file does not exist yet, Claude Desktop has not created it. Start Claude Desktop
+at least once to generate it, then run the command above.
+
+### Add LoreDocs under mcpServers
+
+Find the `mcpServers` key (or add it if absent) and add an entry for LoreDocs:
+
+```json
+{
+  "mcpServers": {
+    "loredocs": {
+      "command": "/Users/YOUR_USERNAME/.local/bin/uvx",
+      "args": ["loredocs==<version>"],
+      "env": {
+        "LOREDOCS_PRO": "your-license-key"
+      }
+    }
+  }
+}
+```
+
+Replace `YOUR_USERNAME` with your Mac username, `<version>` with the version you want
+to pin to (for example `0.1.34`), and `your-license-key` with your Pro license key.
+Omit the `env` block entirely if you are on the free tier.
+
+If `mcpServers` already has other entries (for example `loreconvo`), add `loredocs`
+alongside them and separate the entries with a comma.
+
+> **Why the full path to uvx?** Desktop apps launch without your shell's PATH. If you
+> use just `uvx` as the command, Claude Desktop cannot find it. You need the full absolute
+> path. Find yours by running `which uvx` in your terminal; on most macOS installs it is
+> `/Users/YOUR_USERNAME/.local/bin/uvx`.
+
+### Where your license key is stored
+
+On its first start with `LOREDOCS_PRO` set, LoreDocs validates the key and saves it to
+`~/.loredocs/license.json` (readable only by you), so Pro stays active even if the
+environment variable is later removed. A `lore_suite` key covers both LoreDocs and
+LoreConvo: once it is saved for either product, the other one recognizes it too.
+
+### Restart Claude Desktop
+
+Quit Claude Desktop fully -- use **Cmd+Q** (not just closing the window, which leaves
+it in the menu bar). Then reopen it. The LoreDocs tools load at startup; the first start
+can take a minute while uvx downloads the package.
+
+### Verify it worked
+
+In a conversation, ask Claude:
+
+```
+Call get_server_info for LoreDocs
+```
+
+You should see the LoreDocs version and status `ok`. If you set a license key, then ask:
+
+```
+Set my LoreDocs tier to pro
+```
+
+Claude calls `vault_set_tier`, which confirms the key is valid and Pro is active.
+
+---
+
 ## Verifying the Installation
 
 After connecting LoreDocs to Claude Code, verify it is working:
