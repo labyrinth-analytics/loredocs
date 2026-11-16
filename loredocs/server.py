@@ -343,6 +343,18 @@ _mcp_server_accepting_connections: bool = False
 # (SH-101414).
 _idle_watchdog = None
 
+
+def _resolve_backstop_env():
+    """Resolve the idle-backstop env var name, or None when disabled.
+
+    Only explicit truthy values ('1' or 'true') enable the 24h hard-exit
+    backstop (SH-106334).  Returns the backstop timeout env var name to
+    pass to idle_watchdog.install, or None when the backstop is off.
+    """
+    if os.environ.get("LOREDOCS_ENABLE_IDLE_BACKSTOP") in ("1", "true"):
+        return "LOREDOCS_IDLE_BACKSTOP_TIMEOUT"
+    return None
+
 # Rebuild state tracking for vault_rebuild_index_status (SH-104534)
 import threading
 _rebuild_state: Dict[str, Any] = {}
@@ -609,9 +621,7 @@ async def app_lifespan(app):
     # that exits, so exiting on idle permanently lost the server (SH-13610).
     # Backstop (24h hard-exit) disabled by default: the 30-min release_func
     # already handles resource cleanup. Enable via LOREDOCS_ENABLE_IDLE_BACKSTOP=1 or true.
-    backstop_env = None
-    if os.environ.get("LOREDOCS_ENABLE_IDLE_BACKSTOP") in ("1", "true"):
-        backstop_env = "LOREDOCS_IDLE_BACKSTOP_TIMEOUT"
+    backstop_env = _resolve_backstop_env()
     _idle_watchdog = idle_watchdog.install(
         mcp, env_var="LOREDOCS_IDLE_TIMEOUT",
         release_func=storage.release_idle_resources,
