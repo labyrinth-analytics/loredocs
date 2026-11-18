@@ -5373,6 +5373,16 @@ class VaultStorage:
                         written += 1
                         current_auto_count += 1
                     elif existing_auto_rows and new_score > existing_auto_rows[0]["similarity_score"]:
+                        # SH-106637: if this exact doc->session link already
+                        # exists the insert below is a no-op, so evicting the
+                        # lowest row first would silently shrink the link set.
+                        if conn.execute(
+                            """SELECT 1 FROM cross_product_links
+                               WHERE source_product = 'loredocs' AND source_id = ?
+                                 AND target_product = 'loreconvo' AND target_id = ?""",
+                            (doc_id, sid),
+                        ).fetchone():
+                            continue
                         # At cap: replace the lowest-similarity existing auto
                         # link only if the new one scores higher
                         conn.execute(
