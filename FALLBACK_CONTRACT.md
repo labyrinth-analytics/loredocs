@@ -91,5 +91,5 @@ shared import path -- never a second implementation of the import logic.
 
 | MCP tool | Fallback | Notes |
 |---|---|---|
-| `vault_import_dir` | `--import-dir --vault VAULT --directory PATH` | Calls `VaultStorage.import_directory()` -- the same shared method the MCP tool calls. Supports `--tags`, `--category`, `--no-recursive`. |
+| `vault_import_dir` | `--import-dir --vault VAULT --directory PATH` | Calls `VaultStorage.import_directory_detailed()` -- the same shared method the MCP tool calls. Supports `--tags`, `--category`, `--no-recursive`, `--update-changed`. Output reports imported, skipped-unchanged (count) and changed-on-disk (name + doc_id); `--update-changed` refreshes changed files in place through `update_document` (SH-106650). |
 | `vault_import_notion_setup` | `--import-notion-report` | Calls `_notion_extra_available()` -- read-only readiness diagnostic. Not an actual Notion import (that requires a Notion API token and the `[notion]` extra). |

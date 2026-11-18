@@ -2915,6 +2915,54 @@ class ImportDirInput(BaseModel):
     category: DocCategory = Field(default=DocCategory.IMPORTED, description="Category for imported documents")
     recursive: bool = Field(default=True, description="Traverse subdirectories recursively (default True). Set False for single-level import.")
     skip_config_files: bool = Field(default=True, description="Skip .css, .js, .json files during import (default True)")
+    update_changed: bool = Field(default=False, description="Refresh previously imported files whose content changed on disk, in place (same doc_id, new version). Default False: changed files are only reported.")
+
+
+def _format_import_dir_result(result: Dict[str, Any], vault_name: str, directory: str) -> str:
+    """Render import_directory_detailed output for vault_import_dir (SH-106650).
+
+    Three groups are always reported: imported, skipped-unchanged (count),
+    and changed-on-disk (name + doc_id). Updated files and update errors
+    appear when update_changed=True produced them.
+    """
+    imported = result["imported"]
+    changed = result["changed"]
+    updated = result["updated"]
+    errors = result["errors"]
+    unchanged = result["unchanged"]
+
+    if not imported and not changed and not updated and not errors and unchanged == 0:
+        return (f"No files imported from '{directory}'. "
+                "Check that the directory contains supported files under 30MB.")
+
+    lines = [f"Imported {len(imported)} files into vault '{vault_name}':"]
+    if imported:
+        lines.append("")
+        for r in imported:
+            lines.append(f"- {r['name']} ({r['original_filename']}) - {_fmt_size(r['file_size_bytes'])}")
+    lines.append("")
+    lines.append(f"Skipped (unchanged since last import): {unchanged}")
+    if updated:
+        lines.append("")
+        lines.append(f"Updated in place ({len(updated)}):")
+        for r in updated:
+            lines.append(f"- {r['name']} ({r['original_filename']}) - doc_id {r['id']} - now v{r['version_count']}")
+    lines.append("")
+    lines.append(f"Changed on disk since last import ({len(changed)}):")
+    if changed:
+        for r in changed:
+            lines.append(f"- {r['name']} ({r['original_filename']}) - doc_id {r['doc_id']}")
+        lines.append("")
+        lines.append("These were NOT updated. Re-run with update_changed=true to refresh them "
+                     "in place (same doc_id, previous version kept in history).")
+    else:
+        lines.append("- none")
+    if errors:
+        lines.append("")
+        lines.append(f"Update failed ({len(errors)}):")
+        for r in errors:
+            lines.append(f"- {r['original_filename']} - doc_id {r['doc_id']} - {r['error']}")
+    return "\n".join(lines)
 
 
 @mcp.tool(
@@ -2930,6 +2978,7 @@ async def vault_import_dir(
     category: DocCategory = DocCategory.IMPORTED,
     recursive: bool = True,
     skip_config_files: bool = True,
+    update_changed: bool = False,
 ) -> str:
     """Bulk import all supported files from a directory into a vault.
 
@@ -2938,12 +2987,21 @@ async def vault_import_dir(
     Files over 30MB are skipped. Hidden files (starting with .) are skipped.
     By default skips config files (.css, .js, .json).
 
+    Re-importing the same directory is safe: files already in the vault are
+    compared with the stored copy. Unchanged files are skipped (count
+    reported); files that changed on disk are listed with their doc_id and
+    left untouched unless update_changed=true, which refreshes each one in
+    place through the normal update path (same doc_id, previous version kept
+    in history, no new document).
+
     Supports Obsidian vaults: subdirectories are traversed recursively by default
     (set recursive=False for single-level import). Markdown files with YAML frontmatter
     tags (tags: [a, b] or block-list style) have those tags merged into the document.
     Relative folder paths are preserved in document notes for disambiguation.
     """
-    params = ImportDirInput(vault=vault, directory=directory, tags=tags, category=category, recursive=recursive, skip_config_files=skip_config_files)
+    params = ImportDirInput(vault=vault, directory=directory, tags=tags, category=category,
+                            recursive=recursive, skip_config_files=skip_config_files,
+                            update_changed=update_changed)
     storage = _get_storage(ctx)
     vault = _resolve_vault(storage, params.vault)
     if not vault:
@@ -2953,23 +3011,17 @@ async def vault_import_dir(
     if not dir_path.is_dir():
         return f"Error: Directory '{params.directory}' not found or is not a directory."
 
-    results = storage.import_directory(
+    result = storage.import_directory_detailed(
         vault_id=vault["id"],
         dir_path=dir_path,
         tags=params.tags,
         category=params.category.value,
         recursive=params.recursive,
         skip_config_files=params.skip_config_files,
+        update_changed=params.update_changed,
     )
 
-    if not results:
-        return f"No files imported from '{params.directory}'. Check that the directory contains supported files under 30MB."
-
-    lines = [f"Imported {len(results)} files into vault '{vault['name']}':", ""]
-    for r in results:
-        lines.append(f"- {r['name']} ({r['original_filename']}) - {_fmt_size(r['file_size_bytes'])}")
-
-    return "\n".join(lines)
+    return _format_import_dir_result(result, vault["name"], params.directory)
 
 
 def _validate_export_directory(directory: str, export_root: Optional[Path] = None) -> Path:

@@ -4488,6 +4488,26 @@ class VaultStorage:
     # Import / Export
     # -------------------------------------------------------------------
 
+    def _stored_file_differs(self, vault_id: str, doc_id: str, ext: str,
+                             stored_size: int, content: bytes) -> bool:
+        """True when ``content`` (the on-disk file) differs from the stored
+        current copy of ``doc_id``.
+
+        SH-106650: size is compared first; equal sizes fall through to a
+        SHA-256 comparison against ``current{ext}`` (the hash
+        ``update_document`` already journals). A missing stored file counts
+        as changed so a re-import can repair it.
+        """
+        if stored_size != len(content):
+            return True
+        current = self.vaults_dir / vault_id / "docs" / doc_id / f"current{ext}"
+        if not current.is_file():
+            return True
+        try:
+            return _hash_file(current) != hashlib.sha256(content).hexdigest()
+        except OSError:
+            return True
+
     def import_directory(self, vault_id: str, dir_path: Path,
                          tags: Optional[List[str]] = None,
                          category: str = "imported",
@@ -4495,9 +4515,36 @@ class VaultStorage:
                          skip_config_files: bool = True) -> List[Dict[str, Any]]:
         """Bulk import all supported files from a directory into a vault.
 
+        Returns the list of newly imported documents. For the full
+        classification (unchanged / changed-on-disk / updated) use
+        ``import_directory_detailed``; this wrapper exists so existing
+        callers that only want the new documents keep working.
+        """
+        return self.import_directory_detailed(
+            vault_id, dir_path, tags=tags, category=category,
+            recursive=recursive, skip_config_files=skip_config_files,
+        )["imported"]
+
+    def import_directory_detailed(self, vault_id: str, dir_path: Path,
+                                  tags: Optional[List[str]] = None,
+                                  category: str = "imported",
+                                  recursive: bool = True,
+                                  skip_config_files: bool = True,
+                                  update_changed: bool = False) -> Dict[str, Any]:
+        """Bulk import all supported files from a directory into a vault.
+
         Preserves relative folder paths so same-named files from different
         folders are distinguishable (path stored in document notes).
         By default skips config files (.css, .js, .json).
+
+        A file whose (filename, relative folder) key was imported before is
+        compared byte-for-byte against the stored copy (SH-106650):
+        identical files are counted under ``unchanged``; files that differ
+        are listed under ``changed`` with their doc_id. With
+        ``update_changed=True`` each changed file is pushed through
+        ``update_document`` -- same doc_id, one more history version, no
+        new document -- and listed under ``updated`` instead. The default
+        leaves the vault untouched for changed files.
 
         Args:
             vault_id: Target vault ID
@@ -4506,25 +4553,48 @@ class VaultStorage:
             category: Category for imported documents
             recursive: If True, recurse into subdirectories
             skip_config_files: If True, skip .css, .js, .json files
+            update_changed: If True, refresh changed files in place
+
+        Returns a dict with keys ``imported`` (list of new document dicts),
+        ``unchanged`` (int), ``changed`` (list of ``{"doc_id", "name",
+        "original_filename"}``), ``updated`` (list of updated document
+        dicts) and ``errors`` (list of ``{"doc_id", "original_filename",
+        "error"}`` for in-place updates that failed).
         """
         import time
 
-        imported = []
+        imported: List[Dict[str, Any]] = []
+        updated: List[Dict[str, Any]] = []
+        changed: List[Dict[str, Any]] = []
+        errors: List[Dict[str, Any]] = []
+        unchanged = 0
+        summary: Dict[str, Any] = {
+            "imported": imported, "unchanged": 0, "changed": changed,
+            "updated": updated, "errors": errors,
+        }
         if not dir_path.is_dir():
-            return imported
+            return summary
 
         start_time = time.perf_counter()
         # WG-32 D-27: idempotent re-import. A file is identified by its
         # original filename plus the stored relative path (notes), so the
         # same directory imported twice does not double the document count.
-        existing_keys = set()
+        # SH-106650: the map carries what the change check needs.
+        existing: Dict[tuple, Dict[str, Any]] = {}
         with self._db() as conn:
             rows = conn.execute(
-                "SELECT original_filename, notes FROM documents "
+                "SELECT id, name, original_filename, notes, file_extension, "
+                "file_size_bytes FROM documents "
                 "WHERE vault_id = ? AND deleted = 0",
                 (vault_id,),
             ).fetchall()
-            existing_keys = {(r["original_filename"], r["notes"]) for r in rows}
+            for r in rows:
+                existing[(r["original_filename"], r["notes"])] = {
+                    "doc_id": r["id"],
+                    "name": r["name"],
+                    "ext": r["file_extension"],
+                    "size": r["file_size_bytes"],
+                }
 
         iterator = sorted(dir_path.rglob("*")) if recursive else sorted(dir_path.iterdir())
         for file_path in iterator:
@@ -4541,8 +4611,39 @@ class VaultStorage:
                     relative_path = str(file_path.relative_to(dir_path))
                     path_note = f"Path: {relative_path}"
                     dedup_key = (file_path.name, path_note)
-                    if dedup_key in existing_keys:
-                        # Already imported in a prior run -- skip.
+                    prior = existing.get(dedup_key)
+                    if prior is not None:
+                        # Already imported in a prior run. Skip only if the
+                        # bytes on disk still match the stored copy.
+                        if not self._stored_file_differs(
+                            vault_id, prior["doc_id"], prior["ext"],
+                            prior["size"], content,
+                        ):
+                            unchanged += 1
+                            continue
+                        entry = {
+                            "doc_id": prior["doc_id"],
+                            "name": prior["name"],
+                            "original_filename": file_path.name,
+                        }
+                        if not update_changed:
+                            changed.append(entry)
+                            continue
+                        try:
+                            refreshed = self.update_document(
+                                prior["doc_id"], content=content,
+                                filename=file_path.name,
+                                note=f"vault_import_dir: refreshed from {relative_path}",
+                            )
+                        except Exception as exc:
+                            errors.append({
+                                "doc_id": prior["doc_id"],
+                                "original_filename": file_path.name,
+                                "error": str(exc),
+                            })
+                            continue
+                        if refreshed:
+                            updated.append(refreshed)
                         continue
                     doc_tags = list(tags) if tags else []
                     if file_path.suffix.lower() == ".md":
@@ -4572,9 +4673,14 @@ class VaultStorage:
         end_time = time.perf_counter()
         elapsed = end_time - start_time
         avg_per_file = elapsed / len(imported) if imported else 0
-        logger.debug(f"import_directory: {len(imported)} files in {elapsed:.2f}s ({avg_per_file:.3f}s/file)")
+        logger.debug(
+            f"import_directory: {len(imported)} new, {unchanged} unchanged, "
+            f"{len(changed)} changed, {len(updated)} updated in {elapsed:.2f}s "
+            f"({avg_per_file:.3f}s/file)"
+        )
 
-        return imported
+        summary["unchanged"] = unchanged
+        return summary
 
     def export_vault(self, vault_id: str, output_dir: Path,
                      include_history: bool = False) -> int:

@@ -406,9 +406,11 @@ Restore a document to a previous version. The current version is saved to histor
 
 Bulk import all supported files from a directory into a vault. Supported file types include text files, markdown, PDF, DOCX, XLSX, and PPTX (with automatic text extraction).
 
-**When Claude uses it:** When you say "import all files from this folder into my vault."
+Re-importing the same directory is safe. Files already in the vault are compared with the stored copy: unchanged files are skipped (count reported), and files that changed on disk since the last import are listed with their `doc_id` but left untouched. Pass `update_changed=true` to refresh those files in place through the normal update path -- same `doc_id`, previous version kept in history, no new document.
 
-**Key parameters:** `vault_id` (required), `directory_path` (required)
+**When Claude uses it:** When you say "import all files from this folder into my vault" or "I edited files in that folder, bring the vault up to date."
+
+**Key parameters:** `vault` (required), `directory` (required), `update_changed` (default false)
 
 ---
 

@@ -73,6 +73,8 @@ Usage:
 
     # Import with tags and non-recursive
     python scripts/query_loredocs.py --import-dir --vault "My Vault" --directory ./docs --tags '["spec", "ref"]' --no-recursive
+    # Re-import after editing files on disk: refresh changed files in place (same doc_id, new version)
+    python scripts/query_loredocs.py --import-dir --vault "My Vault" --directory ./docs --update-changed
 
     # Report Notion import readiness (vault_import_notion_setup)
     python scripts/query_loredocs.py --import-notion-report
@@ -1195,30 +1197,60 @@ def cmd_import_dir(args):
     category = args.category or "imported"
     recursive = not args.no_recursive
     skip_config_files = not args.include_config_files
+    update_changed = bool(getattr(args, "update_changed", False))
 
     # Delegate to the shared import path (same as MCP vault_import_dir)
     from loredocs.storage import VaultStorage
 
     storage = VaultStorage(root=_Path(root))
-    results = storage.import_directory(
+    result = storage.import_directory_detailed(
         vault_id=vault_id,
         dir_path=dir_path,
         tags=tags if tags else None,
         category=category,
         recursive=recursive,
         skip_config_files=skip_config_files,
+        update_changed=update_changed,
     )
+    results = result["imported"]
+    changed = result["changed"]
+    updated = result["updated"]
+    errors = result["errors"]
+    unchanged = result["unchanged"]
 
-    if not results:
+    if not results and not changed and not updated and not errors and unchanged == 0:
         print(f"No files imported from '{args.import_dir}'.")
         print("Check that the directory contains supported files under 30MB.")
         return
 
     print(f"Imported {len(results)} file(s) into vault '{vault['name']}':")
+    if results:
+        print("")
+        for r in results:
+            size = r.get("file_size_bytes", 0)
+            print(f"  - {r['name']} ({r.get('original_filename', '?')}) - {_fmt_size(size)}")
     print("")
-    for r in results:
-        size = r.get("file_size_bytes", 0)
-        print(f"  - {r['name']} ({r.get('original_filename', '?')}) - {_fmt_size(size)}")
+    print(f"Skipped (unchanged since last import): {unchanged}")
+    if updated:
+        print("")
+        print(f"Updated in place ({len(updated)}):")
+        for r in updated:
+            print(f"  - {r['name']} ({r.get('original_filename', '?')}) - doc_id {r['id']} - now v{r['version_count']}")
+    print("")
+    print(f"Changed on disk since last import ({len(changed)}):")
+    if changed:
+        for r in changed:
+            print(f"  - {r['name']} ({r['original_filename']}) - doc_id {r['doc_id']}")
+        print("")
+        print("These were NOT updated. Re-run with --update-changed to refresh them in place")
+        print("(same doc_id, previous version kept in history).")
+    else:
+        print("  - none")
+    if errors:
+        print("")
+        print(f"Update failed ({len(errors)}):")
+        for r in errors:
+            print(f"  - {r['original_filename']} - doc_id {r['doc_id']} - {r['error']}")
 
 
 # -- import_notion_report (SH-102596: T3 parity -- second caller of _notion_extra_available) --
@@ -1327,6 +1359,9 @@ def main():
                         help="With --import-dir: do not traverse subdirectories (single-level import)")
     parser.add_argument("--include-config-files", action="store_true", dest="include_config_files",
                         help="With --import-dir: include .css, .js, .json config files (default: skip them)")
+    parser.add_argument("--update-changed", action="store_true", dest="update_changed",
+                        help="With --import-dir: refresh previously imported files whose content "
+                             "changed on disk, in place (same doc_id, new version). Default: report only.")
     parser.add_argument("--import-notion-report", action="store_true", dest="import_notion_report",
                         help="Report Notion import readiness (equivalent to vault_import_notion_setup)")
     parser.add_argument("--include-archived", action="store_true", dest="include_archived",

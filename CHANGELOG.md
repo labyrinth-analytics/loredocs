@@ -9,6 +9,40 @@ none has been reconstructed.
 
 ## Unreleased
 
+### Fixed: vault_import_dir silently skipped files that changed on disk (SH-106650)
+
+- `storage.import_directory_detailed` (new): the import loop now compares a
+  previously imported file (same filename + relative-folder note) with the
+  stored copy -- size first, then SHA-256 of `current{ext}` via the
+  `_hash_file` helper `update_document` already journals with. Identical
+  files are counted as `unchanged`; files that differ are listed under
+  `changed` with their `doc_id`. New `update_changed=False` parameter:
+  when True, each changed file goes through `update_document` (same
+  `doc_id`, prior version archived, no new document, so tier doc-count
+  limits are unaffected) and is listed under `updated`; an update that
+  raises lands in `errors` instead of being swallowed. Returns a dict
+  `{imported, unchanged, changed, updated, errors}`.
+- `storage.import_directory`: unchanged signature and return type (list of
+  new documents); now a thin wrapper over `import_directory_detailed` so
+  existing callers and tests keep working. Before: any (filename, note)
+  match was a silent `continue`, so an edited workbook re-imported under
+  the same name left the vault holding the old text with no signal.
+- `server.vault_import_dir`: new optional `update_changed` parameter
+  (default False, non-destructive). Output always reports three groups --
+  imported, skipped-unchanged count, changed-on-disk (name + doc_id) --
+  plus updated-in-place and update-failed lists when present. The
+  "No files imported" message still appears only when the directory
+  yielded nothing in any group. Tool count unchanged.
+- `scripts/query_loredocs.py --import-dir`: same three-group output; new
+  `--update-changed` flag. `FALLBACK_CONTRACT.md` updated.
+- `docs/mcp_tool_catalog.md`: `vault_import_dir` entry describes the
+  change report and `update_changed`.
+- Tests: `tests/test_import_dir_changed_files.py` (xlsx + txt edited and
+  re-imported with defaults, with `update_changed=True`, with nothing
+  changed; same-size edit caught by hash; wrapper compatibility; MCP tool
+  and fallback output). Mutation-verified: forcing the comparison to
+  "unchanged" turns 5 of 9 tests red.
+
 ### Added: refresh an existing document from a file path (SH-106649)
 
 - `server.vault_update_doc`: new optional `path` parameter, mutually
