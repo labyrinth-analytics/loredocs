@@ -9,6 +9,36 @@ none has been reconstructed.
 
 ## Unreleased
 
+### Fixed: vault_search AND / OR / NOT were quoted into literal words (SH-106652)
+
+- `fts_query.sanitize_fts_query`: an uppercase bare token `AND`, `OR` or
+  `NOT` is now emitted unquoted as an FTS5 operator when it sits directly
+  between two operands (a quoted phrase or a non-operator bare token).
+  Before, quote-everything made `mail OR gmail` require all three words
+  and `rental NOT commercial` require the word "not" while excluding
+  nothing, contradicting the `vault_search` docstring (external Pro
+  tester report, 2026-11-18).
+- Stray operators -- leading, trailing, or adjacent to another operator
+  (`OR mail`, `mail AND`, `a AND OR b`, `NOT AND OR`) -- are quoted as
+  literal words, so the output always parses and `OperationalError` is
+  never raised. This is the chosen behaviour over a `validate_fts_query`
+  error; the pre-existing `"NOT AND OR"` parse test is unchanged.
+- Lowercase `and` / `or` / `not` remain ordinary words (FTS5 operators are
+  case-sensitive). Hyphen/colon quoting, phrase and prefix handling from
+  SH-104947 are unchanged.
+- Single source: `fts_query.py` only. `storage.search`,
+  `storage.get_docs_for_injection` and `scripts/query_loredocs.py` all pick
+  the change up through their existing import. `server.vault_search`
+  docstring now states the uppercase and placement rules.
+- Tests: `tests/test_fts_boolean_operators.py` (sanitizer contract, raw
+  FTS5 parse safety, `VaultStorage.search` three-document OR/AND/NOT,
+  ticket-ref OR, lowercase literal, stray-operator structured result).
+  Mutation-verified: the OR/NOT cases fail against the previous
+  quote-everything implementation.
+- Not fixed here: LoreConvo `src/core/storage_core.py:sanitize_fts_query`
+  also quotes `OR`/`AND`/`NOT` as literal (prefix) terms, but its tool
+  docstrings do not advertise boolean syntax, so behaviour and docs agree.
+
 ### Fixed: Excel extraction failed silently to empty text and had no tests (SH-106651)
 
 - `storage.extract_text_with_status` (new): returns `(text, warning)`.

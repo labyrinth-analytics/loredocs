@@ -22,6 +22,10 @@ import re
 # '*' or contain a stray unmatched quote char).
 _TOKEN_RE = re.compile(r'"([^"]*)"(\*)?|(\S+)')
 
+# SH-106652: FTS5 boolean operators. Only these exact uppercase bare tokens
+# are candidates; "and"/"or"/"not" in any other case stay literal words.
+_BOOLEAN_OPERATORS = frozenset({"AND", "OR", "NOT"})
+
 
 def validate_fts_query(query: str) -> str | None:
     """Return an error message if `query` is malformed FTS5 syntax, else None.
@@ -85,22 +89,57 @@ def sanitize_fts_query(query: str) -> str:
     terms). A quoted segment is now preserved as one FTS5 phrase (true
     consecutive-word matching); bare tokens outside quotes keep the
     existing AND-of-terms behavior unchanged.
+
+    SH-106652: the `vault_search` docstring also advertises the FTS5
+    boolean operators ("depreciation AND schedule", "rental NOT
+    commercial"), but quote-everything turned them into literal words, so
+    'mail OR gmail' required all three words and 'rental NOT commercial'
+    required the word "not" and excluded nothing. An uppercase bare token
+    AND / OR / NOT is now emitted unquoted as an operator when, and only
+    when, it sits directly between two operands (a quoted phrase or a
+    non-operator bare token). A stray operator -- leading, trailing, or
+    adjacent to another operator ("OR mail", "mail AND", "a AND OR b",
+    "NOT AND OR") -- is quoted as a literal word, so the output always
+    parses and never raises OperationalError. Lowercase and/or/not are
+    ordinary words, matching FTS5's own case-sensitive operator rule.
     """
     safe = query.strip()
     if not safe:
         return '""'
-    clauses = []
+    # Pass 1: tokenize into (is_operator, text) pairs, dropping empties.
+    # Operands are quoted here; operators are kept bare so pass 2 can
+    # decide whether each one is positioned validly.
+    tokens = []
     for match in _TOKEN_RE.finditer(safe):
         phrase, phrase_prefix, bare = match.group(1), match.group(2), match.group(3)
         if phrase is not None:
             inner = phrase.replace('"', '').strip()
             if not inner:
                 continue
-            clauses.append('"' + inner + '"' + ('*' if phrase_prefix else ''))
+            tokens.append((False, '"' + inner + '"' + ('*' if phrase_prefix else '')))
+            continue
+        if bare in _BOOLEAN_OPERATORS:
+            tokens.append((True, bare))
             continue
         is_prefix = len(bare) > 1 and bare.endswith('*')
         core = (bare[:-1] if is_prefix else bare).replace('"', '')
         if not core:
             continue
-        clauses.append('"' + core + '"*' if is_prefix else '"' + core + '"')
-    return ' '.join(clauses) if clauses else '""'
+        tokens.append((False, '"' + core + '"*' if is_prefix else '"' + core + '"'))
+    if not tokens:
+        return '""'
+    # Pass 2: an operator is real only when both neighbours are operands.
+    # Anything else (edge position, operator next to operator) is literal.
+    clauses = []
+    last = len(tokens) - 1
+    for i, (is_op, text) in enumerate(tokens):
+        if not is_op:
+            clauses.append(text)
+            continue
+        has_operand_before = i > 0 and not tokens[i - 1][0]
+        has_operand_after = i < last and not tokens[i + 1][0]
+        if has_operand_before and has_operand_after:
+            clauses.append(text)
+        else:
+            clauses.append('"' + text + '"')
+    return ' '.join(clauses)

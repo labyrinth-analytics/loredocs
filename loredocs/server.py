@@ -1676,11 +1676,17 @@ async def vault_search(
     """Full-text or semantic search across document contents.
 
     Default (semantic=False): SQLite FTS5 keyword search. Supports FTS5 syntax:
-    - Simple words: depreciation schedule
+    - Simple words: depreciation schedule (all words must appear)
     - Phrases: "rental income"
-    - Boolean: depreciation AND schedule
+    - Boolean: depreciation AND schedule, mail OR gmail
     - Negation: rental NOT commercial
     - Prefix: deprec*
+
+    Operators must be UPPERCASE and sit between two terms; lowercase
+    and/or/not are searched as ordinary words. A stray operator (leading,
+    trailing, or next to another operator, e.g. "OR mail") is searched as
+    a literal word rather than raising an error. Hyphens and colons inside
+    a term (SH-100406, agent:ron) are literal.
 
     Semantic (semantic=True, Pro only): results combine keyword (FTS5) and
     semantic (LanceDB vector) matches in one ranking, so keyword hits are kept
