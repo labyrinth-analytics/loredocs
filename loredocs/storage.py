@@ -5494,7 +5494,10 @@ class VaultStorage:
 
             # Execute mode: enforce identity confirmation above 50% ratio
             if ratio > 0.5:
-                if not (confirm_path == lc_db or force_high_ratio):
+                # Normalize paths before comparison (confirm_path comes as str, lc_db is Path)
+                normalized_confirm = Path(confirm_path).resolve() if confirm_path else None
+                normalized_lc_db = lc_db.resolve()
+                if not (normalized_confirm == normalized_lc_db or force_high_ratio):
                     return {
                         "ok": False,
                         "error": f"High ratio of dangling auto links ({ratio:.0%}) detected. To proceed, pass confirm_path='{lc_db}' or force_high_ratio=True",
