@@ -100,7 +100,7 @@ Add a document to a vault. LoreDocs automatically extracts searchable text and s
 
 **Key parameters:** `vault_id` (required), `name` (required), `content` (inline text) or `path` (file path on disk) — provide exactly one of these two, `tags`, `category`, `priority`, `notes`
 
-**File-based ingest:** Use the `path` parameter to add documents from files on disk. This is useful for large documents or when you want to import a file without copying its contents into your Claude context. LoreDocs reads the file and stores it in the vault. Text files are stored as-is; rich formats (`.pdf`, `.docx`, `.xlsx`, `.pptx`) are stored as the original file with searchable text extracted. A file that is neither UTF-8 text nor a supported rich format returns an error rather than an empty document.
+**File-based ingest:** Use the `path` parameter to add documents from files on disk. This is useful for large documents or when you want to import a file without copying its contents into your Claude context. LoreDocs reads the file and stores it in the vault. Text files are stored as-is; rich formats (`.pdf`, `.docx`, `.xlsx`, `.pptx`) are stored as the original file with searchable text extracted. A file that is neither UTF-8 text nor a supported rich format returns an error rather than an empty document. A rich-format file that is stored but yields no searchable text (it could not be parsed, or parsed to nothing) comes back with an `extraction_warning` field naming the file and the reason; the document is kept so you can fix the source and refresh it with `vault_update_doc`.
 
 ---
 
@@ -132,7 +132,7 @@ Update a document's content or metadata. LoreDocs automatically saves the previo
 
 **Key parameters:** `doc_id` (required), `content` (inline text) or `path` (file path on disk) — at most one of these two, `tags`, `category`, `priority`, `notes`
 
-**Refresh from a file:** Use the `path` parameter to replace a document's content from a file on disk without pushing its text through the conversation. The document keeps the same ID (so links and session references stay valid), the previous version goes to history, and rich formats (`.pdf`, `.docx`, `.xlsx`, `.pptx`) have their searchable text re-extracted from the new file. Passing both `content` and `path` returns an error and changes nothing.
+**Refresh from a file:** Use the `path` parameter to replace a document's content from a file on disk without pushing its text through the conversation. The document keeps the same ID (so links and session references stay valid), the previous version goes to history, and rich formats (`.pdf`, `.docx`, `.xlsx`, `.pptx`) have their searchable text re-extracted from the new file. If that re-extraction fails or produces no text, the result carries an `extraction_warning` naming the file and the reason. Passing both `content` and `path` returns an error and changes nothing.
 
 ---
 
@@ -407,6 +407,8 @@ Restore a document to a previous version. The current version is saved to histor
 Bulk import all supported files from a directory into a vault. Supported file types include text files, markdown, PDF, DOCX, XLSX, and PPTX (with automatic text extraction).
 
 Re-importing the same directory is safe. Files already in the vault are compared with the stored copy: unchanged files are skipped (count reported), and files that changed on disk since the last import are listed with their `doc_id` but left untouched. Pass `update_changed=true` to refresh those files in place through the normal update path -- same `doc_id`, previous version kept in history, no new document.
+
+A rich-format file (PDF, DOCX, XLSX, PPTX) that is stored but yields no searchable text -- it could not be parsed, or parsed to nothing -- is listed under "Text extraction warnings" in the result rather than silently indexed as empty. The same signal appears as an `extraction_warning` field on the `vault_add_doc` and `vault_update_doc` results. Excel formula cells extract as their cached result; a formula cell with no cached value (workbook saved without recalculation) extracts as its formula text.
 
 **When Claude uses it:** When you say "import all files from this folder into my vault" or "I edited files in that folder, bring the vault up to date."
 
