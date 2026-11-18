@@ -32,6 +32,8 @@ CHUNK_MAX_CHARS = 1024  # approx 256 tokens at 4 chars/token average
 _shared_models: Dict[str, object] = {}
 _shared_models_lock = threading.Lock()
 
+_bm25_logged_failure = False
+
 
 def get_shared_embedding_model(name: str = 'BAAI/bge-small-en-v1.5'):
     """Return the process-wide fastembed TextEmbedding for `name`."""
@@ -318,8 +320,11 @@ class DocLanceIndex:
                 if where_clause:
                     fts_q = fts_q.where(where_clause, prefilter=True)
                 fts_results = fts_q.limit(limit * 4).to_list()
-            except Exception:
-                pass  # FTS index may not exist on very new tables
+            except Exception as e:
+                global _bm25_logged_failure
+                if not _bm25_logged_failure:
+                    _log.warning("Lance BM25 FTS search failed: %s: %s", type(e).__name__, str(e))
+                    _bm25_logged_failure = True
 
             merged = _rrf_merge(vec_results, fts_results, k=60, limit=limit * 4)
             return _dedup_to_docs(merged, limit=limit)
