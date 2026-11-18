@@ -391,83 +391,176 @@ def extraction_supported(suffix: str) -> bool:
     return suffix.lower() in TEXT_NATIVE_SUFFIXES or suffix.lower() in RICH_DOCUMENT_SUFFIXES
 
 
+def _xlsx_has_formulas(file_path: Path) -> bool:
+    """True when any worksheet XML inside the workbook carries a formula tag.
+
+    A raw byte scan of the zip members is far cheaper than a second XML parse,
+    so the formula fallback pass in _extract_xlsx only runs when it can
+    change the output.
+    """
+    import zipfile
+    with zipfile.ZipFile(str(file_path)) as zf:
+        for name in zf.namelist():
+            if name.startswith("xl/worksheets/") and name.endswith(".xml"):
+                blob = zf.read(name)
+                if b"<f>" in blob or b"<f " in blob:
+                    return True
+    return False
+
+
+def _xlsx_row_cells(values_row, formulas_row) -> List[str]:
+    """Render one worksheet row as strings, trailing blanks removed.
+
+    Formula-cell policy (SH-106651): the cached result wins when the file has
+    one (``data_only=True`` pass). A formula cell with no cached value -- a
+    workbook saved by openpyxl or any writer that does not recalculate --
+    falls back to the formula text itself (``=SUM(A1:A3)``) so the cell is
+    still searchable instead of extracting as empty.
+    """
+    cells: List[str] = []
+    for idx, value in enumerate(values_row):
+        if value is None and formulas_row is not None and idx < len(formulas_row):
+            formula = formulas_row[idx]
+            if isinstance(formula, str) and formula.startswith("="):
+                value = formula
+        cells.append("" if value is None else str(value))
+    # Sparse sheets pad every row to the widest column; drop the trailing
+    # blanks so a two-value row does not end in a run of tab characters.
+    while cells and cells[-1] == "":
+        cells.pop()
+    return cells
+
+
+def _extract_xlsx(file_path: Path) -> str:
+    import openpyxl
+    wb_values = openpyxl.load_workbook(str(file_path), read_only=True, data_only=True)
+    wb_formulas = None
+    if _xlsx_has_formulas(file_path):
+        wb_formulas = openpyxl.load_workbook(str(file_path), read_only=True, data_only=False)
+    try:
+        text_parts = []
+        for sheet_name in wb_values.sheetnames:
+            ws_values = wb_values[sheet_name]
+            text_parts.append(f"[Sheet: {sheet_name}]")
+            values_rows = ws_values.iter_rows(values_only=True)
+            if wb_formulas is not None:
+                formula_rows = wb_formulas[sheet_name].iter_rows(values_only=True)
+            else:
+                formula_rows = None
+            for values_row in values_rows:
+                formulas_row = next(formula_rows, None) if formula_rows is not None else None
+                cells = _xlsx_row_cells(values_row, formulas_row)
+                if cells:
+                    text_parts.append("\t".join(cells))
+        return "\n".join(text_parts)
+    finally:
+        wb_values.close()
+        if wb_formulas is not None:
+            wb_formulas.close()
+
+
+def _extract_pdf(file_path: Path) -> str:
+    import pdfplumber
+    text_parts = []
+    with pdfplumber.open(file_path) as pdf:
+        for page in pdf.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text_parts.append(page_text)
+    return "\n\n".join(text_parts)
+
+
+def _extract_docx(file_path: Path) -> str:
+    import docx
+    doc = docx.Document(str(file_path))
+    return "\n\n".join(p.text for p in doc.paragraphs if p.text.strip())
+
+
+def _extract_pptx(file_path: Path) -> str:
+    from pptx import Presentation
+    prs = Presentation(str(file_path))
+    text_parts = []
+    for i, slide in enumerate(prs.slides, 1):
+        text_parts.append(f"[Slide {i}]")
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                for paragraph in shape.text_frame.paragraphs:
+                    text = paragraph.text.strip()
+                    if text:
+                        text_parts.append(text)
+    return "\n\n".join(text_parts)
+
+
+_RICH_EXTRACTORS = {
+    ".pdf": _extract_pdf,
+    ".docx": _extract_docx,
+    ".xlsx": _extract_xlsx,
+    ".pptx": _extract_pptx,
+}
+
+
+def _rich_text_is_empty(suffix: str, text: str) -> bool:
+    """True when a rich-format extraction carries nothing but its own markers.
+
+    An xlsx with only ``[Sheet: ...]`` lines or a pptx with only ``[Slide N]``
+    lines parsed fine but yielded no searchable content.
+    """
+    if suffix == ".xlsx":
+        lines = [ln for ln in text.splitlines() if ln.strip()]
+        return all(ln.startswith("[Sheet: ") for ln in lines)
+    if suffix == ".pptx":
+        lines = [ln for ln in text.splitlines() if ln.strip()]
+        return all(ln.startswith("[Slide ") for ln in lines)
+    return not text.strip()
+
+
+def extract_text_with_status(file_path: Path,
+                             display_name: Optional[str] = None) -> Tuple[str, Optional[str]]:
+    """Extract searchable text and report when extraction did not succeed.
+
+    Returns ``(text, warning)``. ``warning`` is None on success, otherwise a
+    one-line explanation. For rich documents (PDF, DOCX, XLSX, PPTX) a parse
+    failure or a parse that yields no text both produce a warning instead of
+    an indistinguishable empty string (SH-106651). Text-native formats warn
+    only when the file cannot be read. Binary/image/audio formats return
+    ``("", None)``: no extraction is attempted, so none failed.
+
+    ``display_name`` is the name used in the warning; storage callers pass
+    the document's original filename because the file on disk is always
+    ``current{ext}``.
+    """
+    suffix = file_path.suffix.lower()
+    display_name = display_name or file_path.name
+
+    if suffix in TEXT_NATIVE_SUFFIXES:
+        try:
+            return file_path.read_text(encoding="utf-8", errors="replace"), None
+        except Exception as exc:
+            return "", f"text extraction failed for {display_name}: {exc.__class__.__name__}: {exc}"
+
+    extractor = _RICH_EXTRACTORS.get(suffix)
+    if extractor is None:
+        return "", None
+
+    try:
+        text = extractor(file_path)
+    except Exception as exc:
+        return "", f"text extraction failed for {display_name}: {exc.__class__.__name__}: {exc}"
+    if _rich_text_is_empty(suffix, text):
+        return text, f"text extraction produced no text for {display_name}"
+    return text, None
+
+
 def extract_text(file_path: Path) -> str:
     """Extract searchable text from a file based on its extension.
 
     For text-native formats, reads the file directly.
     For rich documents (PDF, DOCX, XLSX, PPTX), uses appropriate libraries.
     For binary/image/audio files, returns empty string (no extraction in v1).
+    Callers that need to know WHY the text is empty use
+    ``extract_text_with_status``.
     """
-    suffix = file_path.suffix.lower()
-
-    # Text-native formats -- read directly
-    if suffix in TEXT_NATIVE_SUFFIXES:
-        try:
-            return file_path.read_text(encoding="utf-8", errors="replace")
-        except Exception:
-            return ""
-
-    # PDF
-    if suffix == ".pdf":
-        try:
-            import pdfplumber
-            text_parts = []
-            with pdfplumber.open(file_path) as pdf:
-                for page in pdf.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text_parts.append(page_text)
-            return "\n\n".join(text_parts)
-        except Exception:
-            return ""
-
-    # DOCX
-    if suffix == ".docx":
-        try:
-            import docx
-            doc = docx.Document(str(file_path))
-            return "\n\n".join(p.text for p in doc.paragraphs if p.text.strip())
-        except Exception:
-            return ""
-
-    # XLSX
-    if suffix == ".xlsx":
-        try:
-            import openpyxl
-            wb = openpyxl.load_workbook(str(file_path), read_only=True, data_only=True)
-            text_parts = []
-            for sheet_name in wb.sheetnames:
-                ws = wb[sheet_name]
-                text_parts.append(f"[Sheet: {sheet_name}]")
-                for row in ws.iter_rows(values_only=True):
-                    cells = [str(c) if c is not None else "" for c in row]
-                    if any(cells):
-                        text_parts.append("\t".join(cells))
-            wb.close()
-            return "\n".join(text_parts)
-        except Exception:
-            return ""
-
-    # PPTX
-    if suffix == ".pptx":
-        try:
-            from pptx import Presentation
-            prs = Presentation(str(file_path))
-            text_parts = []
-            for i, slide in enumerate(prs.slides, 1):
-                text_parts.append(f"[Slide {i}]")
-                for shape in slide.shapes:
-                    if shape.has_text_frame:
-                        for paragraph in shape.text_frame.paragraphs:
-                            text = paragraph.text.strip()
-                            if text:
-                                text_parts.append(text)
-            return "\n\n".join(text_parts)
-        except Exception:
-            return ""
-
-    # Images, audio, and unknown formats -- no extraction in v1
-    return ""
+    return extract_text_with_status(file_path)[0]
 
 
 # ---------------------------------------------------------------------------
@@ -2476,8 +2569,12 @@ class VaultStorage:
         current_file = doc_dir / f"current{ext}"
         current_file.write_bytes(content)
 
-        # Extract text for search indexing
-        extracted = extract_text(current_file)
+        # Extract text for search indexing. The document is stored either
+        # way; a failed or empty rich-format extraction is reported to the
+        # caller on the returned dict (SH-106651).
+        extracted, extraction_warning = extract_text_with_status(
+            current_file, display_name=filename,
+        )
         (doc_dir / "extracted.txt").write_text(extracted, encoding="utf-8")
 
         # Write metadata
@@ -2551,6 +2648,8 @@ class VaultStorage:
                 self.cross_link_doc(doc_id, vault_id)
             except Exception:
                 pass
+        if extraction_warning:
+            meta["extraction_warning"] = extraction_warning
         return meta
 
     def add_document_from_text(self, vault_id: str, name: str, text_content: str,
@@ -2624,6 +2723,7 @@ class VaultStorage:
 
         version_rotated = False
         rotate_version = None
+        extraction_warning = None
 
         if content is not None:
             # 2a. Determine new ext from filename if provided.
@@ -2869,7 +2969,10 @@ class VaultStorage:
                             )
 
                 # Step 3f: Rewrite extracted.txt.
-                extracted = extract_text(current_dest_path)
+                extracted, extraction_warning = extract_text_with_status(
+                    current_dest_path,
+                    display_name=filename if filename else row["original_filename"],
+                )
                 _safe_write_bytes(
                     doc_dir / "extracted.txt",
                     extracted.encode("utf-8"),
@@ -3101,6 +3204,8 @@ class VaultStorage:
                 'Free-tier version cap reached; oldest version rotated out. '
                 'Upgrade to Pro for unlimited version history.'
             )
+        if extraction_warning and result:
+            result["extraction_warning"] = extraction_warning
         return result
 
     def remove_document(self, doc_id: str) -> bool:
@@ -4558,8 +4663,11 @@ class VaultStorage:
         Returns a dict with keys ``imported`` (list of new document dicts),
         ``unchanged`` (int), ``changed`` (list of ``{"doc_id", "name",
         "original_filename"}``), ``updated`` (list of updated document
-        dicts) and ``errors`` (list of ``{"doc_id", "original_filename",
-        "error"}`` for in-place updates that failed).
+        dicts), ``errors`` (list of ``{"doc_id", "original_filename",
+        "error"}`` for in-place updates that failed) and ``warnings`` (list
+        of ``{"doc_id", "original_filename", "warning"}`` for files that were
+        stored but whose text extraction failed or produced no text,
+        SH-106651).
         """
         import time
 
@@ -4567,11 +4675,20 @@ class VaultStorage:
         updated: List[Dict[str, Any]] = []
         changed: List[Dict[str, Any]] = []
         errors: List[Dict[str, Any]] = []
+        warnings: List[Dict[str, Any]] = []
         unchanged = 0
         summary: Dict[str, Any] = {
             "imported": imported, "unchanged": 0, "changed": changed,
-            "updated": updated, "errors": errors,
+            "updated": updated, "errors": errors, "warnings": warnings,
         }
+
+        def _note_extraction_warning(doc: Dict[str, Any]) -> None:
+            if doc.get("extraction_warning"):
+                warnings.append({
+                    "doc_id": doc["id"],
+                    "original_filename": doc["original_filename"],
+                    "warning": doc["extraction_warning"],
+                })
         if not dir_path.is_dir():
             return summary
 
@@ -4644,6 +4761,7 @@ class VaultStorage:
                             continue
                         if refreshed:
                             updated.append(refreshed)
+                            _note_extraction_warning(refreshed)
                         continue
                     doc_tags = list(tags) if tags else []
                     if file_path.suffix.lower() == ".md":
@@ -4661,6 +4779,7 @@ class VaultStorage:
                     )
                     if result:
                         imported.append(result)
+                        _note_extraction_warning(result)
                 except Exception:
                     continue
 

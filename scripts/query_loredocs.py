@@ -1251,6 +1251,15 @@ def cmd_import_dir(args):
         print(f"Update failed ({len(errors)}):")
         for r in errors:
             print(f"  - {r['original_filename']} - doc_id {r['doc_id']} - {r['error']}")
+    warnings = result.get("warnings", [])
+    if warnings:
+        print("")
+        print(f"Text extraction warnings ({len(warnings)}):")
+        for r in warnings:
+            print(f"  - {r['original_filename']} - doc_id {r['doc_id']} - {r['warning']}")
+        print("")
+        print("These files were stored but have no searchable text. Check the file opens")
+        print("in its native application, then re-import with --update-changed.")
 
 
 # -- import_notion_report (SH-102596: T3 parity -- second caller of _notion_extra_available) --

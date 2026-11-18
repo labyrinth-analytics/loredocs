@@ -9,6 +9,49 @@ none has been reconstructed.
 
 ## Unreleased
 
+### Fixed: Excel extraction failed silently to empty text and had no tests (SH-106651)
+
+- `storage.extract_text_with_status` (new): returns `(text, warning)`.
+  Every rich-format branch (PDF, DOCX, XLSX, PPTX) now moves into its own
+  `_extract_*` helper; a parse exception or a parse that yields nothing
+  but sheet/slide markers produces a one-line warning instead of an
+  indistinguishable `""`. `extract_text` keeps its signature and return
+  type as a wrapper (callers in `version_storage` replay and the semantic
+  re-derive path are unchanged). Before: a workbook openpyxl could not open
+  was stored as a document with empty `extracted.txt`, an empty FTS row,
+  and no signal anywhere.
+- XLSX formula cells: the `data_only=True` pass still supplies cached
+  results. When the workbook's sheet XML carries formula tags (cheap zip
+  byte scan, `_xlsx_has_formulas`), a second `data_only=False` pass runs
+  and a formula cell with no cached value falls back to its formula text
+  (`=SUM(A1:A2)`) so it stays searchable. Workbooks written by openpyxl or
+  any non-recalculating tool previously extracted every formula cell as
+  blank. Workbooks without formulas pay for one pass only.
+- XLSX sparse rows: trailing blank cells are dropped before tab-joining,
+  so a two-value row in a 26-column sheet no longer ends in 24 tabs.
+  Interior blanks are kept for column alignment.
+- `storage.add_document` / `storage.update_document`: the returned dict
+  carries `extraction_warning` when extraction failed or produced no text;
+  the document is still stored. The warning names the original filename,
+  not the on-disk `current{ext}`. Key is absent on success (no change to
+  existing result shapes). `metadata.json` is not touched.
+- `storage.import_directory_detailed`: new `warnings` list
+  (`{doc_id, original_filename, warning}`) built from the add and
+  update-in-place results. `server.vault_import_dir` and
+  `scripts/query_loredocs.py --import-dir` render a "Text extraction
+  warnings (n)" section when it is non-empty. `vault_add_doc` and
+  `vault_update_doc` surface the key through their existing JSON result.
+- Tests: `tests/test_xlsx_extraction.py` (12 tests, openpyxl hard import,
+  workbooks built in-test): multi-sheet markers and values; >= 400,000
+  character main sheet with a 32,000+ character cell through add, FTS
+  search on a last-row token and on the big cell, and `vault_get_doc`;
+  corrupt `.xlsx` through `extract_text_with_status`, `vault_add_doc`,
+  `vault_update_doc`, `import_directory_detailed` and the rendered
+  `vault_import_dir` output; formula cell without cached value (precondition
+  asserted: the values-only pass sees `None`); cached value preferred over
+  formula text; sparse rows without trailing tabs; blank workbook warns.
+  Mutation-verified: `_extract_xlsx` returning `""` turns 10 of 12 red.
+
 ### Fixed: vault_import_dir silently skipped files that changed on disk (SH-106650)
 
 - `storage.import_directory_detailed` (new): the import loop now compares a

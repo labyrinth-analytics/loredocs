@@ -2923,12 +2923,15 @@ def _format_import_dir_result(result: Dict[str, Any], vault_name: str, directory
 
     Three groups are always reported: imported, skipped-unchanged (count),
     and changed-on-disk (name + doc_id). Updated files and update errors
-    appear when update_changed=True produced them.
+    appear when update_changed=True produced them. Files stored with no
+    searchable text (extraction failed or empty, SH-106651) are listed
+    under a text-extraction warnings section.
     """
     imported = result["imported"]
     changed = result["changed"]
     updated = result["updated"]
     errors = result["errors"]
+    warnings = result.get("warnings", [])
     unchanged = result["unchanged"]
 
     if not imported and not changed and not updated and not errors and unchanged == 0:
@@ -2962,6 +2965,15 @@ def _format_import_dir_result(result: Dict[str, Any], vault_name: str, directory
         lines.append(f"Update failed ({len(errors)}):")
         for r in errors:
             lines.append(f"- {r['original_filename']} - doc_id {r['doc_id']} - {r['error']}")
+    if warnings:
+        lines.append("")
+        lines.append(f"Text extraction warnings ({len(warnings)}):")
+        for r in warnings:
+            lines.append(f"- {r['original_filename']} - doc_id {r['doc_id']} - {r['warning']}")
+        lines.append("")
+        lines.append("These files were stored but have no searchable text. "
+                     "Check the file opens in its native application, then re-import "
+                     "with update_changed=true.")
     return "\n".join(lines)
 
 
