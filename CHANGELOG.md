@@ -9,6 +9,37 @@ none has been reconstructed.
 
 ## Unreleased
 
+### Added: refresh an existing document from a file path (SH-106649)
+
+- `server.vault_update_doc`: new optional `path` parameter, mutually
+  exclusive with `content` (both given returns an error string and changes
+  nothing). The server reads the file itself and hands the bytes plus the
+  source filename to `storage.update_document`, so the same `doc_id` keeps
+  its history and links, the prior version is archived as before, and rich
+  formats (`.pdf`/`.docx`/`.xlsx`/`.pptx`) are re-extracted by the existing
+  `extract_text` under the file's real extension. Tool count unchanged.
+- `server.vault_add_doc(path=...)`: no longer decodes the file as UTF-8
+  and stores it under a `.md` name. Files `extract_text` understands are
+  stored as the original bytes via `storage.add_document` with the source
+  filename; an unknown-suffix file that is not UTF-8 text returns a clean
+  `Error:` string (before: unhandled `UnicodeDecodeError`). `ValueError`
+  from `add_document` (oversize, unsafe filename) is also returned as an
+  error string.
+- `server._read_document_file`: the one reader both tools share.
+- `storage`: `TEXT_NATIVE_SUFFIXES`, `RICH_DOCUMENT_SUFFIXES` and
+  `extraction_supported()` expose the suffix sets `extract_text` already
+  used, so the server never re-lists them.
+- `scripts/query_loredocs.py --update-doc`: delegates to
+  `VaultStorage.update_document` (as `--add-doc` already delegates to
+  `add_document`) instead of a hand-rolled history copy plus UTF-8-only
+  extraction; `--file` now sets the stored extension and re-extracts rich
+  formats. `FALLBACK_CONTRACT.md` records it as write-side.
+- `docs/mcp_tool_catalog.md`: `vault_add_doc` and `vault_update_doc`
+  entries describe the path behaviour.
+- Tests: `tests/test_update_doc_from_path.py` (xlsx round trip, 300 KB
+  markdown round trip, content+path refusal, add-by-path rich/binary cases,
+  fallback `--update-doc --file` round trip).
+
 ### Fixed: 500-link auto cap counted one direction only (SH-106620, WG-32 D-40b)
 
 - `storage`: new module-level rule for "a document's auto session links" --

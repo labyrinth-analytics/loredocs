@@ -94,13 +94,13 @@ Set up your LoreDocs workspace with recommended vaults. Call once after installi
 
 ### `vault_add_doc`
 
-Add a text document to a vault. LoreDocs automatically extracts searchable text and stores the document with metadata (tags, category, priority, notes). You can provide document content inline or read it from a file path on disk.
+Add a document to a vault. LoreDocs automatically extracts searchable text and stores the document with metadata (tags, category, priority, notes). You can provide document content inline or read it from a file path on disk.
 
 **When Claude uses it:** When you say "add this document to my vault" or "save these notes" or "import this file into my vault."
 
 **Key parameters:** `vault_id` (required), `name` (required), `content` (inline text) or `path` (file path on disk) — provide exactly one of these two, `tags`, `category`, `priority`, `notes`
 
-**File-based ingest:** Use the `path` parameter to add documents from files on disk. This is useful for large documents or when you want to import a file without copying its contents into your Claude context. LoreDocs reads the file and stores it in the vault.
+**File-based ingest:** Use the `path` parameter to add documents from files on disk. This is useful for large documents or when you want to import a file without copying its contents into your Claude context. LoreDocs reads the file and stores it in the vault. Text files are stored as-is; rich formats (`.pdf`, `.docx`, `.xlsx`, `.pptx`) are stored as the original file with searchable text extracted. A file that is neither UTF-8 text nor a supported rich format returns an error rather than an empty document.
 
 ---
 
@@ -128,9 +128,11 @@ List documents in a vault with sorting and filtering options.
 
 Update a document's content or metadata. LoreDocs automatically saves the previous version to history (so you can restore it later).
 
-**When Claude uses it:** When you say "update the depreciation schedule with these new numbers."
+**When Claude uses it:** When you say "update the depreciation schedule with these new numbers" or "refresh the checklist in my vault from the spreadsheet I just edited."
 
-**Key parameters:** `doc_id` (required), `content`, `tags`, `category`, `priority`, `notes`
+**Key parameters:** `doc_id` (required), `content` (inline text) or `path` (file path on disk) — at most one of these two, `tags`, `category`, `priority`, `notes`
+
+**Refresh from a file:** Use the `path` parameter to replace a document's content from a file on disk without pushing its text through the conversation. The document keeps the same ID (so links and session references stay valid), the previous version goes to history, and rich formats (`.pdf`, `.docx`, `.xlsx`, `.pptx`) have their searchable text re-extracted from the new file. Passing both `content` and `path` returns an error and changes nothing.
 
 ---
 

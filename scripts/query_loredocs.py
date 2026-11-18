@@ -49,7 +49,8 @@ Usage:
         --name "New Title" \
         --priority "authoritative"
 
-    # Update a document's content from a file
+    # Update a document's content from a file (same doc_id, previous version
+    # kept; rich formats such as .xlsx/.docx/.pdf are re-extracted for search)
     python scripts/query_loredocs.py --update-doc \
         --doc-id abc123def456 \
         --file docs/updated.md
@@ -957,104 +958,79 @@ def cmd_workspace(args):
 # -- vault_update_doc --
 
 def cmd_update_doc(args):
-    """Update a document's content or metadata."""
-    conn, db_path = _connect(args.db_path)
+    """Update a document's content or metadata.
+
+    SH-106649: delegates to VaultStorage.update_document() -- the exact call
+    vault_update_doc makes -- instead of hand-rolling the history copy,
+    documents/doc_fts UPDATE and a UTF-8-only "extraction". The hand-rolled
+    version stored a rich file (.xlsx/.docx/.pdf) passed via --file with an
+    empty search index, skipped the journaled write ordering and retention
+    rotation, and never re-indexed co-occurrences or the semantic index.
+    --file PATH is the fallback twin of vault_update_doc(path=...): the new
+    file's extension sets the stored extension and extract_text re-runs.
+    """
+    db_path = args.db_path or _find_loredocs_db()
+    if not db_path:
+        print("ERROR: Could not find LoreDocs loredocs.db", file=sys.stderr)
+        sys.exit(1)
     root = _find_loredocs_root(db_path)
 
-    # Verify document exists
-    row = conn.execute(
-        "SELECT * FROM documents WHERE id = ? AND deleted = 0", (args.doc_id,)
-    ).fetchone()
-    if not row:
-        print(f"Error: Document '{args.doc_id}' not found.")
-        conn.close()
-        return
-
-    vault_id = row["vault_id"]
-    now = datetime.now(timezone.utc).isoformat()
-    doc_dir = Path(root) / "vaults" / vault_id / "docs" / args.doc_id
-    ext = row["file_extension"]
-    current_file = doc_dir / f"current{ext}"
-    version_count = row["version_count"]
+    try:
+        from loredocs.storage import VaultStorage
+    except ImportError:
+        print(
+            "ERROR: loredocs package not importable; --update-doc requires "
+            "the installed loredocs package.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     # Handle content update
     new_content = None
+    new_filename = None
     if args.file:
         filepath = Path(args.file)
         if not filepath.is_file():
             print(f"Error: File '{args.file}' not found.")
-            conn.close()
             return
         new_content = filepath.read_bytes()
+        new_filename = filepath.name
     elif args.stdin:
         new_content = sys.stdin.buffer.read()
 
-    if new_content is not None:
-        # Version the current file first
-        if current_file.exists():
-            history_dir = doc_dir / "history"
-            history_dir.mkdir(exist_ok=True)
-            history_file = history_dir / f"v{version_count}{ext}"
-            import shutil
-            shutil.copy2(current_file, history_file)
-            version_count += 1
-        current_file.write_bytes(new_content)
-        try:
-            extracted = new_content.decode("utf-8")
-        except UnicodeDecodeError:
-            extracted = ""
-        (doc_dir / "extracted.txt").write_text(extracted, encoding="utf-8")
-        file_size = len(new_content)
-    else:
-        file_size = row["file_size_bytes"]
-        extracted_path = doc_dir / "extracted.txt"
-        extracted = extracted_path.read_text(encoding="utf-8") if extracted_path.exists() else ""
-
-    # Build update fields
-    updates = {"updated_at": now, "version_count": version_count}
-    if args.name is not None:
-        updates["name"] = args.name
+    tags = None
     if args.tags is not None:
         try:
             parsed = json.loads(args.tags)
-            updates["tags"] = json.dumps(parsed if isinstance(parsed, list) else [args.tags])
+            tags = parsed if isinstance(parsed, list) else [args.tags]
         except (json.JSONDecodeError, TypeError):
-            updates["tags"] = json.dumps([args.tags])
-    if args.category is not None:
-        updates["category"] = args.category
-    if args.priority is not None:
-        updates["priority"] = args.priority
-    if args.notes is not None:
-        updates["notes"] = args.notes
-    if new_content is not None:
-        updates["file_size_bytes"] = file_size
+            tags = [args.tags]
 
-    set_clause = ", ".join(f"{k} = ?" for k in updates)
-    values = list(updates.values()) + [args.doc_id]
-    conn.execute(f"UPDATE documents SET {set_clause} WHERE id = ?", values)
-
-    # Update FTS
-    conn.execute("DELETE FROM doc_fts WHERE doc_id = ?", (args.doc_id,))
-    final_name = args.name if args.name is not None else row["name"]
-    final_tags_raw = updates.get("tags", row["tags"])
-    final_tags = _parse_tags(final_tags_raw)
-    final_notes = args.notes if args.notes is not None else (row["notes"] or "")
-    conn.execute(
-        """INSERT INTO doc_fts (doc_id, vault_id, name, content, tags, notes)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (args.doc_id, vault_id, final_name, extracted, " ".join(final_tags), final_notes)
-    )
-
-    # Update vault timestamp
-    conn.execute("UPDATE vaults SET updated_at = ? WHERE id = ?", (now, vault_id))
-    conn.commit()
-    conn.close()
+    storage = VaultStorage(root=Path(root))
+    try:
+        result = storage.update_document(
+            args.doc_id,
+            content=new_content,
+            filename=new_filename,
+            name=args.name,
+            tags=tags,
+            category=args.category,
+            priority=args.priority,
+            notes=args.notes,
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        return
+    if not result:
+        print(f"Error: Document '{args.doc_id}' not found.")
+        return
 
     print(f"Updated document '{args.doc_id}'")
     if args.name:
         print(f"  name: {args.name}")
     if new_content is not None:
-        print(f"  content updated ({_fmt_size(file_size)}, now at version {version_count})")
+        print(f"  content updated ({_fmt_size(len(new_content))}, "
+              f"now at version {result['version_count']})")
 
 
 # -- vault_remove_doc --

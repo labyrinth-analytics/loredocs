@@ -70,7 +70,12 @@ invariants above. Run per-product:
 Write operations (`--add-doc`, `--create-vault`, `--update-doc`,
 `--delete-doc`, `--archive`, `--restore`, `--migrate-tags`) are not part of
 this contract -- they predate it and are not covered by the parity guard.
-`--doc-restore DOC_ID --version N` (SH-102198) joins that write-side group:
+`--update-doc --doc-id ID --file PATH` (SH-106649) is a second caller of
+`VaultStorage.update_document()` (the exact call the MCP tool
+`vault_update_doc` makes with `path=`): the file's extension sets the
+stored extension and `extract_text` re-runs, so a `.xlsx`/`.docx`/`.pdf`
+refresh is searchable on both surfaces. It remains write-side, outside the
+parity guard. `--doc-restore DOC_ID --version N` (SH-102198) joins that write-side group:
 it is a second caller of `VaultStorage.restore_document_version()` (the
 extracted shared core the MCP tool `vault_doc_restore` delegates to), not
 part of the emergency read path. `--workspace PATH` (SH-102202) joins the

@@ -370,6 +370,27 @@ FREE_MAX_VERSIONS = 5
 # Text extraction helpers
 # ---------------------------------------------------------------------------
 
+# Suffixes extract_text reads directly as UTF-8 text.
+TEXT_NATIVE_SUFFIXES = (
+    ".txt", ".md", ".csv", ".html", ".htm", ".json", ".xml",
+    ".py", ".js", ".ts", ".sql", ".yaml", ".yml", ".toml",
+    ".ini", ".cfg", ".conf", ".log", ".sh", ".bat", ".ps1",
+)
+
+# Rich document suffixes extract_text handles via format-specific libraries.
+RICH_DOCUMENT_SUFFIXES = (".pdf", ".docx", ".xlsx", ".pptx")
+
+
+def extraction_supported(suffix: str) -> bool:
+    """True when extract_text can produce searchable text for this suffix.
+
+    SH-106649: the single answer to "can a file of this type be ingested by
+    path?" -- server.py path-based add/update consult this instead of
+    re-listing the suffixes extract_text understands.
+    """
+    return suffix.lower() in TEXT_NATIVE_SUFFIXES or suffix.lower() in RICH_DOCUMENT_SUFFIXES
+
+
 def extract_text(file_path: Path) -> str:
     """Extract searchable text from a file based on its extension.
 
@@ -380,9 +401,7 @@ def extract_text(file_path: Path) -> str:
     suffix = file_path.suffix.lower()
 
     # Text-native formats -- read directly
-    if suffix in (".txt", ".md", ".csv", ".html", ".htm", ".json", ".xml",
-                   ".py", ".js", ".ts", ".sql", ".yaml", ".yml", ".toml",
-                   ".ini", ".cfg", ".conf", ".log", ".sh", ".bat", ".ps1"):
+    if suffix in TEXT_NATIVE_SUFFIXES:
         try:
             return file_path.read_text(encoding="utf-8", errors="replace")
         except Exception:

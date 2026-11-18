@@ -36,6 +36,7 @@ from .storage import (
     _CROSS_LINK_EMBEDDING_MODEL,
     HistoryDivergedError, RecoveryAbortedError, DocumentLockedError,
     LockUnusableError, HistoryBudgetExceededError,
+    RICH_DOCUMENT_SUFFIXES, extraction_supported,
 )
 from .tiers import (
     LOREDOCS_UPGRADE_URL,
@@ -1267,6 +1268,43 @@ class DocAddInput(BaseModel):
             raise ValueError('Provide either content or path, not both')
 
 
+def _read_document_file(path: str):
+    """Read a file for path-based ingest (vault_add_doc / vault_update_doc).
+
+    SH-106649: the server reads the bytes itself so the client model never
+    has to push a large document through a tool call, and rich formats
+    (.pdf/.docx/.xlsx/.pptx) reach ``storage.extract_text`` by their real
+    extension instead of being decoded as UTF-8.
+
+    Returns ``(data, filename, None)`` on success or ``(None, None, error)``
+    where ``error`` is a clean ``"Error: ..."`` string -- never an exception.
+    ``filename`` is the source file's name when ``extract_text`` understands
+    its suffix, or ``None`` for an unknown suffix whose bytes decode as UTF-8
+    (stored as plain text; the caller keeps its default filename/extension).
+    """
+    src = Path(path)
+    try:
+        data = src.read_bytes()
+    except FileNotFoundError:
+        return None, None, f"Error: File not found at path '{path}'"
+    except (IOError, OSError) as exc:
+        return None, None, f"Error: Could not read file '{path}': {exc}"
+
+    suffix = src.suffix.lower()
+    if extraction_supported(suffix):
+        return data, src.name, None
+
+    try:
+        data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None, None, (
+            f"Error: Could not decode file '{path}': not UTF-8 text, and "
+            f"'{suffix or '(no extension)'}' is not a supported rich format "
+            f"({', '.join(RICH_DOCUMENT_SUFFIXES)})."
+        )
+    return data, None, None
+
+
 @mcp.tool(
     title="Add Document",
     name="vault_add_doc",
@@ -1284,11 +1322,14 @@ async def vault_add_doc(
     priority: DocPriority = DocPriority.NORMAL,
     notes: str = "",
 ) -> str:
-    """Add a text document to a vault with metadata (tags, category, priority, notes).
+    """Add a document to a vault with metadata (tags, category, priority, notes).
 
     The document will be full-text indexed for search and stored with version tracking.
     Content can be provided inline (content parameter) or from a file path (path parameter).
-    For binary files (PDF, DOCX, etc.), use vault_import_dir to import from a directory.
+    With path, the server reads the file itself: text files are stored as-is, and
+    rich formats (PDF, DOCX, XLSX, PPTX) are stored as the original file with
+    searchable text extracted. To refresh an existing document from a file later,
+    use vault_update_doc with path. For a whole directory, use vault_import_dir.
     """
     params = DocAddInput(vault=vault, name=name, content=content, path=path, filename=filename, tags=tags, category=category, priority=priority, notes=notes)
     storage = _get_storage(ctx)
@@ -1297,28 +1338,48 @@ async def vault_add_doc(
         return f"Error: Vault '{params.vault}' not found. Use vault_list to see available vaults."
 
     text_content = params.content
+    content_bytes = None
+    src_filename = None
     if params.path:
-        try:
-            text_content = Path(params.path).read_text(encoding='utf-8')
-        except FileNotFoundError:
-            return f"Error: File not found at path '{params.path}'"
-        except (IOError, OSError) as exc:
-            return f"Error: Could not read file '{params.path}': {exc}"
+        data, src_filename, err = _read_document_file(params.path)
+        if err:
+            return err
+        if src_filename is None:
+            # Unknown suffix, UTF-8 text: store as a text document under the
+            # default filename, exactly as inline content is stored.
+            text_content = data.decode("utf-8")
+        else:
+            content_bytes = data
 
     try:
-        result = storage.add_document_from_text(
-            vault_id=vault["id"],
-            name=params.name,
-            text_content=text_content,
-            filename=params.filename,
-            tags=params.tags,
-            category=params.category.value,
-            priority=params.priority.value,
-            notes=params.notes,
-        )
+        if content_bytes is not None:
+            result = storage.add_document(
+                vault_id=vault["id"],
+                name=params.name,
+                content=content_bytes,
+                filename=params.filename or src_filename,
+                tags=params.tags,
+                category=params.category.value,
+                priority=params.priority.value,
+                notes=params.notes,
+            )
+        else:
+            result = storage.add_document_from_text(
+                vault_id=vault["id"],
+                name=params.name,
+                text_content=text_content,
+                filename=params.filename,
+                tags=params.tags,
+                category=params.category.value,
+                priority=params.priority.value,
+                notes=params.notes,
+            )
     except TierLimitError as exc:
         hint = f" {exc.upgrade_hint}" if exc.upgrade_hint else ""
         return f"Error: {exc}{hint}"
+    except ValueError as exc:
+        # add_document rejects oversize content and unsafe filenames.
+        return f"Error: {exc}"
     if result:
         return json.dumps(result, indent=2)
     return "Error: Could not add document."
@@ -1329,6 +1390,7 @@ class DocUpdateInput(BaseModel):
 
     doc_id: str = Field(..., description="Document ID to update", min_length=1)
     content: Optional[str] = Field(default=None, description="New text content (previous version will be saved automatically)")
+    path: Optional[str] = Field(default=None, description="File path to read the new content from (mutually exclusive with content); rich formats are re-extracted")
     name: Optional[str] = Field(default=None, description="New display name", max_length=200)
     tags: Optional[List[str]] = Field(default=None, description="Replace all tags with this list")
     category: Optional[DocCategory] = Field(default=None, description="New category")
@@ -1348,6 +1410,7 @@ async def vault_update_doc(
     ctx: Context,
     doc_id: str,
     content: Optional[str] = None,
+    path: Optional[str] = None,
     name: Optional[str] = None,
     tags: Optional[List[str]] = None,
     category: Optional[DocCategory] = None,
@@ -1359,6 +1422,12 @@ async def vault_update_doc(
     lore_session_id: Optional[str] = None,
 ) -> str:
     """Update a document's content or metadata.
+
+    New content comes from either the inline content parameter or a file
+    path (path parameter) -- never both. With path, the server reads the
+    file itself, so the same document ID can be refreshed from a large or
+    rich-format file (PDF, DOCX, XLSX, PPTX) without pushing its text through
+    the tool call; searchable text is re-extracted from the new file.
 
     If content changes, the previous version is saved automatically in the
     version history. You can restore old versions with vault_doc_restore.
@@ -1374,18 +1443,26 @@ async def vault_update_doc(
     reaches this function body.
     """
     session_id = resolve_session_id(session_id, lore_session_id, required=False)
-    params = DocUpdateInput(doc_id=doc_id, content=content, name=name, tags=tags,
-                            category=category, priority=priority, notes=notes,
-                            author=author, session_id=session_id, note=note)
+    params = DocUpdateInput(doc_id=doc_id, content=content, path=path, name=name,
+                            tags=tags, category=category, priority=priority,
+                            notes=notes, author=author, session_id=session_id,
+                            note=note)
+    if params.content is not None and params.path is not None:
+        return "Error: Provide either content or path, not both."
     storage = _get_storage(ctx)
-    content_bytes = (
-        params.content.encode("utf-8")
-        if params.content is not None
-        else None
-    )
+    content_bytes = None
+    new_filename = None
+    if params.path is not None:
+        data, new_filename, err = _read_document_file(params.path)
+        if err:
+            return err
+        content_bytes = data
+    elif params.content is not None:
+        content_bytes = params.content.encode("utf-8")
     result = storage.update_document(
         doc_id=params.doc_id,
         content=content_bytes,
+        filename=new_filename,
         name=params.name,
         tags=params.tags,
         category=params.category.value if params.category else None,
