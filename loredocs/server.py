@@ -3601,7 +3601,7 @@ def vault_get_linked_sessions(ctx: Context, session_id: str | None = None, limit
 # ---------------------------------------------------------------------------
 
 @mcp.tool(title="Prune Dangling Auto Links", name="vault_prune_dangling_links")
-def vault_prune_dangling_links(ctx: Context, execute: bool = False) -> dict:
+def vault_prune_dangling_links(ctx: Context, execute: bool = False, confirm_path: str = None, force_high_ratio: bool = False) -> dict:
     """Find and optionally delete dangling auto cross-product links.
 
     A dangling link is one where the LoreConvo session (source or target)
@@ -3610,12 +3610,18 @@ def vault_prune_dangling_links(ctx: Context, execute: bool = False) -> dict:
 
     A timestamped backup of loredocs.db is taken before any deletion.
 
+    If >50% of auto links are dangling (high ratio), execute mode requires
+    explicit confirmation via confirm_path (matching the discovered LoreConvo DB path)
+    or force_high_ratio=True to proceed. Dry-run always returns counts, never refuses.
+
     REFUSES to run if the LoreConvo DB cannot be discovered or if its
     sessions table is empty -- a wrong path would make every link look
     dangling and wipe all of them.
 
     Args:
         execute  -- if True, delete dangling auto links (default False)
+        confirm_path  -- path to LoreConvo DB to confirm identity (required for execute if ratio > 50%)
+        force_high_ratio  -- if True, bypass the confirm_path check for high-ratio dangling links
 
     Returns dict with:
         ok                 -- bool
@@ -3625,11 +3631,14 @@ def vault_prune_dangling_links(ctx: Context, execute: bool = False) -> dict:
         over_cap_docs      -- docs with > 500 auto links
         deleted            -- rows deleted (0 if dry run)
         backup_path        -- str if a backup was taken
+        loreconvo_db_path  -- path to discovered LoreConvo database
+        loreconvo_session_count -- count of sessions in LoreConvo DB
+        ratio              -- dangling_auto / total_auto (0.0 to 1.0)
         error              -- str if ok is False
     """
     storage = _get_storage(ctx)
     try:
-        return storage.prune_dangling_auto_links(execute=execute)
+        return storage.prune_dangling_auto_links(execute=execute, confirm_path=confirm_path, force_high_ratio=force_high_ratio)
     except DiscoveryError as exc:
         return {"ok": False, "error": str(exc)}
 

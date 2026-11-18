@@ -5403,12 +5403,17 @@ class VaultStorage:
         lc_conn.close()
         return lc_db, all_ids
 
-    def prune_dangling_auto_links(self, execute=False):
+    def prune_dangling_auto_links(self, execute=False, confirm_path=None, force_high_ratio=False):
         """Find and optionally delete dangling auto cross-product links.
 
         A dangling link is one where the LoreConvo session (source or target)
         no longer exists.  Only link_type='auto' rows are deleted; manual
         links are never touched.
+
+        Args:
+            execute -- if True, delete dangling links; if False, dry-run
+            confirm_path -- path to LoreConvo DB to confirm identity (required for execute if ratio > 50%)
+            force_high_ratio -- if True, bypass the confirm_path check for high-ratio dangling links
 
         Returns a dict with keys:
             ok          -- bool
@@ -5418,6 +5423,9 @@ class VaultStorage:
             over_cap_docs    -- docs with > _LIFETIME_AUTO_LINK_CAP auto links
             deleted          -- rows deleted (0 if dry run)
             error            -- str if ok is False
+            loreconvo_db_path    -- path to discovered LoreConvo database
+            loreconvo_session_count -- count of sessions in LoreConvo DB
+            ratio        -- dangling_auto / total_auto (0.0 to 1.0)
         """
         try:
             lc_db, all_session_ids = self._check_loreconvo_for_maintenance()
@@ -5465,20 +5473,40 @@ class VaultStorage:
                 (_LIFETIME_AUTO_LINK_CAP,),
             ).fetchone()[0]
 
-            # Guard against high ratio of dangling links (possible misconfigured DB path)
             dangling_count = len(dangling_auto_ids)
-            if total_auto > 0 and dangling_count > 0:
-                ratio = dangling_count / total_auto
-                if ratio > 0.5:
+            lc_session_count = len(all_session_ids)
+            ratio = (dangling_count / total_auto) if total_auto > 0 else 0
+
+            # Dry-run always returns counts (never refuses on ratio alone)
+            if not execute:
+                return {
+                    "ok": True,
+                    "total_auto": total_auto,
+                    "dangling_auto": dangling_count,
+                    "dangling_manual": dangling_manual,
+                    "over_cap_docs": over_cap_docs,
+                    "deleted": 0,
+                    "backup_path": None,
+                    "loreconvo_db_path": lc_db,
+                    "loreconvo_session_count": lc_session_count,
+                    "ratio": ratio,
+                }
+
+            # Execute mode: enforce identity confirmation above 50% ratio
+            if ratio > 0.5:
+                if not (confirm_path == lc_db or force_high_ratio):
                     return {
                         "ok": False,
-                        "error": f"High ratio of dangling auto links ({ratio:.0%}). This may indicate LORECONVO_DB_PATH points at a different LoreConvo DB. Verify path and retry.",
+                        "error": f"High ratio of dangling auto links ({ratio:.0%}) detected. To proceed, pass confirm_path='{lc_db}' or force_high_ratio=True",
                         "total_auto": total_auto,
                         "dangling_auto": dangling_count,
                         "dangling_manual": dangling_manual,
                         "over_cap_docs": over_cap_docs,
                         "deleted": 0,
                         "backup_path": None,
+                        "loreconvo_db_path": lc_db,
+                        "loreconvo_session_count": lc_session_count,
+                        "ratio": ratio,
                     }
 
             deleted = 0
@@ -5509,6 +5537,9 @@ class VaultStorage:
                 "over_cap_docs": over_cap_docs,
                 "deleted": deleted,
                 "backup_path": str(backup_path) if backup_path else None,
+                "loreconvo_db_path": lc_db,
+                "loreconvo_session_count": lc_session_count,
+                "ratio": ratio,
             }
 
     def trim_overcap_auto_links(self, execute=False):
