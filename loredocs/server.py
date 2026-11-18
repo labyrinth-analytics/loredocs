@@ -3647,8 +3647,12 @@ def vault_prune_dangling_links(ctx: Context, execute: bool = False, confirm_path
 def vault_trim_overcap_links(ctx: Context, execute: bool = False) -> dict:
     """Trim each doc's auto session links to the top 500 by similarity_score.
 
-    Manual links are never counted against or removed by the trim.
-    Dry-run by default (execute=False).
+    A doc's auto links are counted in both directions (session->doc and
+    doc->session). Manual links are never counted against or removed by
+    the trim. Dry-run by default (execute=False).
+
+    Run vault_prune_dangling_links FIRST, then this tool: trimming before
+    pruning keeps links to sessions that no longer exist.
 
     A timestamped backup of loredocs.db is taken before any deletion.
 
@@ -3660,9 +3664,11 @@ def vault_trim_overcap_links(ctx: Context, execute: bool = False) -> dict:
 
     Returns dict with:
         ok             -- bool
-        over_cap_docs  -- count of docs trimmed
+        over_cap_docs  -- count of docs over cap (trimmed when execute)
+        excess_by_doc  -- {doc_id: rows over cap} for each of those docs
         total_trimmed  -- rows removed (0 if dry run)
         backup_path    -- str if a backup was taken
+        note           -- prune-before-trim reminder
         error          -- str if ok is False
     """
     storage = _get_storage(ctx)

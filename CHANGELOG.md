@@ -9,6 +9,36 @@ none has been reconstructed.
 
 ## Unreleased
 
+### Fixed: 500-link auto cap counted one direction only (SH-106620, WG-32 D-40b)
+
+- `storage`: new module-level rule for "a document's auto session links" --
+  rows where the doc is the loredocs endpoint in EITHER direction
+  (`loredocs->loreconvo` from `cross_link_doc`, `loreconvo->loredocs` from
+  LoreConvo's session save, which writes ~99% of real rows). Exposed as
+  `count_doc_auto_links`, `doc_auto_links_lowest_first` and `overcap_docs`;
+  the SQL lives once in `_DOC_AUTO_LINK_WHERE_SQL` / `_DOC_AUTO_LINK_SCOPE_SQL`
+  / `_DOC_AUTO_LINK_RANK_SQL`. Before, three hand-written
+  `source_product = 'loredocs' AND link_type = 'auto'` queries counted only
+  the outbound direction, so a store with 139 docs over cap (max 13,479)
+  reported `over_cap_docs: 0` and trimmed nothing.
+- `storage.trim_overcap_auto_links`: counts, ranks and deletes across both
+  directions (delete by row id). Tie-break is created_at then the session
+  endpoint, which equals the old target_id order for outbound rows. Result
+  gains `excess_by_doc` ({doc_id: rows over cap}) and a `note` saying to
+  prune before trimming.
+- `storage.prune_dangling_auto_links`: `over_cap_docs` uses the same
+  `overcap_docs` helper, so prune and trim dry-runs agree.
+- `storage.cross_link_doc`: write-time cap counts inbound rows too and
+  evicts by row id.
+- `server.vault_trim_overcap_links`, `docs/mcp_tool_catalog.md`,
+  `scripts/cleanup_dangling_cross_links.py`: docstrings state the
+  both-directions rule and the prune-first order of operations.
+- LoreConvo's `src/core/loredocs_bridge.py` vendors a checked copy of the
+  cap and the SQL (see LoreConvo CHANGELOG, same ticket).
+- Tests: `tests/test_cross_product_links.py::TestOvercapCountsBothDirections`
+  and `::TestWriteTimeCapCountsBothDirections` (mutation-verified: restoring
+  the one-direction filter turns 5 of 5 red).
+
 ### Changed: semantic=true fuses FTS5 and Lance rankings (SH-106387)
 
 - `storage.VaultStorage.search_semantic`: when the Lance arm returns rows it

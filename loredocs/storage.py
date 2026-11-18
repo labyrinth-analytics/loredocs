@@ -201,6 +201,85 @@ def _get_cross_link_embedder() -> Any:
         _cross_link_embedder_cache[model_name] = embedder
     return embedder
 
+
+# ---------------------------------------------------------------------------
+# Document-endpoint auto-link rule (SH-106620, WG-32 D-40b)
+# ---------------------------------------------------------------------------
+# A document's auto session links are the cross_product_links rows where the
+# document is the loredocs endpoint in EITHER direction:
+#   loredocs -> loreconvo   written by VaultStorage.cross_link_doc (doc save)
+#   loreconvo -> loredocs   written by LoreConvo's cross_link_session (session
+#                           save) -- the dominant writer, ~99% of real rows.
+# Counting one direction only is how 139 docs sat at up to 13,479 links while
+# vault_trim_overcap_links reported over_cap_docs=0 (WG-32 D-40b). This block
+# is the ONE derivation of the rule: every cap count, lowest-first ranking and
+# over-cap grouping in this module calls these helpers. LoreConvo cannot
+# import this package (isolated uvx install), so
+# ron_skills/loreconvo/src/core/loredocs_bridge.py vendors a checked copy of
+# the SQL and the cap; tests/test_loredocs_bridge.py::TestConstantSync
+# asserts the copy matches this file.
+
+_DOC_AUTO_LINK_SCOPE_SQL = (
+    "link_type = 'auto' AND "
+    "(source_product = 'loredocs' OR target_product = 'loredocs')"
+)
+_DOC_AUTO_LINK_DOC_ID_SQL = (
+    "CASE WHEN source_product = 'loredocs' THEN source_id ELSE target_id END"
+)
+_DOC_AUTO_LINK_SESSION_ID_SQL = (
+    "CASE WHEN source_product = 'loreconvo' THEN source_id ELSE target_id END"
+)
+# Per-document form: same rule, written so the two (product, id) indexes apply.
+_DOC_AUTO_LINK_WHERE_SQL = (
+    "link_type = 'auto' AND ("
+    "(source_product = 'loredocs' AND source_id = ?) OR "
+    "(target_product = 'loredocs' AND target_id = ?))"
+)
+# Lowest-similarity first; tie-break created_at, then the session endpoint
+# (for loredocs->loreconvo rows that is target_id, the pre-SH-106620 order).
+_DOC_AUTO_LINK_RANK_SQL = (
+    "similarity_score ASC, created_at ASC, "
+    + _DOC_AUTO_LINK_SESSION_ID_SQL + " ASC"
+)
+
+
+def count_doc_auto_links(conn: sqlite3.Connection, doc_id: str) -> int:
+    """Number of auto session links on ``doc_id``, both directions."""
+    return conn.execute(
+        f"SELECT COUNT(*) FROM cross_product_links WHERE {_DOC_AUTO_LINK_WHERE_SQL}",
+        (doc_id, doc_id),
+    ).fetchone()[0]
+
+
+def doc_auto_links_lowest_first(
+    conn: sqlite3.Connection, doc_id: str, limit: Optional[int] = None
+) -> List[sqlite3.Row]:
+    """``doc_id``'s auto session links (both directions) as rows of
+    ``(id, similarity_score)``, lowest similarity first."""
+    sql = (
+        f"SELECT id, similarity_score FROM cross_product_links "
+        f"WHERE {_DOC_AUTO_LINK_WHERE_SQL} ORDER BY {_DOC_AUTO_LINK_RANK_SQL}"
+    )
+    params: tuple = (doc_id, doc_id)
+    if limit is not None:
+        sql += " LIMIT ?"
+        params = params + (limit,)
+    return conn.execute(sql, params).fetchall()
+
+
+def overcap_docs(conn: sqlite3.Connection, cap: int) -> List[sqlite3.Row]:
+    """Rows of ``(doc_id, cnt)`` for every document whose auto session links
+    (both directions) exceed ``cap``."""
+    return conn.execute(
+        f"""SELECT {_DOC_AUTO_LINK_DOC_ID_SQL} AS doc_id, COUNT(*) AS cnt
+            FROM cross_product_links
+            WHERE {_DOC_AUTO_LINK_SCOPE_SQL}
+            GROUP BY doc_id
+            HAVING cnt > ?""",
+        (cap,),
+    ).fetchall()
+
+
 # Cap on find_related_docs() results (WG-32 D-10 median-result-count floor <= 15)
 FIND_RELATED_MAX_RESULTS = 15
 
@@ -5254,24 +5333,12 @@ class VaultStorage:
                 # session links past _LIFETIME_AUTO_LINK_CAP (500). When at
                 # cap, replace the lowest-similarity existing auto link only
                 # if the new one scores higher. Manual links are never
-                # counted or removed.
-                current_auto_count = conn.execute(
-                    """SELECT COUNT(*) FROM cross_product_links
-                       WHERE source_product = 'loredocs' AND source_id = ?
-                         AND link_type = 'auto'""",
-                    (doc_id,),
-                ).fetchone()[0]
+                # counted or removed. Counted on the document endpoint in
+                # both directions (SH-106620).
+                current_auto_count = count_doc_auto_links(conn, doc_id)
                 existing_auto_rows = []
                 if current_auto_count >= _LIFETIME_AUTO_LINK_CAP:
-                    existing_auto_rows = conn.execute(
-                        """SELECT target_id, similarity_score
-                           FROM cross_product_links
-                           WHERE source_product = 'loredocs' AND source_id = ?
-                             AND link_type = 'auto'
-                           ORDER BY similarity_score ASC,
-                                    created_at ASC, target_id ASC""",
-                        (doc_id,),
-                    ).fetchall()
+                    existing_auto_rows = doc_auto_links_lowest_first(conn, doc_id)
                 for sid, dist in sorted(best.items(), key=lambda x: x[1])[:_CROSS_LINK_CAP]:
                     if written >= _CROSS_LINK_CAP:
                         break
@@ -5309,10 +5376,8 @@ class VaultStorage:
                         # At cap: replace the lowest-similarity existing auto
                         # link only if the new one scores higher
                         conn.execute(
-                            """DELETE FROM cross_product_links
-                               WHERE source_product = 'loredocs' AND source_id = ?
-                                 AND target_id = ? AND link_type = 'auto'""",
-                            (doc_id, existing_auto_rows[0]["target_id"]),
+                            "DELETE FROM cross_product_links WHERE id = ?",
+                            (existing_auto_rows[0]["id"],),
                         )
                         self._write_cross_product_link(
                             conn,
@@ -5462,16 +5527,7 @@ class VaultStorage:
                     else:
                         dangling_manual += 1
 
-            over_cap_docs = conn.execute(
-                """SELECT COUNT(*) FROM (
-                       SELECT source_id
-                       FROM cross_product_links
-                       WHERE source_product = 'loredocs' AND link_type = 'auto'
-                       GROUP BY source_id
-                       HAVING COUNT(*) > ?
-                   )""",
-                (_LIFETIME_AUTO_LINK_CAP,),
-            ).fetchone()[0]
+            over_cap_docs = len(overcap_docs(conn, _LIFETIME_AUTO_LINK_CAP))
 
             dangling_count = len(dangling_auto_ids)
             lc_session_count = len(all_session_ids)
@@ -5547,14 +5603,24 @@ class VaultStorage:
 
     def trim_overcap_auto_links(self, execute=False):
         """Trim each doc's auto session links to the top _LIFETIME_AUTO_LINK_CAP
-        by similarity_score (deterministic tie-break: created_at then target_id).
+        by similarity_score (deterministic tie-break: created_at then session id).
 
+        A doc's auto links are counted on the document endpoint in both
+        directions (loredocs->loreconvo and loreconvo->loredocs, SH-106620);
+        the ranking, count and delete all go through the module helpers.
         Manual links are never counted against or removed by the trim.
+
+        Order of operations on a real store: run prune_dangling_auto_links
+        FIRST, then trim. Trimming first spends the 500 kept slots on links
+        whose session no longer exists (96% of auto links were dangling on
+        the 2026-11-18 store, WG-32 D-31).
 
         Returns a dict with keys:
             ok            -- bool
-            over_cap_docs -- count of docs trimmed
+            over_cap_docs -- count of docs over cap (trimmed when execute)
+            excess_by_doc -- {doc_id: rows over cap} for each of those docs
             total_trimmed -- rows removed (0 if dry run)
+            note          -- prune-before-trim reminder
             error         -- str if ok is False
         """
         try:
@@ -5572,42 +5638,31 @@ class VaultStorage:
                 return {"ok": False, "error": str(exc)}
 
         with self._db() as conn:
-            over_cap = conn.execute(
-                """SELECT source_id, COUNT(*) AS cnt
-                   FROM cross_product_links
-                   WHERE source_product = 'loredocs' AND link_type = 'auto'
-                   GROUP BY source_id
-                   HAVING cnt > ?""",
-                (_LIFETIME_AUTO_LINK_CAP,),
-            ).fetchall()
+            over_cap = overcap_docs(conn, _LIFETIME_AUTO_LINK_CAP)
 
             total_trimmed = 0
+            excess_by_doc = {}
             for doc_row in over_cap:
-                doc_id = doc_row["source_id"]
+                doc_id = doc_row["doc_id"]
                 excess = doc_row["cnt"] - _LIFETIME_AUTO_LINK_CAP
-                to_remove = conn.execute(
-                    """SELECT target_id FROM cross_product_links
-                       WHERE source_product = 'loredocs' AND source_id = ?
-                         AND link_type = 'auto'
-                       ORDER BY similarity_score ASC, created_at ASC, target_id ASC
-                       LIMIT ?""",
-                    (doc_id, excess),
-                ).fetchall()
+                excess_by_doc[doc_id] = excess
+                to_remove = doc_auto_links_lowest_first(conn, doc_id, limit=excess)
                 total_trimmed += len(to_remove)
                 if execute:
                     for tr in to_remove:
                         conn.execute(
-                            """DELETE FROM cross_product_links
-                               WHERE source_product = 'loredocs' AND source_id = ?
-                                 AND target_id = ? AND link_type = 'auto'""",
-                            (doc_id, tr["target_id"]),
+                            "DELETE FROM cross_product_links WHERE id = ?",
+                            (tr["id"],),
                         )
 
             return {
                 "ok": True,
                 "over_cap_docs": len(over_cap),
+                "excess_by_doc": excess_by_doc,
                 "total_trimmed": total_trimmed if execute else 0,
                 "backup_path": str(backup_path) if backup_path else None,
+                "note": "Run vault_prune_dangling_links before trimming: "
+                        "trimming first keeps links to deleted sessions.",
             }
 
     def _repair_bare_string_linked_projects(self) -> int:

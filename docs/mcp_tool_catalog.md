@@ -549,7 +549,7 @@ Remove cross-product links to LoreConvo sessions that no longer exist. By defaul
 
 ### `vault_trim_overcap_links`
 
-Trim each document's auto session links to the top 500 by similarity score. By default runs in dry-run mode. Pass `execute=True` to trim. Manual links are never counted or removed. A timestamped backup is taken before any deletion.
+Trim each document's auto session links to the top 500 by similarity score, counting links in both directions (session-to-document and document-to-session). By default runs in dry-run mode. Pass `execute=True` to trim. Manual links are never counted or removed. A timestamped backup is taken before any deletion. Run `vault_prune_dangling_links` first so the kept 500 are not spent on links to deleted sessions.
 
 **When Claude uses it:** When you say "trim my document links" or "enforce the session link limit."
 

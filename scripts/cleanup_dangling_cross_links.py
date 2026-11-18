@@ -7,8 +7,10 @@ Dangling links are cross_product_links rows where the LoreConvo session
 deleted; manual links are never touched.
 
 This tool also trims over-cap docs -- docs whose auto session links
-exceed the lifetime cap (500).  Trimming keeps the top 500 by
-similarity_score and removes the rest.
+exceed the lifetime cap (500), counted in both directions.  Trimming
+keeps the top 500 by similarity_score and removes the rest.  Prune runs
+before trim in the same invocation on purpose: trimming first would keep
+links to sessions that no longer exist.
 
 DRY RUN IS THE DEFAULT.  No rows are deleted unless --execute is passed.
 A timestamped backup of loredocs.db is taken before any deletion.
