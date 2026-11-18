@@ -465,10 +465,10 @@ If you see this banner, upgrade to the latest version:
 # Update your Claude Code config to pin the latest version
 claude mcp add --scope user \
   loredocs -- \
-  uvx --from loredocs==0.1.34 loredocs
+  uvx --from loredocs==0.1.35 loredocs
 ```
 
-(Replace `0.1.34` with the actual latest version -- check `https://pypi.org/project/loredocs/`.)
+(Replace `0.1.35` with the actual latest version -- check `https://pypi.org/project/loredocs/`.)
 
 Then restart Claude Code or Desktop. The server will no longer hard-exit on idle.
 
