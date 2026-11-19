@@ -6,6 +6,12 @@ What changed in each release, written for users (not developers).
 
 ## Unreleased
 
+### Fixed
+
+- Automatic link cleanup now preserves links you mark as manual while cleanup
+  is running. It also avoids removing extra automatic links after a concurrent
+  change and reports the number actually removed.
+
 ### Changed
 
 - **Semantic search now keeps keyword matches (Pro).** `vault_search` with

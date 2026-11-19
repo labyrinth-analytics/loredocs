@@ -5901,13 +5901,25 @@ class VaultStorage:
                 excess = doc_row["cnt"] - _LIFETIME_AUTO_LINK_CAP
                 excess_by_doc[doc_id] = excess
                 to_remove = doc_auto_links_lowest_first(conn, doc_id, limit=excess)
-                total_trimmed += len(to_remove)
                 if execute:
+                    if not conn.in_transaction:
+                        conn.execute("BEGIN IMMEDIATE")
+                    # A manual promotion may have committed after the first
+                    # ranking. Recheck the count and victims while holding the
+                    # writer lock so a stale row cannot erase a manual link.
+                    current_excess = max(
+                        0, count_doc_auto_links(conn, doc_id) - _LIFETIME_AUTO_LINK_CAP,
+                    )
+                    to_remove = doc_auto_links_lowest_first(
+                        conn, doc_id, limit=current_excess,
+                    )
                     for tr in to_remove:
-                        conn.execute(
-                            "DELETE FROM cross_product_links WHERE id = ?",
+                        deleted = conn.execute(
+                            "DELETE FROM cross_product_links "
+                            "WHERE id = ? AND link_type = 'auto'",
                             (tr["id"],),
                         )
+                        total_trimmed += deleted.rowcount
 
             return {
                 "ok": True,

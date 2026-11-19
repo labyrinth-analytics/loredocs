@@ -9,6 +9,16 @@ none has been reconstructed.
 
 ## Unreleased
 
+### Fixed: preserve manual links during concurrent auto-link trimming
+
+- `VaultStorage.trim_overcap_auto_links` revalidates and re-ranks current
+  automatic links under an immediate write transaction before deleting.
+  A link promoted to manual after the initial ranking is preserved, and
+  trimming uses the current excess instead of removing extra automatic links.
+- Deletion checks the current link type and reports rows actually removed.
+  Regression cases use a second connection to commit manual promotions at
+  the ranking boundary, covering both a ranked victim and an unrelated link.
+
 ### Fixed: vault_search AND / OR / NOT were quoted into literal words (SH-106652)
 
 - `fts_query.sanitize_fts_query`: an uppercase bare token `AND`, `OR` or
