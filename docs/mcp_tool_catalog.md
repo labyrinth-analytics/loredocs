@@ -198,11 +198,19 @@ Find all documents linked to a given document. Shows linked documents from any v
 
 ### `vault_search`
 
-Full-text search across document contents using SQLite FTS5. Searches across all vaults or a specific one.
+Search document contents across all vaults or one vault. The default is SQLite
+FTS5 keyword search. Unquoted `AND`, `OR` and `NOT` are case-insensitive between
+terms; quoted operator words and phrases remain literal. Stray operators
+(leading, trailing or adjacent) are treated as literal words.
+
+**Unreleased:** `semantic=true` (Pro) combines keyword and semantic matches in
+one ranking. It does not replace the keyword arm, and no index rebuild is needed
+for this ranking change.
 
 **When Claude uses it:** When you say "search my vaults for depreciation" or "find documents about rental income."
 
-**Key parameters:** `query` (required), `vault_id` (optional)
+**Key parameters:** `query` (required), `vault` (optional ID or name),
+`semantic` (default `false`), `limit` (default `20`), `offset` (default `0`).
 
 **Note:** when the semantic index covers fewer documents than the vault holds, results carry a coverage warning naming the counts. Run `vault_rebuild_index` to re-sync.
 

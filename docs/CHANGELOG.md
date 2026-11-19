@@ -17,8 +17,9 @@ What changed in each release, written for users (not developers).
 - Rich-format imports keep the file and report extraction failures or empty
   text. XLSX extraction handles multiple worksheets, large cells and sparse
   rows; formula text remains searchable when no cached result is available.
-- Uppercase `AND`, `OR` and `NOT` work between search operands. Stray operators
-  are handled as literal words.
+- `AND`, `OR` and `NOT` work in any letter case between search terms.
+  Quoted words and phrases stay literal; stray operators are handled as
+  literal words.
 - Automatic link cleanup now preserves links you mark as manual while cleanup
   is running. It also avoids removing extra automatic links after a concurrent
   change and reports the number actually removed.

@@ -22,8 +22,8 @@ import re
 # '*' or contain a stray unmatched quote char).
 _TOKEN_RE = re.compile(r'"([^"]*)"(\*)?|(\S+)')
 
-# SH-106652: FTS5 boolean operators. Only these exact uppercase bare tokens
-# are candidates; "and"/"or"/"not" in any other case stay literal words.
+# SH-106703: recognize these bare tokens without regard to case. Their
+# original spelling is retained unless pass 2 confirms operator placement.
 _BOOLEAN_OPERATORS = frozenset({"AND", "OR", "NOT"})
 
 
@@ -94,14 +94,14 @@ def sanitize_fts_query(query: str) -> str:
     boolean operators ("depreciation AND schedule", "rental NOT
     commercial"), but quote-everything turned them into literal words, so
     'mail OR gmail' required all three words and 'rental NOT commercial'
-    required the word "not" and excluded nothing. An uppercase bare token
-    AND / OR / NOT is now emitted unquoted as an operator when, and only
-    when, it sits directly between two operands (a quoted phrase or a
-    non-operator bare token). A stray operator -- leading, trailing, or
+    required the word "not" and excluded nothing. A bare AND / OR / NOT
+    token in any letter case is normalized to uppercase and emitted
+    unquoted only when it sits directly between two operands (a quoted
+    phrase or a non-operator bare token). A stray operator -- leading, trailing, or
     adjacent to another operator ("OR mail", "mail AND", "a AND OR b",
     "NOT AND OR") -- is quoted as a literal word, so the output always
-    parses and never raises OperationalError. Lowercase and/or/not are
-    ordinary words, matching FTS5's own case-sensitive operator rule.
+    parses and never raises OperationalError. Quoted operator words and
+    phrases remain literal; normalization applies only to valid operators.
     """
     safe = query.strip()
     if not safe:
@@ -118,7 +118,7 @@ def sanitize_fts_query(query: str) -> str:
                 continue
             tokens.append((False, '"' + inner + '"' + ('*' if phrase_prefix else '')))
             continue
-        if bare in _BOOLEAN_OPERATORS:
+        if bare.upper() in _BOOLEAN_OPERATORS:
             tokens.append((True, bare))
             continue
         is_prefix = len(bare) > 1 and bare.endswith('*')
@@ -139,7 +139,7 @@ def sanitize_fts_query(query: str) -> str:
         has_operand_before = i > 0 and not tokens[i - 1][0]
         has_operand_after = i < last and not tokens[i + 1][0]
         if has_operand_before and has_operand_after:
-            clauses.append(text)
+            clauses.append(text.upper())
         else:
             clauses.append('"' + text + '"')
     return ' '.join(clauses)

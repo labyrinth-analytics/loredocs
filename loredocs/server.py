@@ -1682,10 +1682,11 @@ async def vault_search(
     - Negation: rental NOT commercial
     - Prefix: deprec*
 
-    Operators must be UPPERCASE and sit between two terms; lowercase
-    and/or/not are searched as ordinary words. A stray operator (leading,
-    trailing, or next to another operator, e.g. "OR mail") is searched as
-    a literal word rather than raising an error. Hyphens and colons inside
+    AND, OR and NOT are case-insensitive between two terms (for example,
+    mail or gmail). Quoted operator words and phrases remain literal.
+    A stray operator (leading, trailing, or next to another operator,
+    e.g. "OR mail") is searched as a literal word rather than raising an
+    error. Hyphens and colons inside
     a term (SH-100406, agent:ron) are literal.
 
     Semantic (semantic=True, Pro only): results combine keyword (FTS5) and
