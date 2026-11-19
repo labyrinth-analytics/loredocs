@@ -219,22 +219,26 @@ def _get_cross_link_embedder() -> Any:
 # the SQL and the cap; tests/test_loredocs_bridge.py::TestConstantSync
 # asserts the copy matches this file.
 
-_DOC_AUTO_LINK_SCOPE_SQL = (
-    "link_type = 'auto' AND "
-    "(source_product = 'loredocs' OR target_product = 'loredocs')"
+_DOC_AUTO_LINK_ENDPOINTS = tuple(
+    (f"{endpoint}_product = 'loredocs'", f"{endpoint}_id")
+    for endpoint in ("source", "target")
 )
+_DOC_AUTO_LINK_SCOPE_SQL = "link_type = 'auto' AND (" + " OR ".join(
+    predicate for predicate, _ in _DOC_AUTO_LINK_ENDPOINTS
+) + ")"
 _DOC_AUTO_LINK_DOC_ID_SQL = (
-    "CASE WHEN source_product = 'loredocs' THEN source_id ELSE target_id END"
+    f"CASE WHEN {_DOC_AUTO_LINK_ENDPOINTS[0][0]} "
+    f"THEN {_DOC_AUTO_LINK_ENDPOINTS[0][1]} "
+    f"ELSE {_DOC_AUTO_LINK_ENDPOINTS[1][1]} END"
 )
 _DOC_AUTO_LINK_SESSION_ID_SQL = (
     "CASE WHEN source_product = 'loreconvo' THEN source_id ELSE target_id END"
 )
 # Per-document form: same rule, written so the two (product, id) indexes apply.
-_DOC_AUTO_LINK_WHERE_SQL = (
-    "link_type = 'auto' AND ("
-    "(source_product = 'loredocs' AND source_id = ?) OR "
-    "(target_product = 'loredocs' AND target_id = ?))"
-)
+_DOC_AUTO_LINK_WHERE_SQL = "link_type = 'auto' AND (" + " OR ".join(
+    f"({predicate} AND {doc_id} = ?)"
+    for predicate, doc_id in _DOC_AUTO_LINK_ENDPOINTS
+) + ")"
 # Lowest-similarity first; tie-break created_at, then the session endpoint
 # (for loredocs->loreconvo rows that is target_id, the pre-SH-106620 order).
 _DOC_AUTO_LINK_RANK_SQL = (
