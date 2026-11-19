@@ -5758,11 +5758,6 @@ class VaultStorage:
             return {"ok": False, "error": all_session_ids}
 
         backup_path = None
-        if execute:
-            try:
-                backup_path = self._backup_db()
-            except RuntimeError as exc:
-                return {"ok": False, "error": str(exc)}
 
         with self._db() as conn:
             total_auto = conn.execute(
@@ -5825,6 +5820,11 @@ class VaultStorage:
                         "loreconvo_session_count": lc_session_count,
                         "ratio": ratio,
                     }
+
+            try:
+                backup_path = self._backup_db()
+            except RuntimeError as exc:
+                return {"ok": False, "error": str(exc)}
 
             deleted = 0
             if execute and dangling_auto_ids:
