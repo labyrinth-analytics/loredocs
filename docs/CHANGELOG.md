@@ -8,9 +8,23 @@ What changed in each release, written for users (not developers).
 
 ### Fixed
 
+- Refresh an imported file with `vault_update_doc(path=...)` while keeping its
+  document ID, links and version history. Rich files retain their original
+  format and have their searchable text extracted again.
+- Directory imports report files that changed on disk. Use
+  `vault_import_dir(update_changed=True)` to refresh those documents in place;
+  the default reports changes without applying them.
+- Rich-format imports keep the file and report extraction failures or empty
+  text. XLSX extraction handles multiple worksheets, large cells and sparse
+  rows; formula text remains searchable when no cached result is available.
+- Uppercase `AND`, `OR` and `NOT` work between search operands. Stray operators
+  are handled as literal words.
 - Automatic link cleanup now preserves links you mark as manual while cleanup
   is running. It also avoids removing extra automatic links after a concurrent
   change and reports the number actually removed.
+- The automatic-link cap counts links created from either product. Relinking
+  an existing candidate preserves unrelated links. Pruning validates the
+  confirmation path and creates no backup when execution is refused.
 
 ### Changed
 

@@ -9,6 +9,20 @@ none has been reconstructed.
 
 ## Unreleased
 
+### Fixed: shared cap derivation and guarded maintenance
+
+- `storage.py` derives grouped cap scope and indexed endpoint predicates from
+  one endpoint definition. Canonical count/rank helpers are imported by tests;
+  LoreConvo's vendored SQL remains checked for equality.
+- `prune_dangling_auto_links` creates its backup after confirmation checks.
+  MCP tests pass the string confirmation from the refusal message, reject a
+  different existing path and verify actual deletion and backup contents.
+- Real Lance tests verify BM25 contribution after index rebuild and later
+  document insertion, with the expected target outside the vector window.
+- Production-data guard tests use the real verifier CLI and temporary owning
+  schema, retain fingerprint/canary checks and detect an omitted actual guard.
+  Corpus seeding defers unrelated Pro index work for these guard-only checks.
+
 ### Fixed: preserve manual links during concurrent auto-link trimming
 
 - `VaultStorage.trim_overcap_auto_links` revalidates and re-ranks current
