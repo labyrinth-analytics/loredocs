@@ -245,6 +245,18 @@ _DOC_AUTO_LINK_RANK_SQL = (
     "similarity_score ASC, created_at ASC, "
     + _DOC_AUTO_LINK_SESSION_ID_SQL + " ASC"
 )
+# SH-106805: one (session, doc) pair is one link whichever way the row points.
+# Manual writes go loreconvo->loredocs; LoreDocs auto writes go
+# loredocs->loreconvo. A writer that matches only its own direction misses the
+# other side's row and lands a second row for the same pair. Params: the
+# (source_product, source_id, target_product, target_id) tuple as written,
+# then the same tuple with the two endpoints swapped. Vendored in
+# loreconvo.core.loredocs_bridge; TestConstantSync asserts byte equality.
+_CROSS_LINK_PAIR_WHERE_SQL = (
+    "(source_product = ? AND source_id = ? AND target_product = ? AND target_id = ?)"
+    " OR "
+    "(target_product = ? AND target_id = ? AND source_product = ? AND source_id = ?)"
+)
 
 
 def count_doc_auto_links(conn: sqlite3.Connection, doc_id: str) -> int:
@@ -5212,7 +5224,10 @@ class VaultStorage:
 
         Manual links are always free-tier accessible (tier_required='free').
         If a manual link is requested and an auto link already exists for this pair,
-        the auto link is upgraded to manual.
+        the auto link is upgraded to manual. The pair is matched in EITHER
+        direction (SH-106805): a loredocs->loreconvo auto row satisfies a
+        loreconvo->loredocs manual request and is upgraded in place, so one
+        pair never holds two rows.
 
         Returns:
             str: "created" (new row inserted), "upgraded_from_auto" (auto upgraded to manual),
@@ -5221,25 +5236,24 @@ class VaultStorage:
         if link_type == "manual":
             tier_required = "free"
 
+        pair_params = (source_product, source_id, target_product, target_id) * 2
         row = conn.execute(
-            """SELECT link_type, tier_required FROM cross_product_links
-               WHERE source_product = ? AND source_id = ?
-               AND target_product = ? AND target_id = ?""",
-            (source_product, source_id, target_product, target_id),
+            f"""SELECT id, link_type FROM cross_product_links
+                WHERE {_CROSS_LINK_PAIR_WHERE_SQL}""",
+            pair_params,
         ).fetchone()
 
         if row:
-            existing_link_type, existing_tier = row
+            existing_link_type = row["link_type"]
             if link_type == "manual" and existing_link_type == "auto":
                 conn.execute(
                     """UPDATE cross_product_links
                        SET link_type = ?, tier_required = ?,
                            similarity_score = ?, embedding_model = ?,
                            embedding_dim = ?
-                       WHERE source_product = ? AND source_id = ?
-                       AND target_product = ? AND target_id = ?""",
-                    (link_type, tier_required, similarity_score, embedding_model, embedding_dim,
-                     source_product, source_id, target_product, target_id),
+                       WHERE id = ?""",
+                    (link_type, tier_required, similarity_score, embedding_model,
+                     embedding_dim, row["id"]),
                 )
                 return "upgraded_from_auto"
             elif link_type == "manual" and existing_link_type == "manual":
@@ -5429,11 +5443,13 @@ class VaultStorage:
                     # If we can't check loreconvo, let the link through (graceful degrade)
                     pass
 
-            # Check if a row already exists for this (source_id, target_id) pair
+            # Check if a row already exists for this (session, doc) pair in
+            # either direction (SH-106805: a loredocs->loreconvo auto row is
+            # upgraded, not duplicated).
             # SH-106221: UPDATEs should skip the cap check; only INSERTs are subject to the cap
             existing_row = conn.execute(
-                "SELECT 1 FROM cross_product_links WHERE source_product = 'loreconvo' AND source_id = ? AND target_product = 'loredocs' AND target_id = ?",
-                (session_id, doc_id)
+                f"SELECT 1 FROM cross_product_links WHERE {_CROSS_LINK_PAIR_WHERE_SQL}",
+                ("loreconvo", session_id, "loredocs", doc_id) * 2,
             ).fetchone()
 
             # Check fan-out cap per doc only for new rows (SH-104537: prevent unbounded growth, max 11,739 in WG-32)
@@ -5621,14 +5637,14 @@ class VaultStorage:
                         written += 1
                         current_auto_count += 1
                     elif existing_auto_rows and new_score > existing_auto_rows[0]["similarity_score"]:
-                        # SH-106637: if this exact doc->session link already
-                        # exists the insert below is a no-op, so evicting the
-                        # lowest row first would silently shrink the link set.
+                        # SH-106637: if this doc<->session pair already has a
+                        # row (either direction, SH-106805) the insert below is
+                        # a no-op, so evicting the lowest row first would
+                        # silently shrink the link set.
                         if conn.execute(
-                            """SELECT 1 FROM cross_product_links
-                               WHERE source_product = 'loredocs' AND source_id = ?
-                                 AND target_product = 'loreconvo' AND target_id = ?""",
-                            (doc_id, sid),
+                            f"""SELECT 1 FROM cross_product_links
+                                WHERE {_CROSS_LINK_PAIR_WHERE_SQL}""",
+                            ("loredocs", doc_id, "loreconvo", sid) * 2,
                         ).fetchone():
                             continue
                         # At cap: replace the lowest-similarity existing auto
