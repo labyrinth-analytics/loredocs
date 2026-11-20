@@ -1,4 +1,4 @@
-# LoreDocs v0.1.34
+# LoreDocs v0.1.35
 
 Your AI project's knowledge base. Organized, searchable, version-tracked.
 
@@ -431,33 +431,44 @@ The script auto-discovers the database at `~/.loredocs/loredocs.db` (or pass `--
 
 <!-- WHATS_NEW:START -->
 
-## v0.1.34 (2026-11-10)
-
-### Added
-
-- Tools that accept a `session_id` parameter (`vault_update_doc`,
-  `vault_link_session`, `vault_get_linked_sessions`) now also accept
-  `lore_session_id` as an alias. This works around the remote-devices
-  bridge (used by Claude Cowork) which strips arguments named
-  `session_id` in transit. If you pass both, they must match. No
-  existing call needs to change.
+## v0.1.35 (2026-11-20)
 
 ### Fixed
 
-- The LoreDocs plugin for Hermes Agent now starts its MCP server. In
-  0.1.33 the catalog plugin installed and showed as enabled, but no
-  LoreDocs tools appeared. After updating, `hermes plugins update
-  loredocs` gives you all LoreDocs tools in Hermes.
-- Pro features in Hermes read your licence from `~/.loredocs/license.json`.
-  Hermes does not pass plugin environment variables to MCP servers, so the
-  `LOREDOCS_PRO` variable has no effect there. INSTALL.md now says so.
-- Vault names are now compared case-insensitively for all languages, not
-  just English letters. For example, "Ärzte" and "ärzte" count as the same
-  vault name.
-- `vault_prune_dangling_links` now stops and explains why if more than half
-  of your automatic session links look dangling. That usually means
-  LoreDocs is pointed at the wrong LoreConvo database, and pruning would
-  delete good links.
+- Refresh an imported file with `vault_update_doc(path=...)` while keeping its
+  document ID, links and version history. Rich files retain their original
+  format and have their searchable text extracted again.
+- Directory imports report files that changed on disk. Use
+  `vault_import_dir(update_changed=True)` to refresh those documents in place;
+  the default reports changes without applying them.
+- Rich-format imports keep the file and report extraction failures or empty
+  text. XLSX extraction handles multiple worksheets, large cells and sparse
+  rows; formula text remains searchable when no cached result is available.
+- `AND`, `OR` and `NOT` work in any letter case between search terms.
+  Quoted words and phrases stay literal; stray operators are handled as
+  literal words.
+- Automatic link cleanup now preserves links you mark as manual while cleanup
+  is running. It also avoids removing extra automatic links after a concurrent
+  change and reports the number actually removed.
+- The automatic-link cap counts links created from either product. Relinking
+  an existing candidate preserves unrelated links. Pruning validates the
+  confirmation path and creates no backup when execution is refused.
+
+- LoreDocs no longer shuts itself down after a day without activity, which
+  showed a "stopped running" notice in Claude Desktop. The 24-hour idle exit is
+  now off by default; set `LOREDOCS_ENABLE_IDLE_BACKSTOP=1` (or `true`) to turn
+  it back on. Any other value, including `0`, leaves it off.
+- Marking a LoreConvo session and a LoreDocs document as manually linked now
+  upgrades their existing automatic link, whichever product created it, instead
+  of leaving a second link alongside it.
+
+### Changed
+
+- **Semantic search now keeps keyword matches (Pro).** `vault_search` with
+  `semantic=true` combines keyword matches and meaning-based matches in one
+  ranking. Before, turning the option on could drop a document that the
+  default keyword search found. Result order for semantic searches will
+  change. No rebuild of the semantic index is needed.
 
 <!-- WHATS_NEW:END -->
 

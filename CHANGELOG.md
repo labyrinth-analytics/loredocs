@@ -7,7 +7,29 @@ This file starts at v0.1.23. Earlier releases have customer-facing notes in
 `docs/CHANGELOG.md` only; no technical record was kept before this point and
 none has been reconstructed.
 
-## Unreleased
+## v0.1.35 (2026-11-20)
+
+### Fixed: idle backstop hard-exit off by default (SH-106311, SH-106334, SH-106456)
+
+- `server.app_lifespan` passes `backstop_env_var=None` to
+  `idle_watchdog.install` unless `LOREDOCS_ENABLE_IDLE_BACKSTOP` is exactly
+  `1` or `true` (case-insensitive); only then is
+  `LOREDOCS_IDLE_BACKSTOP_TIMEOUT` honoured. The 24h hard-exit made Claude
+  Desktop show "stopped running" daily; the 30-min `release_func` already
+  frees resources without exiting.
+- `tests/test_server_backstop_wiring.py` runs the real `app_lifespan` and
+  asserts the argument handed to `idle_watchdog.install`; a hard-coded
+  backstop at the call site fails it (mutation-verified).
+
+### Fixed: manual link upgrades an auto link in either direction (SH-106805)
+
+- `storage.py` matches a (session, doc) pair with one either-direction
+  predicate, `_CROSS_LINK_PAIR_WHERE_SQL` (vendored into LoreConvo's
+  `loredocs_bridge`, byte-checked by `TestConstantSync`), and upgrades the
+  matched row by id. Before, a manual link only found an auto row written
+  `loredocs->loreconvo`, so LoreConvo-written auto rows were left beside a new
+  manual row. The fan-out cap's existing-row check and the at-cap pre-insert
+  check use the same predicate.
 
 ### Fixed: shared cap derivation and guarded maintenance
 

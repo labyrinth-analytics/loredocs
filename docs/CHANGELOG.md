@@ -4,7 +4,7 @@ What changed in each release, written for users (not developers).
 
 ---
 
-## Unreleased
+## v0.1.35 (2026-11-20)
 
 ### Fixed
 
@@ -26,6 +26,14 @@ What changed in each release, written for users (not developers).
 - The automatic-link cap counts links created from either product. Relinking
   an existing candidate preserves unrelated links. Pruning validates the
   confirmation path and creates no backup when execution is refused.
+
+- LoreDocs no longer shuts itself down after a day without activity, which
+  showed a "stopped running" notice in Claude Desktop. The 24-hour idle exit is
+  now off by default; set `LOREDOCS_ENABLE_IDLE_BACKSTOP=1` (or `true`) to turn
+  it back on. Any other value, including `0`, leaves it off.
+- Marking a LoreConvo session and a LoreDocs document as manually linked now
+  upgrades their existing automatic link, whichever product created it, instead
+  of leaving a second link alongside it.
 
 ### Changed
 
